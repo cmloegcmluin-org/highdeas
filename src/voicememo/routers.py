@@ -1,5 +1,9 @@
 """Routers that deliver a submitted memo to Notesnook or Google Drive."""
 import html
+import re
+import shutil
+from datetime import datetime
+from pathlib import Path
 
 import requests
 
@@ -48,3 +52,41 @@ class Router:
                 self._drive.route(memo)
         else:
             self._notesnook.route(memo)
+
+
+def _today():
+    return datetime.now().strftime("%Y_%m_%d")
+
+
+def _sanitize_filename(name):
+    cleaned = re.sub(r'[<>:"/\\|?*]', "", name).strip()
+    return cleaned or "untitled"
+
+
+def _write_docx(path, text):
+    from docx import Document
+
+    document = Document()
+    for paragraph in text.split("\n"):
+        document.add_paragraph(paragraph)
+    document.save(str(path))
+
+
+class DriveMusicRouter:
+    """Move a music memo into a dated folder under the Drive base, with an optional doc."""
+
+    def __init__(self, inbox_dir, drive_base, *, today=_today, write_doc=_write_docx, move=shutil.move):
+        self._inbox = Path(inbox_dir)
+        self._base = Path(drive_base)
+        self._today = today
+        self._write_doc = write_doc
+        self._move = move
+
+    def route(self, memo):
+        folder = self._base / f"_{self._today()}_NOT_YET_PROCESSED_MUSIC"
+        folder.mkdir(parents=True, exist_ok=True)
+        source = self._inbox / memo.audio_filename
+        base = _sanitize_filename(memo.name or Path(memo.audio_filename).stem)
+        self._move(str(source), str(folder / (base + source.suffix)))
+        if memo.transcript.strip():
+            self._write_doc(folder / (base + ".docx"), memo.transcript)

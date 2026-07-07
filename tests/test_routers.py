@@ -1,6 +1,8 @@
+from pathlib import Path
+
 import pytest
 
-from voicememo.routers import NotesnookRouter, Router
+from voicememo.routers import DriveMusicRouter, NotesnookRouter, Router
 from voicememo.store import Memo
 
 
@@ -87,3 +89,64 @@ def test_router_skips_drive_when_not_configured():
     Router(notesnook=notesnook)(Memo(audio_filename="a.m4a", route="drive"))
 
     assert notesnook.routed == []
+
+
+def test_drive_router_moves_audio_into_dated_folder_and_writes_doc(tmp_path):
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    drive = tmp_path / "drive"
+    drive.mkdir()
+    (inbox / "voice-3.m4a").write_bytes(b"AUDIO")
+    docs = []
+
+    router = DriveMusicRouter(
+        inbox, drive,
+        today=lambda: "2026_07_07",
+        write_doc=lambda path, text: docs.append((Path(path), text)),
+    )
+    router.route(Memo(audio_filename="voice-3.m4a", name="Korok Dance", transcript="la la la"))
+
+    folder = drive / "_2026_07_07_NOT_YET_PROCESSED_MUSIC"
+    assert (folder / "Korok Dance.m4a").read_bytes() == b"AUDIO"
+    assert not (inbox / "voice-3.m4a").exists()
+    assert docs == [(folder / "Korok Dance.docx", "la la la")]
+
+
+def _drive_router(inbox, drive, **kwargs):
+    inbox.mkdir(exist_ok=True)
+    drive.mkdir(exist_ok=True)
+    return DriveMusicRouter(inbox, drive, today=lambda: "2026_07_07",
+                            write_doc=kwargs.get("write_doc", lambda path, text: None))
+
+
+def test_drive_router_skips_doc_when_transcript_is_blank(tmp_path):
+    (tmp_path / "inbox").mkdir()
+    (tmp_path / "inbox" / "v.m4a").write_bytes(b"A")
+    docs = []
+    router = _drive_router(tmp_path / "inbox", tmp_path / "drive",
+                           write_doc=lambda path, text: docs.append(path))
+
+    router.route(Memo(audio_filename="v.m4a", name="Song", transcript="   "))
+
+    assert docs == []
+    assert (tmp_path / "drive" / "_2026_07_07_NOT_YET_PROCESSED_MUSIC" / "Song.m4a").exists()
+
+
+def test_drive_router_sanitizes_illegal_filename_characters(tmp_path):
+    (tmp_path / "inbox").mkdir()
+    (tmp_path / "inbox" / "v.m4a").write_bytes(b"A")
+    router = _drive_router(tmp_path / "inbox", tmp_path / "drive")
+
+    router.route(Memo(audio_filename="v.m4a", name='Take 1/2: "final?"', transcript=""))
+
+    assert (tmp_path / "drive" / "_2026_07_07_NOT_YET_PROCESSED_MUSIC" / "Take 12 final.m4a").exists()
+
+
+def test_drive_router_falls_back_to_audio_stem_when_unnamed(tmp_path):
+    (tmp_path / "inbox").mkdir()
+    (tmp_path / "inbox" / "voice-5.m4a").write_bytes(b"A")
+    router = _drive_router(tmp_path / "inbox", tmp_path / "drive")
+
+    router.route(Memo(audio_filename="voice-5.m4a", name="", transcript=""))
+
+    assert (tmp_path / "drive" / "_2026_07_07_NOT_YET_PROCESSED_MUSIC" / "voice-5.m4a").exists()

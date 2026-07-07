@@ -6,13 +6,14 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from voicememo.routers import NotesnookRouter, Router
+from voicememo.routers import DriveMusicRouter, NotesnookRouter, Router
 from voicememo.service import ReviewService
 from voicememo.store import MemoStore
 from voicememo.transcribe import Transcriber
 from voicememo.web import create_app
 
 DEFAULT_INBOX = r"C:\Users\Douglas\iCloudDrive\iCloud~is~workflow~my~workflows\VoiceInbox"
+DEFAULT_DRIVE_BASE = r"G:\My Drive\voice memos (top level)"
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -21,11 +22,12 @@ def build_app():
     inbox_dir = os.environ.get("VOICE_INBOX_DIR", DEFAULT_INBOX)
     db_path = os.environ.get("VOICE_DB", str(PROJECT_ROOT / "memos.db"))
     notesnook = NotesnookRouter(os.environ.get("NOTESNOOK_INBOX_API_KEY", ""))
+    drive = DriveMusicRouter(inbox_dir, os.environ.get("VOICE_DRIVE_BASE", DEFAULT_DRIVE_BASE))
     service = ReviewService(
         inbox_dir=inbox_dir,
         store=MemoStore(db_path),
         transcriber=Transcriber(),
-        route=Router(notesnook=notesnook),
+        route=Router(notesnook=notesnook, drive=drive),
     )
     return create_app(service, inbox_dir=inbox_dir)
 

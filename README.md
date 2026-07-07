@@ -15,7 +15,7 @@ Turns iPhone voice memos into finished notes with almost no manual work.
 
 ## Status
 
-Working review app: capture → ingest → local transcription → a local web page where you play each memo, edit its transcript, name it, pick Notesnook or Drive, submit, or delete. Submitting a **Notesnook** memo now creates a real note via the Inbox API. Not yet wired: the **Drive/music** router, undo, and the archive/bin tab (delete currently soft-hides the memo).
+Working review app: capture → ingest → local transcription → a local web page where you play each memo, edit its transcript, name it, pick Notesnook or Drive, submit, or delete. Submitting a **Notesnook** memo creates a real note via the Inbox API; a **Drive/music** memo moves the recording into a dated `..._NOT_YET_PROCESSED_MUSIC` folder under `voice memos (top level)` with an accompanying `.docx`. Not yet wired: undo, the archive/bin tab (delete currently soft-hides the memo), and the multi-clip "one shared numbered doc" grouping.
 
 ## Run it
 
