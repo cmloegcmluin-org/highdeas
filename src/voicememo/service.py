@@ -1,0 +1,46 @@
+"""Application service: turn the inbox into reviewable memos and route submissions."""
+from datetime import datetime
+
+from voicememo.ingest import find_new_recordings
+from voicememo.store import Memo
+
+
+def _no_router(memo):
+    """Placeholder until the Notesnook / Drive routers are wired in."""
+
+
+def _now():
+    return datetime.now().isoformat(timespec="seconds")
+
+
+class ReviewService:
+    def __init__(self, *, inbox_dir, store, transcriber,
+                 find_new=find_new_recordings, route=_no_router, clock=_now):
+        self._inbox_dir = inbox_dir
+        self._store = store
+        self._transcriber = transcriber
+        self._find_new = find_new
+        self._route = route
+        self._clock = clock
+
+    def refresh(self):
+        for path in self._find_new(self._inbox_dir, self._store.known_filenames()):
+            self._store.upsert(Memo(
+                audio_filename=path.name,
+                transcript=self._transcriber.transcribe(path),
+                status="pending",
+                created_at=self._clock(),
+            ))
+
+    def pending(self):
+        return self._store.list_by_status("pending")
+
+    def archived(self):
+        return self._store.list_by_status("processed")
+
+    def edit(self, audio_filename, **fields):
+        self._store.update(audio_filename, **fields)
+
+    def submit(self, audio_filename):
+        self._route(self._store.get(audio_filename))
+        self._store.update(audio_filename, status="processed", processed_at=self._clock())
