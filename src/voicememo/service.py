@@ -44,3 +44,6 @@ class ReviewService:
     def submit(self, audio_filename):
         self._route(self._store.get(audio_filename))
         self._store.update(audio_filename, status="processed", processed_at=self._clock())
+
+    def delete(self, audio_filename):
+        self._store.update(audio_filename, status="deleted", processed_at=self._clock())

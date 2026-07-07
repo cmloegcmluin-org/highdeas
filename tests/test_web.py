@@ -8,6 +8,7 @@ class FakeService:
         self.refreshed = 0
         self.edits = []
         self.submitted = []
+        self.deleted = []
 
     def refresh(self):
         self.refreshed += 1
@@ -20,6 +21,9 @@ class FakeService:
 
     def submit(self, audio_filename):
         self.submitted.append(audio_filename)
+
+    def delete(self, audio_filename):
+        self.deleted.append(audio_filename)
 
 
 def test_index_refreshes_and_lists_pending(tmp_path):
@@ -67,3 +71,13 @@ def test_audio_serves_file_from_inbox(tmp_path):
 
     assert resp.status_code == 200
     assert resp.data == b"AUDIODATA"
+
+
+def test_delete_route_discards_and_redirects(tmp_path):
+    service = FakeService()
+    client = create_app(service, inbox_dir=str(tmp_path)).test_client()
+
+    resp = client.post("/delete/a.m4a")
+
+    assert service.deleted == ["a.m4a"]
+    assert resp.status_code == 302

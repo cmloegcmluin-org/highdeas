@@ -50,3 +50,21 @@ def test_submit_routes_then_marks_processed(tmp_path):
     memo = store.get("a.m4a")
     assert memo.status == "processed"
     assert memo.processed_at == "2026-07-07T05:00"
+
+
+def test_delete_marks_memo_deleted(tmp_path):
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="a.m4a", status="pending"))
+
+    service = ReviewService(
+        inbox_dir="/inbox",
+        store=store,
+        transcriber=FakeTranscriber(),
+        clock=lambda: "2026-07-07T06:00",
+    )
+
+    service.delete("a.m4a")
+
+    memo = store.get("a.m4a")
+    assert memo.status == "deleted"
+    assert memo.processed_at == "2026-07-07T06:00"

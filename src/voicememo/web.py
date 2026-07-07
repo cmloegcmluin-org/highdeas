@@ -18,6 +18,11 @@ DRIVE_SVG = (
     '<path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>'
     "</svg>"
 )
+TRASH_SVG = (
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" '
+    'stroke-linecap="round" stroke-linejoin="round">'
+    '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>'
+)
 
 INDEX_HTML = """<!doctype html>
 <html lang="en">
@@ -27,11 +32,12 @@ INDEX_HTML = """<!doctype html>
 <title>Voice Memos to Review</title>
 <style>
   :root { color-scheme: light dark; }
-  body { font-family: -apple-system, "Segoe UI", system-ui, sans-serif; max-width: 1200px;
+  body { font-family: -apple-system, "Segoe UI", system-ui, sans-serif; max-width: 1300px;
          margin: 0 auto; padding: 24px; line-height: 1.45; }
   h1 { font-size: 1.35rem; }
   .empty { opacity: .7; padding: 48px 0; text-align: center; }
-  .grid { display: grid; grid-template-columns: 260px minmax(240px, 1fr) 170px 100px 104px;
+  .grid { display: grid;
+          grid-template-columns: 300px minmax(240px, 1fr) 210px 100px 104px 48px;
           gap: 16px 18px; align-items: start; }
   .grid .head { font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; opacity: .55;
                 padding-bottom: 4px; border-bottom: 1px solid rgba(128,128,128,.25); }
@@ -41,8 +47,14 @@ INDEX_HTML = """<!doctype html>
     width: 100%; box-sizing: border-box; padding: 8px; font: inherit;
     border: 1px solid rgba(128,128,128,.4); border-radius: 8px; background: transparent; color: inherit; }
   .memo textarea { min-height: 84px; resize: vertical; }
-  .memo button { font: inherit; padding: 9px 0; width: 100%; border-radius: 8px; border: none;
-                 background: #3b82f6; color: #fff; cursor: pointer; }
+  .memo .go { font: inherit; padding: 9px 0; width: 100%; border-radius: 8px; border: none;
+              background: #3b82f6; color: #fff; cursor: pointer; }
+  .memo .del { padding: 9px 0; width: 100%; border-radius: 8px; cursor: pointer;
+               background: transparent; color: inherit; opacity: .4;
+               border: 1px solid rgba(128,128,128,.35);
+               transition: color .15s, opacity .15s, border-color .15s; }
+  .memo .del:hover { opacity: 1; color: #e5484d; border-color: #e5484d; }
+  .memo .del svg { width: 16px; height: 16px; display: block; margin: 0 auto; }
   .toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
   .toggle input { position: absolute; width: 0; height: 0; opacity: 0; }
   .toggle .ic { width: 18px; height: 18px; opacity: .35; transition: opacity .15s; }
@@ -69,6 +81,7 @@ INDEX_HTML = """<!doctype html>
     <div class="head">Name</div>
     <div class="head">Route</div>
     <div class="head"></div>
+    <div class="head"></div>
     {% for m in memos %}
     <form class="memo" method="post" action="/submit/{{ m.audio_filename }}">
       <audio controls src="/audio/{{ m.audio_filename }}"></audio>
@@ -80,7 +93,10 @@ INDEX_HTML = """<!doctype html>
         <span class="track"></span>
         <span class="ic dr" aria-label="Google Drive">""" + DRIVE_SVG + """</span>
       </label>
-      <button type="submit">Submit</button>
+      <button type="submit" class="go">Submit</button>
+      <button type="submit" class="del" formaction="/delete/{{ m.audio_filename }}" formnovalidate
+              title="Delete" aria-label="Delete"
+              onclick="return confirm('Delete this memo? This removes it from your list.')">""" + TRASH_SVG + """</button>
     </form>
     {% endfor %}
   </div>
@@ -111,6 +127,11 @@ def create_app(service, inbox_dir):
             route=request.form.get("route", "notesnook"),
         )
         service.submit(filename)
+        return redirect("/")
+
+    @app.post("/delete/<path:filename>")
+    def delete(filename):
+        service.delete(filename)
         return redirect("/")
 
     return app
