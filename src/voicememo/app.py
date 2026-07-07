@@ -35,6 +35,7 @@ def build_app():
 
 
 def main():
+    _set_windows_app_id()
     app = build_app()
     if os.environ.get("VOICE_DESKTOP", "1") == "1" and _run_desktop(app):
         return
@@ -59,6 +60,16 @@ def _run_browser(app):
     if os.environ.get("VOICE_OPEN_BROWSER", "1") == "1":
         threading.Timer(1.5, lambda: webbrowser.open(f"http://127.0.0.1:{port}/")).start()
     app.run(port=port)
+
+
+def _set_windows_app_id():
+    """Give the app its own taskbar identity so Windows shows its icon, not python's."""
+    try:
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Douglas.VoiceMemos")
+    except Exception:  # noqa: BLE001 — non-Windows or unavailable; harmless
+        pass
 
 
 if __name__ == "__main__":
