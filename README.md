@@ -15,7 +15,7 @@ Turns iPhone voice memos into finished notes with almost no manual work.
 
 ## Status
 
-Working review app: capture → ingest → local transcription → a local web page where you play each memo, edit its transcript, name it, pick Notesnook or Drive, and submit. Not yet wired: the actual Notesnook/Drive delivery on submit (routers), undo, and the archive tab.
+Working review app: capture → ingest → local transcription → a local web page where you play each memo, edit its transcript, name it, pick Notesnook or Drive, submit, or delete. Submitting a **Notesnook** memo now creates a real note via the Inbox API. Not yet wired: the **Drive/music** router, undo, and the archive/bin tab (delete currently soft-hides the memo).
 
 ## Run it
 
@@ -23,7 +23,7 @@ Double-click **`Review Voice Memos.bat`** (or run `.venv/Scripts/python -m voice
 
 ## Setup
 
-- Copy `.env.example` to `.env` and fill in your Notesnook Inbox API key (needed later, for the Notesnook router).
+- Copy `.env.example` to `.env` and fill in your Notesnook Inbox API key (required to submit memos to Notesnook).
 
 ## Tests
 

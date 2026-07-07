@@ -4,6 +4,9 @@ import threading
 import webbrowser
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+from voicememo.routers import NotesnookRouter, Router
 from voicememo.service import ReviewService
 from voicememo.store import MemoStore
 from voicememo.transcribe import Transcriber
@@ -14,12 +17,15 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def build_app():
+    load_dotenv(PROJECT_ROOT / ".env")
     inbox_dir = os.environ.get("VOICE_INBOX_DIR", DEFAULT_INBOX)
     db_path = os.environ.get("VOICE_DB", str(PROJECT_ROOT / "memos.db"))
+    notesnook = NotesnookRouter(os.environ.get("NOTESNOOK_INBOX_API_KEY", ""))
     service = ReviewService(
         inbox_dir=inbox_dir,
         store=MemoStore(db_path),
         transcriber=Transcriber(),
+        route=Router(notesnook=notesnook),
     )
     return create_app(service, inbox_dir=inbox_dir)
 
