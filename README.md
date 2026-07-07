@@ -15,11 +15,15 @@ Turns iPhone voice memos into finished notes with almost no manual work.
 
 ## Status
 
-Early scaffold. Implemented so far: inbox discovery (`voicememo.ingest`) and local transcription (`voicememo.transcribe` — NVIDIA Parakeet via onnx-asr, decoding `.m4a` with a bundled ffmpeg).
+Working review app: capture → ingest → local transcription → a local web page where you play each memo, edit its transcript, name it, pick Notesnook or Drive, and submit. Not yet wired: the actual Notesnook/Drive delivery on submit (routers), undo, and the archive tab.
+
+## Run it
+
+Double-click **`Review Voice Memos.bat`** (or run `.venv/Scripts/python -m voicememo.app`). It opens the review page in your browser. The first open takes ~15s while the transcription model loads; after that it's quick.
 
 ## Setup
 
-- Copy `.env.example` to `.env` and fill in your Notesnook Inbox API key.
+- Copy `.env.example` to `.env` and fill in your Notesnook Inbox API key (needed later, for the Notesnook router).
 
 ## Tests
 

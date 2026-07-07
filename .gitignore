@@ -7,5 +7,8 @@ __pycache__/
 # Secrets — never commit
 .env
 
+# Local database
+memos.db
+
 # Claude Code worktrees and local settings
 .claude/
