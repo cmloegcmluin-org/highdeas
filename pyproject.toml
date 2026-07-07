@@ -3,7 +3,10 @@ name = "voicememo"
 version = "0.1.0"
 description = "Local pipeline that ingests iPhone voice-memo recordings, transcribes them locally, and routes each to Notesnook or Google Drive."
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "onnx-asr[cpu,hub]>=0.11",
+    "imageio-ffmpeg>=0.4",
+]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]

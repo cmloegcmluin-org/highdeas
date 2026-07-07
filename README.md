@@ -15,7 +15,7 @@ Turns iPhone voice memos into finished notes with almost no manual work.
 
 ## Status
 
-Early scaffold. Implemented so far: inbox discovery (`voicememo.ingest`).
+Early scaffold. Implemented so far: inbox discovery (`voicememo.ingest`) and local transcription (`voicememo.transcribe` — NVIDIA Parakeet via onnx-asr, decoding `.m4a` with a bundled ffmpeg).
 
 ## Setup
 
