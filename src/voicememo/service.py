@@ -1,5 +1,7 @@
 """Application service: turn the inbox into reviewable memos and route submissions."""
+import shutil
 from datetime import datetime
+from pathlib import Path
 
 from voicememo.ingest import find_new_recordings
 from voicememo.store import Memo
@@ -14,11 +16,12 @@ def _now():
 
 
 class ReviewService:
-    def __init__(self, *, inbox_dir, store, transcriber,
+    def __init__(self, *, inbox_dir, store, transcriber, bin_dir,
                  find_new=find_new_recordings, route=_no_router, clock=_now):
         self._inbox_dir = inbox_dir
         self._store = store
         self._transcriber = transcriber
+        self._bin_dir = bin_dir
         self._find_new = find_new
         self._route = route
         self._clock = clock
@@ -43,7 +46,17 @@ class ReviewService:
 
     def submit(self, audio_filename):
         self._route(self._store.get(audio_filename))
+        self._retire_audio(audio_filename)
         self._store.update(audio_filename, status="processed", processed_at=self._clock())
 
     def delete(self, audio_filename):
+        self._retire_audio(audio_filename)
         self._store.update(audio_filename, status="deleted", processed_at=self._clock())
+
+    def _retire_audio(self, audio_filename):
+        """Take the recording out of the inbox, unless the route already moved it (Drive)."""
+        source = Path(self._inbox_dir) / audio_filename
+        if source.exists():
+            bin_dir = Path(self._bin_dir)
+            bin_dir.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(source), str(bin_dir / audio_filename))

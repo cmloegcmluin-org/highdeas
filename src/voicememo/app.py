@@ -27,6 +27,7 @@ def build_app():
         inbox_dir=inbox_dir,
         store=MemoStore(db_path),
         transcriber=Transcriber(),
+        bin_dir=os.environ.get("VOICE_BIN_DIR", str(PROJECT_ROOT / "bin")),
         route=Router(notesnook=notesnook, drive=drive),
     )
     return create_app(service, inbox_dir=inbox_dir)

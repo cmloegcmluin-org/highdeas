@@ -19,6 +19,7 @@ def test_refresh_transcribes_new_recordings_into_pending(tmp_path):
         inbox_dir="/inbox",
         store=store,
         transcriber=FakeTranscriber(),
+        bin_dir=tmp_path / "bin",
         find_new=find_new,
         clock=lambda: "2026-07-07T00:00",
     )
@@ -40,6 +41,7 @@ def test_submit_routes_then_marks_processed(tmp_path):
         inbox_dir="/inbox",
         store=store,
         transcriber=FakeTranscriber(),
+        bin_dir=tmp_path / "bin",
         route=lambda memo: routed.append((memo.audio_filename, memo.route)),
         clock=lambda: "2026-07-07T05:00",
     )
@@ -60,6 +62,7 @@ def test_delete_marks_memo_deleted(tmp_path):
         inbox_dir="/inbox",
         store=store,
         transcriber=FakeTranscriber(),
+        bin_dir=tmp_path / "bin",
         clock=lambda: "2026-07-07T06:00",
     )
 
@@ -68,3 +71,58 @@ def test_delete_marks_memo_deleted(tmp_path):
     memo = store.get("a.m4a")
     assert memo.status == "deleted"
     assert memo.processed_at == "2026-07-07T06:00"
+
+
+def test_submit_retires_inbox_audio_to_bin_when_route_leaves_it(tmp_path):
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    bin_dir = tmp_path / "bin"
+    (inbox / "a.m4a").write_bytes(b"AUDIO")
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="a.m4a", route="notesnook", status="pending"))
+
+    service = ReviewService(
+        inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
+        bin_dir=bin_dir, route=lambda memo: None, clock=lambda: "T",
+    )
+    service.submit("a.m4a")
+
+    assert not (inbox / "a.m4a").exists()
+    assert (bin_dir / "a.m4a").read_bytes() == b"AUDIO"
+    assert store.get("a.m4a").status == "processed"
+
+
+def test_submit_leaves_bin_untouched_when_route_already_moved_audio(tmp_path):
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    bin_dir = tmp_path / "bin"
+    (inbox / "a.m4a").write_bytes(b"AUDIO")
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="a.m4a", route="drive", status="pending"))
+
+    def drive_route(memo):  # a Drive route moves the audio out of the inbox itself
+        (inbox / "a.m4a").rename(tmp_path / "moved_to_drive.m4a")
+
+    service = ReviewService(
+        inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
+        bin_dir=bin_dir, route=drive_route, clock=lambda: "T",
+    )
+    service.submit("a.m4a")
+
+    assert not bin_dir.exists() or list(bin_dir.iterdir()) == []
+
+
+def test_delete_retires_inbox_audio_to_bin(tmp_path):
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    bin_dir = tmp_path / "bin"
+    (inbox / "a.m4a").write_bytes(b"AUDIO")
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="a.m4a", status="pending"))
+
+    ReviewService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
+                  bin_dir=bin_dir, clock=lambda: "T").delete("a.m4a")
+
+    assert not (inbox / "a.m4a").exists()
+    assert (bin_dir / "a.m4a").read_bytes() == b"AUDIO"
+    assert store.get("a.m4a").status == "deleted"
