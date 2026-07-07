@@ -38,15 +38,17 @@ INDEX_HTML = """<!doctype html>
   .empty { opacity: .7; padding: 48px 0; text-align: center; }
   .grid { display: grid;
           grid-template-columns: 300px minmax(240px, 1fr) 210px 100px 104px 48px;
-          gap: 16px 18px; align-items: start; }
+          gap: 14px 18px; align-items: center; }
   .grid .head { font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; opacity: .55;
+                display: flex; align-items: flex-end; min-height: 18px;
                 padding-bottom: 4px; border-bottom: 1px solid rgba(128,128,128,.25); }
+  .grid .sep { grid-column: 1 / -1; border-top: 1px solid rgba(128,128,128,.18); }
   form.memo { display: contents; }
   .memo audio { width: 100%; }
   .memo textarea, .memo input[type=text] {
     width: 100%; box-sizing: border-box; padding: 8px; font: inherit;
     border: 1px solid rgba(128,128,128,.4); border-radius: 8px; background: transparent; color: inherit; }
-  .memo textarea { min-height: 84px; resize: vertical; }
+  .memo textarea { min-height: 60px; resize: vertical; }
   .memo .go { font: inherit; padding: 9px 0; width: 100%; border-radius: 8px; border: none;
               background: #3b82f6; color: #fff; cursor: pointer; }
   .memo .del { padding: 9px 0; width: 100%; border-radius: 8px; cursor: pointer;
@@ -83,6 +85,7 @@ INDEX_HTML = """<!doctype html>
     <div class="head"></div>
     <div class="head"></div>
     {% for m in memos %}
+    {% if not loop.first %}<div class="sep"></div>{% endif %}
     <form class="memo" method="post" action="/submit/{{ m.audio_filename }}">
       <audio controls src="/audio/{{ m.audio_filename }}"></audio>
       <textarea name="transcript" aria-label="Transcript">{{ m.transcript }}</textarea>
