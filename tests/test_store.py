@@ -1,3 +1,5 @@
+import threading
+
 from voicememo.store import Memo, MemoStore
 
 
@@ -51,3 +53,24 @@ def test_update_changes_named_fields_only(tmp_path):
     assert memo.transcript == "edited"
     assert memo.route == "drive"
     assert memo.status == "pending"  # untouched
+
+
+def test_store_is_usable_from_another_thread(tmp_path):
+    # The Flask dev server handles each request in a new thread, so the store
+    # must not be pinned to the thread that created it.
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="a.m4a"))
+    result = {}
+
+    def worker():
+        try:
+            result["names"] = store.known_filenames()
+        except Exception as exc:  # noqa: BLE001
+            result["error"] = exc
+
+    thread = threading.Thread(target=worker)
+    thread.start()
+    thread.join()
+
+    assert result.get("error") is None, result.get("error")
+    assert result["names"] == {"a.m4a"}
