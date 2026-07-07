@@ -1,6 +1,6 @@
 """Application service: turn the inbox into reviewable memos and route submissions."""
 import shutil
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from voicememo.ingest import find_new_recordings
@@ -27,6 +27,7 @@ class ReviewService:
         self._clock = clock
 
     def refresh(self):
+        self.purge_expired()
         for path in self._find_new(self._inbox_dir, self._store.known_filenames()):
             self._store.upsert(Memo(
                 audio_filename=path.name,
@@ -63,6 +64,17 @@ class ReviewService:
         if source.exists():
             shutil.move(str(source), str(Path(self._inbox_dir) / audio_filename))
         self._store.update(audio_filename, status="pending", processed_at="")
+
+    def purge_expired(self, *, retention_days=90):
+        """Forget bin items older than the retention window: delete the audio and the record."""
+        cutoff = datetime.fromisoformat(self._clock()) - timedelta(days=retention_days)
+        bin_dir = Path(self._bin_dir)
+        for memo in self._store.list_by_status("processed") + self._store.list_by_status("deleted"):
+            if memo.processed_at and datetime.fromisoformat(memo.processed_at) < cutoff:
+                audio = bin_dir / memo.audio_filename
+                if audio.exists():
+                    audio.unlink()
+                self._store.remove(memo.audio_filename)
 
     def _retire_audio(self, audio_filename):
         """Take the recording out of the inbox, unless the route already moved it (Drive)."""

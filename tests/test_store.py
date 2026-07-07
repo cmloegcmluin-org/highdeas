@@ -74,3 +74,12 @@ def test_store_is_usable_from_another_thread(tmp_path):
 
     assert result.get("error") is None, result.get("error")
     assert result["names"] == {"a.m4a"}
+
+
+def test_remove_deletes_the_record(tmp_path):
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="a.m4a"))
+
+    store.remove("a.m4a")
+
+    assert store.get("a.m4a") is None

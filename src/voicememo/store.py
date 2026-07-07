@@ -72,3 +72,8 @@ class MemoStore:
                 [*changes.values(), audio_filename],
             )
             self._conn.commit()
+
+    def remove(self, audio_filename):
+        with self._lock:
+            self._conn.execute("DELETE FROM memos WHERE audio_filename = ?", (audio_filename,))
+            self._conn.commit()

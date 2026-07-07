@@ -163,3 +163,44 @@ def test_restore_moves_audio_back_to_inbox_and_marks_pending(tmp_path):
     memo = store.get("a.m4a")
     assert memo.status == "pending"
     assert memo.processed_at == ""
+
+
+def test_purge_expired_removes_only_bin_items_past_retention(tmp_path):
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "old.m4a").write_bytes(b"OLD")
+    (bin_dir / "new.m4a").write_bytes(b"NEW")
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="old.m4a", status="processed", processed_at="2026-04-01T00:00:00"))
+    store.upsert(Memo(audio_filename="new.m4a", status="deleted", processed_at="2026-06-30T00:00:00"))
+
+    service = ReviewService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
+                            bin_dir=bin_dir, clock=lambda: "2026-07-07T00:00:00")
+    service.purge_expired(retention_days=90)
+
+    # cutoff is 2026-04-08; "old" is before it -> audio and record gone
+    assert not (bin_dir / "old.m4a").exists()
+    assert store.get("old.m4a") is None
+    # "new" is within retention -> untouched
+    assert (bin_dir / "new.m4a").exists()
+    assert store.get("new.m4a") is not None
+
+
+def test_refresh_purges_expired_bin_items(tmp_path):
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "old.m4a").write_bytes(b"OLD")
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="old.m4a", status="processed", processed_at="2026-01-01T00:00:00"))
+
+    service = ReviewService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
+                            bin_dir=bin_dir, find_new=lambda inbox, known: [],
+                            clock=lambda: "2026-07-07T00:00:00")
+    service.refresh()
+
+    assert store.get("old.m4a") is None
+    assert not (bin_dir / "old.m4a").exists()
