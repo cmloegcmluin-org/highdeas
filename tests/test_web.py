@@ -49,6 +49,16 @@ def test_submit_saves_edits_then_submits_and_redirects(tmp_path):
     assert resp.status_code == 302
 
 
+def test_submit_defaults_route_to_notesnook_when_toggle_off(tmp_path):
+    service = FakeService()
+    client = create_app(service, inbox_dir=str(tmp_path)).test_client()
+
+    # An unchecked checkbox toggle submits no "route" field.
+    client.post("/submit/a.m4a", data={"name": "X", "transcript": "Y"})
+
+    assert service.edits == [("a.m4a", {"name": "X", "transcript": "Y", "route": "notesnook"})]
+
+
 def test_audio_serves_file_from_inbox(tmp_path):
     (tmp_path / "a.m4a").write_bytes(b"AUDIODATA")
     client = create_app(FakeService(), inbox_dir=str(tmp_path)).test_client()
