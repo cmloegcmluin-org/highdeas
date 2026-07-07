@@ -38,8 +38,13 @@ class ReviewService:
     def pending(self):
         return self._store.list_by_status("pending")
 
-    def archived(self):
-        return self._store.list_by_status("processed")
+    def binned(self):
+        """Processed/deleted memos whose recording sits in the local bin, newest first."""
+        bin_path = Path(self._bin_dir)
+        present = {p.name for p in bin_path.iterdir()} if bin_path.exists() else set()
+        retired = self._store.list_by_status("processed") + self._store.list_by_status("deleted")
+        in_bin = [memo for memo in retired if memo.audio_filename in present]
+        return sorted(in_bin, key=lambda memo: memo.processed_at, reverse=True)
 
     def edit(self, audio_filename, **fields):
         self._store.update(audio_filename, **fields)
@@ -52,6 +57,12 @@ class ReviewService:
     def delete(self, audio_filename):
         self._retire_audio(audio_filename)
         self._store.update(audio_filename, status="deleted", processed_at=self._clock())
+
+    def restore(self, audio_filename):
+        source = Path(self._bin_dir) / audio_filename
+        if source.exists():
+            shutil.move(str(source), str(Path(self._inbox_dir) / audio_filename))
+        self._store.update(audio_filename, status="pending", processed_at="")
 
     def _retire_audio(self, audio_filename):
         """Take the recording out of the inbox, unless the route already moved it (Drive)."""

@@ -3,12 +3,14 @@ from voicememo.web import create_app
 
 
 class FakeService:
-    def __init__(self, pending=()):
+    def __init__(self, pending=(), binned=()):
         self._pending = list(pending)
+        self._binned = list(binned)
         self.refreshed = 0
         self.edits = []
         self.submitted = []
         self.deleted = []
+        self.restored = []
 
     def refresh(self):
         self.refreshed += 1
@@ -25,10 +27,16 @@ class FakeService:
     def delete(self, audio_filename):
         self.deleted.append(audio_filename)
 
+    def binned(self):
+        return self._binned
+
+    def restore(self, audio_filename):
+        self.restored.append(audio_filename)
+
 
 def test_index_refreshes_and_lists_pending(tmp_path):
     service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hello there")])
-    client = create_app(service, inbox_dir=str(tmp_path)).test_client()
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     resp = client.get("/")
 
@@ -40,7 +48,7 @@ def test_index_refreshes_and_lists_pending(tmp_path):
 
 def test_submit_saves_edits_then_submits_and_redirects(tmp_path):
     service = FakeService()
-    client = create_app(service, inbox_dir=str(tmp_path)).test_client()
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     resp = client.post("/submit/a.m4a", data={
         "name": "My idea", "transcript": "edited text", "route": "drive",
@@ -55,7 +63,7 @@ def test_submit_saves_edits_then_submits_and_redirects(tmp_path):
 
 def test_submit_defaults_route_to_notesnook_when_toggle_off(tmp_path):
     service = FakeService()
-    client = create_app(service, inbox_dir=str(tmp_path)).test_client()
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     # An unchecked checkbox toggle submits no "route" field.
     client.post("/submit/a.m4a", data={"name": "X", "transcript": "Y"})
@@ -65,7 +73,7 @@ def test_submit_defaults_route_to_notesnook_when_toggle_off(tmp_path):
 
 def test_audio_serves_file_from_inbox(tmp_path):
     (tmp_path / "a.m4a").write_bytes(b"AUDIODATA")
-    client = create_app(FakeService(), inbox_dir=str(tmp_path)).test_client()
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     resp = client.get("/audio/a.m4a")
 
@@ -75,9 +83,46 @@ def test_audio_serves_file_from_inbox(tmp_path):
 
 def test_delete_route_discards_and_redirects(tmp_path):
     service = FakeService()
-    client = create_app(service, inbox_dir=str(tmp_path)).test_client()
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     resp = client.post("/delete/a.m4a")
 
     assert service.deleted == ["a.m4a"]
     assert resp.status_code == 302
+
+
+def test_bin_lists_binned_items(tmp_path):
+    service = FakeService(binned=[
+        Memo(audio_filename="b.m4a", name="Old note", transcript="bin body",
+             status="deleted", processed_at="2026-07-07T03:00"),
+    ])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    resp = client.get("/bin")
+
+    assert resp.status_code == 200
+    assert b"Old note" in resp.data
+    assert b"bin body" in resp.data
+    assert b"b.m4a" in resp.data
+
+
+def test_restore_route_restores_and_redirects(tmp_path):
+    service = FakeService()
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    resp = client.post("/restore/b.m4a")
+
+    assert service.restored == ["b.m4a"]
+    assert resp.status_code == 302
+
+
+def test_bin_audio_serves_from_bin(tmp_path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "b.m4a").write_bytes(b"BINAUDIO")
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(bin_dir)).test_client()
+
+    resp = client.get("/bin-audio/b.m4a")
+
+    assert resp.status_code == 200
+    assert resp.data == b"BINAUDIO"

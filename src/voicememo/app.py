@@ -21,16 +21,17 @@ def build_app():
     load_dotenv(PROJECT_ROOT / ".env")
     inbox_dir = os.environ.get("VOICE_INBOX_DIR", DEFAULT_INBOX)
     db_path = os.environ.get("VOICE_DB", str(PROJECT_ROOT / "memos.db"))
+    bin_dir = os.environ.get("VOICE_BIN_DIR", str(PROJECT_ROOT / "bin"))
     notesnook = NotesnookRouter(os.environ.get("NOTESNOOK_INBOX_API_KEY", ""))
     drive = DriveMusicRouter(inbox_dir, os.environ.get("VOICE_DRIVE_BASE", DEFAULT_DRIVE_BASE))
     service = ReviewService(
         inbox_dir=inbox_dir,
         store=MemoStore(db_path),
         transcriber=Transcriber(),
-        bin_dir=os.environ.get("VOICE_BIN_DIR", str(PROJECT_ROOT / "bin")),
+        bin_dir=bin_dir,
         route=Router(notesnook=notesnook, drive=drive),
     )
-    return create_app(service, inbox_dir=inbox_dir)
+    return create_app(service, inbox_dir=inbox_dir, bin_dir=bin_dir)
 
 
 def main():

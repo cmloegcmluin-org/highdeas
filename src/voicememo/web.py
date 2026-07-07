@@ -45,6 +45,8 @@ INDEX_HTML = """<!doctype html>
   body { font-family: -apple-system, "Segoe UI", system-ui, sans-serif; max-width: 1300px;
          margin: 0 auto; padding: 24px; line-height: 1.45; }
   h1 { font-size: 1.35rem; }
+  .topbar { display: flex; justify-content: space-between; align-items: baseline; }
+  .topbar a { color: #3b82f6; text-decoration: none; font-size: .9rem; }
   .empty { opacity: .7; padding: 48px 0; text-align: center; }
   .grid { display: grid;
           grid-template-columns: 300px minmax(240px, 1fr) 210px 100px 104px 48px;
@@ -83,7 +85,7 @@ INDEX_HTML = """<!doctype html>
 </style>
 </head>
 <body>
-  <h1>Voice memos to review — {{ memos|length }} pending</h1>
+  <div class="topbar"><h1>Voice memos to review — {{ memos|length }} pending</h1><a href="/bin">Bin →</a></div>
   {% if not memos %}
     <p class="empty">Nothing to review. Record a memo and it'll show up here.</p>
   {% else %}
@@ -119,7 +121,69 @@ INDEX_HTML = """<!doctype html>
 """
 
 
-def create_app(service, inbox_dir):
+BIN_HTML = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bin — Voice Memos</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: -apple-system, "Segoe UI", system-ui, sans-serif; max-width: 1300px;
+         margin: 0 auto; padding: 24px; line-height: 1.45; }
+  .topbar { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+  .topbar a { color: #3b82f6; text-decoration: none; font-size: .9rem; }
+  h1 { font-size: 1.35rem; margin: 0; }
+  .empty { opacity: .7; padding: 48px 0; text-align: center; }
+  .grid { display: grid; grid-template-columns: 300px minmax(220px, 1fr) 170px 96px 150px 104px;
+          gap: 14px 18px; align-items: center; }
+  .grid .head { font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; opacity: .55;
+                display: flex; align-items: flex-end; min-height: 18px;
+                padding-bottom: 4px; border-bottom: 1px solid rgba(128,128,128,.25); }
+  .grid .sep { grid-column: 1 / -1; border-top: 1px solid rgba(128,128,128,.18); }
+  .row { display: contents; }
+  .row audio { width: 100%; }
+  .row .text { font-size: .9rem; white-space: pre-wrap; max-height: 5.5em; overflow: auto; opacity: .85; }
+  .row .name { font-weight: 600; }
+  .row .when { font-size: .8rem; opacity: .6; }
+  .badge { font-size: .72rem; padding: 2px 9px; border-radius: 999px; border: 1px solid rgba(128,128,128,.4); }
+  .restore { font: inherit; padding: 8px 0; width: 100%; border-radius: 8px; cursor: pointer;
+             background: transparent; color: inherit; border: 1px solid rgba(128,128,128,.4);
+             transition: color .15s, border-color .15s; }
+  .restore:hover { border-color: #3b82f6; color: #3b82f6; }
+</style>
+</head>
+<body>
+  <div class="topbar"><h1>Bin — {{ memos|length }} item{{ 's' if memos|length != 1 else '' }}</h1><a href="/">&larr; Back to review</a></div>
+  {% if not memos %}
+    <p class="empty">Nothing in the bin. Submitted and deleted memos land here (kept for 90 days).</p>
+  {% else %}
+  <div class="grid">
+    <div class="head">Audio</div>
+    <div class="head">Transcript</div>
+    <div class="head">Name</div>
+    <div class="head">Status</div>
+    <div class="head">When</div>
+    <div class="head"></div>
+    {% for m in memos %}
+    {% if not loop.first %}<div class="sep"></div>{% endif %}
+    <div class="row">
+      <audio controls src="/bin-audio/{{ m.audio_filename }}"></audio>
+      <div class="text">{{ m.transcript }}</div>
+      <div class="name">{{ m.name or m.audio_filename }}</div>
+      <div><span class="badge">{{ m.status }}</span></div>
+      <div class="when">{{ m.processed_at }}</div>
+      <form method="post" action="/restore/{{ m.audio_filename }}"><button class="restore" type="submit">Restore</button></form>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</body>
+</html>
+"""
+
+
+def create_app(service, inbox_dir, bin_dir):
     app = Flask(__name__)
 
     @app.get("/")
@@ -146,5 +210,18 @@ def create_app(service, inbox_dir):
     def delete(filename):
         service.delete(filename)
         return redirect("/")
+
+    @app.get("/bin")
+    def bin_view():
+        return render_template_string(BIN_HTML, memos=service.binned())
+
+    @app.get("/bin-audio/<path:filename>")
+    def bin_audio(filename):
+        return send_from_directory(bin_dir, filename)
+
+    @app.post("/restore/<path:filename>")
+    def restore(filename):
+        service.restore(filename)
+        return redirect("/bin")
 
     return app

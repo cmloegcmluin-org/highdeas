@@ -126,3 +126,40 @@ def test_delete_retires_inbox_audio_to_bin(tmp_path):
     assert not (inbox / "a.m4a").exists()
     assert (bin_dir / "a.m4a").read_bytes() == b"AUDIO"
     assert store.get("a.m4a").status == "deleted"
+
+
+def test_binned_lists_processed_and_deleted_with_audio_in_bin_newest_first(tmp_path):
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "n.m4a").write_bytes(b"N")
+    (bin_dir / "d.m4a").write_bytes(b"D")
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="n.m4a", status="processed", route="notesnook", processed_at="2026-07-07T02:00"))
+    store.upsert(Memo(audio_filename="d.m4a", status="deleted", processed_at="2026-07-07T03:00"))
+    store.upsert(Memo(audio_filename="music.m4a", status="processed", route="drive", processed_at="2026-07-07T04:00"))
+    store.upsert(Memo(audio_filename="p.m4a", status="pending"))
+
+    service = ReviewService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(), bin_dir=bin_dir)
+
+    # music.m4a (Drive) lives in Drive not the bin, so it is excluded; pending excluded; newest first
+    assert [m.audio_filename for m in service.binned()] == ["d.m4a", "n.m4a"]
+
+
+def test_restore_moves_audio_back_to_inbox_and_marks_pending(tmp_path):
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "a.m4a").write_bytes(b"A")
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="a.m4a", status="deleted", processed_at="2026-07-07T03:00"))
+
+    ReviewService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(), bin_dir=bin_dir).restore("a.m4a")
+
+    assert (inbox / "a.m4a").read_bytes() == b"A"
+    assert not (bin_dir / "a.m4a").exists()
+    memo = store.get("a.m4a")
+    assert memo.status == "pending"
+    assert memo.processed_at == ""
