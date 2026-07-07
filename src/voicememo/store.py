@@ -1,0 +1,66 @@
+"""SQLite-backed store for memo review state (transcript, name, route, status)."""
+import sqlite3
+from dataclasses import dataclass, fields
+
+
+@dataclass
+class Memo:
+    audio_filename: str
+    transcript: str = ""
+    name: str = ""
+    route: str = "notesnook"
+    status: str = "pending"
+    created_at: str = ""
+    processed_at: str = ""
+
+
+_COLUMNS = [f.name for f in fields(Memo)]
+
+
+def _row_to_memo(row):
+    return Memo(**{c: row[c] for c in _COLUMNS})
+
+
+class MemoStore:
+    def __init__(self, db_path):
+        self._conn = sqlite3.connect(str(db_path))
+        self._conn.row_factory = sqlite3.Row
+        columns = ", ".join(f"{c} TEXT" for c in _COLUMNS)
+        self._conn.execute(
+            f"CREATE TABLE IF NOT EXISTS memos ({columns}, PRIMARY KEY (audio_filename))"
+        )
+        self._conn.commit()
+
+    def upsert(self, memo):
+        placeholders = ", ".join("?" for _ in _COLUMNS)
+        self._conn.execute(
+            f"INSERT OR REPLACE INTO memos ({', '.join(_COLUMNS)}) VALUES ({placeholders})",
+            [getattr(memo, c) for c in _COLUMNS],
+        )
+        self._conn.commit()
+
+    def get(self, audio_filename):
+        row = self._conn.execute(
+            "SELECT * FROM memos WHERE audio_filename = ?", (audio_filename,)
+        ).fetchone()
+        if row is None:
+            return None
+        return _row_to_memo(row)
+
+    def known_filenames(self):
+        rows = self._conn.execute("SELECT audio_filename FROM memos").fetchall()
+        return {row["audio_filename"] for row in rows}
+
+    def list_by_status(self, status):
+        rows = self._conn.execute(
+            "SELECT * FROM memos WHERE status = ? ORDER BY created_at", (status,)
+        ).fetchall()
+        return [_row_to_memo(row) for row in rows]
+
+    def update(self, audio_filename, **fields):
+        assignments = ", ".join(f"{column} = ?" for column in fields)
+        self._conn.execute(
+            f"UPDATE memos SET {assignments} WHERE audio_filename = ?",
+            [*fields.values(), audio_filename],
+        )
+        self._conn.commit()
