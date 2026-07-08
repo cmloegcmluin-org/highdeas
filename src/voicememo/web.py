@@ -127,7 +127,7 @@ INDEX_HTML = """<!doctype html>
     <div class="memo" data-file="{{ m.audio_filename }}">
       <audio controls src="/audio/{{ m.audio_filename }}"></audio>
       <textarea name="transcript" aria-label="Transcript">{{ m.transcript }}</textarea>
-      <button type="button" class="copy" title="Copy transcript into name" aria-label="Copy transcript into name">&rsaquo;</button>
+      <button type="button" class="copy" title="Move transcript into Name" aria-label="Move transcript into Name">&rsaquo;</button>
       <input type="text" name="name" value="{{ m.name }}" placeholder="Name…" autocomplete="off" aria-label="Name">
       <label class="toggle" title="Left = Notesnook, right = Google Drive">
         <input type="checkbox" name="route" value="drive" {{ 'checked' if m.route == 'drive' }}>
@@ -217,6 +217,7 @@ INDEX_HTML = """<!doctype html>
     route.addEventListener('change', function () { flush(memo); });
     memo.querySelector('.copy').addEventListener('click', function () {
       name.value = transcript.value;
+      transcript.value = '';
       flush(memo);
     });
     memo.querySelector('.go').addEventListener('click', function () { submitRow(memo); });
