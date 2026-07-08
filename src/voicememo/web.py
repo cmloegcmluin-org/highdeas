@@ -46,14 +46,17 @@ _PAGE_HEAD = """<!doctype html>
          margin: 0 auto; padding: 24px; line-height: 1.45; }
   h1 { font-size: 1.35rem; margin: 0; }
   .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
-  .actions { display: flex; align-items: center; gap: 14px; }
-  .actions a { color: #3b82f6; text-decoration: none; font-size: .9rem; }
-  .bulk { display: flex; gap: 8px; }
-  .bulk button { font: inherit; font-size: .85rem; padding: 6px 12px; border-radius: 8px; cursor: pointer;
-                 background: transparent; color: inherit; border: 1px solid rgba(128,128,128,.4);
-                 transition: color .15s, border-color .15s; }
+  .topbar a { color: #3b82f6; text-decoration: none; font-size: .9rem; }
+  /* Bulk actions live in the Submit/Trash column headers so they line up over
+     their columns instead of being pushed left by the Bin link. */
+  .head-btn { font: inherit; font-size: .72rem; text-transform: none; letter-spacing: normal;
+              padding: 4px 9px; border-radius: 7px; cursor: pointer; background: transparent;
+              color: inherit; border: 1px solid rgba(128,128,128,.4);
+              transition: color .15s, border-color .15s; }
   #submit-all:hover { border-color: #3b82f6; color: #3b82f6; }
-  #trash-all:hover { border-color: #e5484d; color: #e5484d; }
+  .head-icon { border: none; padding: 2px; opacity: .5; display: flex; align-items: center; }
+  .head-icon svg { width: 16px; height: 16px; display: block; }
+  #trash-all:hover { opacity: 1; color: #e5484d; }
   .empty { opacity: .7; padding: 48px 0; text-align: center; }
   .grid { display: grid;
           grid-template-columns: 300px minmax(220px, 1fr) 34px 200px 100px 104px 48px;
@@ -100,15 +103,7 @@ _PAGE_HEAD = """<!doctype html>
 <body>
   <div class="topbar">
     <h1>Highdeas</h1>
-    <div class="actions">
-      {% if memos %}
-      <div class="bulk">
-        <button type="button" id="submit-all">Submit all</button>
-        <button type="button" id="trash-all">Trash all</button>
-      </div>
-      {% endif %}
-      <a href="/bin">Bin →</a>
-    </div>
+    <a href="/bin">Bin →</a>
   </div>
   <main id="content">"""
 
@@ -124,8 +119,8 @@ CONTENT_HTML = """{% if not memos %}
     <div class="head"></div>
     <div class="head">Name</div>
     <div class="head">Route</div>
-    <div class="head"></div>
-    <div class="head"></div>
+    <div class="head"><button type="button" id="submit-all" class="head-btn">Submit all</button></div>
+    <div class="head"><button type="button" id="trash-all" class="head-btn head-icon" title="Trash all" aria-label="Trash all">""" + TRASH_SVG + """</button></div>
     {% for m in memos %}
     {% if not loop.first %}<div class="sep"></div>{% endif %}
     <div class="memo" data-file="{{ m.audio_filename }}">
@@ -186,8 +181,6 @@ _PAGE_TAIL = """  </main>
     p.textContent = "Nothing to review. Record a memo and it'll show up here.";
     content.innerHTML = '';
     content.appendChild(p);
-    var bulk = document.querySelector('.bulk');
-    if (bulk) bulk.remove();
   }
 
   function removeRow(memo) {
@@ -314,7 +307,7 @@ BIN_HTML = """<!doctype html>
   .topbar a { color: #3b82f6; text-decoration: none; font-size: .9rem; }
   h1 { font-size: 1.35rem; margin: 0; }
   .empty { opacity: .7; padding: 48px 0; text-align: center; }
-  .grid { display: grid; grid-template-columns: 300px minmax(220px, 1fr) 170px 96px 150px 104px;
+  .grid { display: grid; grid-template-columns: 300px minmax(200px, 1fr) 160px 56px 140px 180px;
           gap: 14px 18px; align-items: center; }
   .grid .head { font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; opacity: .55;
                 display: flex; align-items: flex-end; min-height: 18px;
@@ -324,16 +317,36 @@ BIN_HTML = """<!doctype html>
   .row audio { width: 100%; }
   .row .text { font-size: .9rem; white-space: pre-wrap; max-height: 5.5em; overflow: auto; opacity: .85; }
   .row .name { font-weight: 600; }
+  .row .dest { display: flex; align-items: center; }
+  .row .dest svg { width: 20px; height: 20px; display: block; }
   .row .when { font-size: .8rem; opacity: .6; }
-  .badge { font-size: .72rem; padding: 2px 9px; border-radius: 999px; border: 1px solid rgba(128,128,128,.4); }
-  .restore { font: inherit; padding: 8px 0; width: 100%; border-radius: 8px; cursor: pointer;
+  .acts { display: flex; gap: 8px; }
+  .acts form { flex: 1; margin: 0; }
+  .acts button { font: inherit; font-size: .82rem; padding: 8px 0; width: 100%; border-radius: 8px;
+                 cursor: pointer; background: transparent; color: inherit;
+                 border: 1px solid rgba(128,128,128,.4); transition: color .15s, border-color .15s; }
+  .restore:hover { border-color: #3b82f6; color: #3b82f6; }
+  .purge:hover { border-color: #e5484d; color: #e5484d; }
+  .binactions { display: flex; align-items: center; gap: 12px; }
+  .binactions form { margin: 0; }
+  .baction { font: inherit; font-size: .82rem; padding: 5px 11px; border-radius: 8px; cursor: pointer;
              background: transparent; color: inherit; border: 1px solid rgba(128,128,128,.4);
              transition: color .15s, border-color .15s; }
-  .restore:hover { border-color: #3b82f6; color: #3b82f6; }
+  .restore-all:hover { border-color: #3b82f6; color: #3b82f6; }
+  .empty-bin:hover { border-color: #e5484d; color: #e5484d; }
 </style>
 </head>
 <body>
-  <div class="topbar"><h1>Bin — {{ memos|length }} item{{ 's' if memos|length != 1 else '' }}</h1><a href="/">&larr; Back to review</a></div>
+  <div class="topbar">
+    <h1>Bin — {{ memos|length }} item{{ 's' if memos|length != 1 else '' }}</h1>
+    <div class="binactions">
+      {% if memos %}
+      <form method="post" action="/restore-all"><button class="baction restore-all" type="submit">Restore all</button></form>
+      <form method="post" action="/empty-bin" onsubmit="return confirm('Permanently delete all {{ memos|length }} item{{ 's' if memos|length != 1 else '' }}? This cannot be undone.');"><button class="baction empty-bin" type="submit">Empty bin</button></form>
+      {% endif %}
+      <a href="/">&larr; Back to review</a>
+    </div>
+  </div>
   {% if not memos %}
     <p class="empty">Nothing in the bin. Submitted and deleted memos land here (kept for 90 days).</p>
   {% else %}
@@ -341,7 +354,7 @@ BIN_HTML = """<!doctype html>
     <div class="head">Audio</div>
     <div class="head">Transcript</div>
     <div class="head">Name</div>
-    <div class="head">Status</div>
+    <div class="head">Where</div>
     <div class="head">When</div>
     <div class="head"></div>
     {% for m in memos %}
@@ -350,9 +363,12 @@ BIN_HTML = """<!doctype html>
       <audio controls src="/bin-audio/{{ m.audio_filename }}"></audio>
       <div class="text">{{ m.transcript }}</div>
       <div class="name">{{ m.name or m.audio_filename }}</div>
-      <div><span class="badge">{{ m.status }}</span></div>
+      <div class="dest">{% if m.status == 'deleted' %}<span title="Trashed" aria-label="Trashed">""" + TRASH_SVG + """</span>{% elif m.route == 'drive' %}<span title="Sent to Google Drive" aria-label="Sent to Google Drive">""" + DRIVE_SVG + """</span>{% else %}<span title="Sent to Notesnook" aria-label="Sent to Notesnook">""" + NOTESNOOK_SVG + """</span>{% endif %}</div>
       <div class="when">{{ m.processed_at }}</div>
-      <form method="post" action="/restore/{{ m.audio_filename }}"><button class="restore" type="submit">Restore</button></form>
+      <div class="acts">
+        <form method="post" action="/restore/{{ m.audio_filename }}"><button class="restore" type="submit">Restore</button></form>
+        <form method="post" action="/purge/{{ m.audio_filename }}" onsubmit="return confirm('Permanently delete this recording? This cannot be undone.');"><button class="purge" type="submit" title="Delete permanently">Delete</button></form>
+      </div>
     </div>
     {% endfor %}
   </div>
@@ -417,6 +433,21 @@ def create_app(service, inbox_dir, bin_dir):
     @app.post("/restore/<path:filename>")
     def restore(filename):
         service.restore(filename)
+        return redirect("/bin")
+
+    @app.post("/purge/<path:filename>")
+    def purge(filename):
+        service.purge(filename)
+        return redirect("/bin")
+
+    @app.post("/empty-bin")
+    def empty_bin():
+        service.empty_bin()
+        return redirect("/bin")
+
+    @app.post("/restore-all")
+    def restore_all():
+        service.restore_all()
         return redirect("/bin")
 
     return app

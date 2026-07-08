@@ -11,6 +11,9 @@ class FakeService:
         self.submitted = []
         self.deleted = []
         self.restored = []
+        self.purged = []
+        self.emptied = 0
+        self.restored_all = 0
 
     def refresh(self):
         self.refreshed += 1
@@ -32,6 +35,15 @@ class FakeService:
 
     def restore(self, audio_filename):
         self.restored.append(audio_filename)
+
+    def purge(self, audio_filename):
+        self.purged.append(audio_filename)
+
+    def empty_bin(self):
+        self.emptied += 1
+
+    def restore_all(self):
+        self.restored_all += 1
 
 
 def test_index_refreshes_and_lists_pending(tmp_path):
@@ -55,7 +67,7 @@ def test_index_renders_highdeas_controls(tmp_path):
     # Rebranded title + header.
     assert b"<title>Highdeas</title>" in body
     assert b"Highdeas" in body
-    # Bulk actions live beside the Bin link.
+    # Bulk actions live in their column headers (see the column-header test below).
     assert b"Submit all" in body
     assert b"Trash all" in body
     assert b'href="/bin"' in body
@@ -65,6 +77,20 @@ def test_index_renders_highdeas_controls(tmp_path):
     assert b'class="copy"' in body
     # The delete confirmation popup is gone.
     assert b"confirm(" not in body
+
+
+def test_index_bulk_controls_sit_in_the_column_headers(tmp_path):
+    service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hi")])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data.decode()
+
+    # Moved out of the topbar (no more .bulk container) and into the grid headers,
+    # so they line up over the Submit and Trash columns instead of being shoved
+    # left by the "Bin →" link.
+    assert 'class="bulk"' not in body
+    assert 'id="submit-all"' in body and 'id="trash-all"' in body
+    assert body.index('class="grid"') < body.index('id="submit-all"')
 
 
 def test_index_polls_the_pending_endpoint_to_stay_current(tmp_path):
@@ -202,6 +228,78 @@ def test_bin_lists_binned_items(tmp_path):
     assert b"Old note" in resp.data
     assert b"bin body" in resp.data
     assert b"b.m4a" in resp.data
+
+
+def test_bin_shows_destination_icon_instead_of_status_word(tmp_path):
+    service = FakeService(binned=[
+        Memo(audio_filename="d.m4a", status="deleted", processed_at="2026-07-07T03:00"),
+        Memo(audio_filename="n.m4a", status="processed", route="notesnook", processed_at="2026-07-07T02:00"),
+        Memo(audio_filename="g.m4a", status="processed", route="drive", processed_at="2026-07-07T01:00"),
+    ])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/bin").data
+
+    # A destination icon with a label, not the raw status/badge.
+    assert b'class="badge"' not in body
+    assert b"Trashed" in body
+    assert b"Sent to Notesnook" in body
+    assert b"Sent to Google Drive" in body
+
+
+def test_bin_row_offers_restore_and_confirmed_permanent_delete(tmp_path):
+    service = FakeService(binned=[
+        Memo(audio_filename="b.m4a", status="deleted", processed_at="2026-07-07T03:00"),
+    ])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/bin").data
+
+    assert b'action="/restore/b.m4a"' in body
+    assert b'action="/purge/b.m4a"' in body
+    assert b"confirm(" in body  # permanent deletion asks first
+
+
+def test_bin_offers_restore_all_and_empty_bin(tmp_path):
+    service = FakeService(binned=[
+        Memo(audio_filename="b.m4a", status="deleted", processed_at="2026-07-07T03:00"),
+    ])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/bin").data
+
+    assert b'action="/restore-all"' in body
+    assert b'action="/empty-bin"' in body
+
+
+def test_purge_route_permanently_deletes_and_redirects(tmp_path):
+    service = FakeService()
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    resp = client.post("/purge/b.m4a")
+
+    assert service.purged == ["b.m4a"]
+    assert resp.status_code == 302
+
+
+def test_empty_bin_route_empties_and_redirects(tmp_path):
+    service = FakeService()
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    resp = client.post("/empty-bin")
+
+    assert service.emptied == 1
+    assert resp.status_code == 302
+
+
+def test_restore_all_route_restores_and_redirects(tmp_path):
+    service = FakeService()
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    resp = client.post("/restore-all")
+
+    assert service.restored_all == 1
+    assert resp.status_code == 302
 
 
 def test_restore_route_restores_and_redirects(tmp_path):
