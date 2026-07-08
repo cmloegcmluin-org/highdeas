@@ -166,6 +166,20 @@ def test_index_polls_the_pending_endpoint_to_stay_current(tmp_path):
     assert b"/pending" in body
 
 
+def test_index_offers_a_manual_refresh_left_of_the_bin_link_even_when_empty(tmp_path):
+    # A manual "check for new notes now" button, for pulling in a note the 5s poll
+    # hasn't surfaced yet. It sits just left of the Bin link and lives in the topbar,
+    # not the memo list, so it's there even while the page is empty and waiting for
+    # the very first note.
+    service = FakeService(pending=[], incoming=False)
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data.decode()
+
+    assert 'id="refresh"' in body
+    assert body.index('id="refresh"') < body.index('href="/bin"')
+
+
 def test_pending_refreshes_and_renders_just_the_memo_rows(tmp_path):
     service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hello there")])
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()

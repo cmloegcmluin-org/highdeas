@@ -55,6 +55,12 @@ _STYLE = """<style>
   .frozen { position: sticky; top: 0; z-index: 3; background: Canvas; padding-top: 24px; }
   .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
   .topbar a { color: #3b82f6; text-decoration: none; font-size: .9rem; }
+  /* Manual refresh sits with the Bin link on the right; a link-style button so the
+     two read as one row of controls rather than a button shoving the link around. */
+  .topbar .links { display: flex; align-items: center; gap: 16px; }
+  .refresh { font: inherit; font-size: .9rem; color: #3b82f6; background: transparent;
+             border: none; padding: 0; cursor: pointer; }
+  .refresh:disabled { opacity: .5; cursor: default; }
   .empty { opacity: .7; padding: 48px 0; text-align: center; }
   .grid { display: grid; gap: 14px 18px; align-items: center; }
   .grid.review { grid-template-columns: 26px 300px minmax(220px, 1fr) 34px 200px 100px 104px 104px; }
@@ -145,7 +151,10 @@ _PAGE_HEAD = """<!doctype html>
   <div class="frozen">
     <div class="topbar">
       <h1>Highdeas <span id="count">— {{ memos|length }} item{{ 's' if memos|length != 1 else '' }}</span></h1>
-      <a href="/bin">Bin →</a>
+      <div class="links">
+        <button type="button" id="refresh" class="refresh" title="Check for new notes now">Refresh</button>
+        <a href="/bin">Bin →</a>
+      </div>
     </div>
     {% if memos %}
     <div class="grid review headrow">
@@ -352,15 +361,26 @@ _PAGE_TAIL = """  </main>
     updateCount();
   }
 
-  function poll() {
-    fetch('/pending')
+  function check() {
+    return fetch('/pending')
       .then(function (r) { return r.text(); })
       .then(merge)
-      .catch(function () {})
-      .then(function () { setTimeout(poll, POLL_MS); });
+      .catch(function () {});
+  }
+
+  function poll() {
+    check().then(function () { setTimeout(poll, POLL_MS); });
   }
 
   setTimeout(poll, POLL_MS);
+
+  // Manual "check now": the same inbox rescan the poll runs, on demand. Disable the
+  // button while the request is in flight so the run is visible and can't double-fire.
+  var refreshBtn = document.getElementById('refresh');
+  if (refreshBtn) refreshBtn.addEventListener('click', function () {
+    refreshBtn.disabled = true;
+    check().then(function () { refreshBtn.disabled = false; });
+  });
 })();
 </script>
 </body>
