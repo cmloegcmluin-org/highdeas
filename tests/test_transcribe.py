@@ -10,9 +10,11 @@ class FakeRunner:
         self.returncode = returncode
         self.stderr = stderr
         self.calls = []
+        self.kwargs = []
 
     def __call__(self, cmd, **kwargs):
         self.calls.append(cmd)
+        self.kwargs.append(kwargs)
         return subprocess.CompletedProcess(cmd, self.returncode, stdout="", stderr=self.stderr)
 
 
@@ -42,6 +44,15 @@ def test_decode_to_wav_raises_on_ffmpeg_failure(tmp_path):
 
     with pytest.raises(AudioDecodeError, match="Invalid data found"):
         decode_to_wav(tmp_path / "bad.m4a", out_dir=tmp_path, ffmpeg_exe="ff", runner=runner)
+
+
+def test_decode_to_wav_hides_console_window(tmp_path):
+    """ffmpeg must run without flashing a console window (CREATE_NO_WINDOW on Windows)."""
+    runner = FakeRunner()
+
+    decode_to_wav(tmp_path / "voice.m4a", out_dir=tmp_path, ffmpeg_exe="ff", runner=runner)
+
+    assert runner.kwargs[0].get("creationflags") == getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 class FakeModel:
@@ -89,3 +100,23 @@ def test_transcriber_lazy_loads_model_once(tmp_path):
     transcriber.transcribe(tmp_path / "b.m4a")
 
     assert load_calls == ["the-model"]  # loaded exactly once, by name
+
+
+def test_warmup_loads_model_eagerly_and_only_once(tmp_path):
+    load_calls = []
+
+    def fake_loader(name):
+        load_calls.append(name)
+        return FakeModel("hi")
+
+    transcriber = Transcriber(
+        model_loader=fake_loader,
+        model_name="the-model",
+        decode=lambda src: tmp_path / "x.wav",
+    )
+    assert load_calls == []  # nothing loaded at construction
+
+    transcriber.warmup()
+    transcriber.warmup()  # already warm — no second load
+
+    assert load_calls == ["the-model"]
