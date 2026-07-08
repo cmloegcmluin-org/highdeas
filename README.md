@@ -47,7 +47,7 @@ Pin the shortcut **file**, not the running window — pinning the live window ca
 generic `pythonw` icon that won't relaunch Highdeas. If one is stuck there, unpin it and
 pin `Highdeas.lnk` instead.
 
-**Or just run it.** Double-click **`Review Voice Memos.bat`**, or run
+**Or just run it.** Double-click **`Run Highdeas.bat`**, or run
 `.venv/Scripts/python -m highdeas.app`. It opens in its own window; the first memo takes
 ~15s while the transcription model loads — in the background, so the window still opens
 right away. Set `VOICE_DESKTOP=0` to force plain-browser mode.
@@ -59,7 +59,7 @@ right away. Set `VOICE_DESKTOP=0` to force plain-browser mode.
        py -m venv .venv
        .venv/Scripts/python -m pip install -e ".[dev]"
 
-   (The app also runs straight from `src/` — `Review Voice Memos.bat` just puts `src` on
+   (The app also runs straight from `src/` — `Run Highdeas.bat` just puts `src` on
    `PYTHONPATH` — so the editable install is optional.)
 2. **Notesnook key** — run **`Set Notesnook Key.bat`** and paste your Inbox API key
    (Notesnook → Settings → Inbox → Enable Inbox API → create a key), or copy

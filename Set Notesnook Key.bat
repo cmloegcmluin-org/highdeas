@@ -6,6 +6,6 @@ echo.
 set /p KEY="  Paste your Notesnook key, then press Enter: "
 > "%~dp0.env" echo NOTESNOOK_INBOX_API_KEY=%KEY%
 echo.
-echo   Saved. Close this window, then launch "Review Voice Memos.bat".
+echo   Saved. Close this window, then launch "Run Highdeas.bat".
 echo.
 pause

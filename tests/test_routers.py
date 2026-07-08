@@ -35,7 +35,7 @@ class FakePost:
 
 def test_notesnook_router_posts_title_and_html_body():
     post = FakePost()
-    router = NotesnookRouter("MY_KEY", source="voicememo", post=post)
+    router = NotesnookRouter("MY_KEY", post=post)
 
     router.route(Memo(audio_filename="a.m4a", name="Grocery idea", transcript="buy milk\nand eggs"))
 
@@ -45,7 +45,7 @@ def test_notesnook_router_posts_title_and_html_body():
     body = kwargs["json"]
     assert body["title"] == "Grocery idea"
     assert body["type"] == "note"
-    assert body["source"] == "voicememo"
+    assert body["source"] == "highdeas"
     assert body["version"] == 1
     assert body["content"] == {"type": "html", "data": "<p>buy milk</p><p>and eggs</p>"}
 

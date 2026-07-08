@@ -31,7 +31,7 @@ class NotesnookRouter:
 
     ENDPOINT = "https://inbox.notesnook.com/"
 
-    def __init__(self, api_key, *, source="voicememo", post=requests.post):
+    def __init__(self, api_key, *, source="highdeas", post=requests.post):
         self._api_key = api_key
         self._source = source
         self._post = post
