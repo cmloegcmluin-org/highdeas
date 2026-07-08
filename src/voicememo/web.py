@@ -1,6 +1,4 @@
 """Local Flask app for reviewing, editing, and routing memos."""
-import os
-
 from flask import Flask, redirect, render_template_string, request, send_from_directory
 
 # Inline, self-contained brand icons for the route toggle (no external assets).
@@ -41,7 +39,10 @@ TRASH_SVG = (
 # between them. Their grids share widths too: 300 | flex | a 334px middle band |
 # two 104px action columns, so only the middle band's contents differ per page.
 _STYLE = """<style>
-  :root { color-scheme: light dark; }
+  /* Reserve the scrollbar gutter on every page so a page with a scrollbar and one
+     without stay the same width — otherwise margin:auto re-centers and the layout
+     shifts sideways when you flip between the review and bin views. */
+  :root { color-scheme: light dark; scrollbar-gutter: stable; }
   body { font-family: -apple-system, "Segoe UI", system-ui, sans-serif; max-width: 1300px;
          margin: 0 auto; padding: 24px; line-height: 1.45; }
   h1 { font-size: 1.35rem; margin: 0; }
@@ -107,8 +108,7 @@ _STYLE = """<style>
   .row .name { font-weight: 600; }
   .row .dest { display: flex; align-items: center; }
   .row .dest svg { width: 20px; height: 20px; display: block; }
-  .row .destlink { background: transparent; border: none; padding: 0; cursor: pointer;
-                   display: flex; align-items: center; }
+  .row .destlink { display: flex; align-items: center; text-decoration: none; }
   .row .when { font-size: .8rem; opacity: .6; }
   .binbtn { font: inherit; padding: 8px 0; width: 100%; border-radius: 8px; cursor: pointer;
             background: transparent; color: inherit; border: 1px solid rgba(128,128,128,.4);
@@ -358,7 +358,7 @@ BIN_HTML = """<!doctype html>
       <audio controls src="/bin-audio/{{ m.audio_filename }}"></audio>
       <div class="text">{{ m.transcript }}</div>
       <div class="name">{{ m.name or m.audio_filename }}</div>
-      <div class="dest">{% if m.status == 'deleted' %}<span title="Trashed" aria-label="Trashed">""" + TRASH_SVG + """</span>{% elif m.route == 'drive' %}<form method="post" action="/open-drive"><button class="destlink" type="submit" title="Sent to Google Drive — open the Drive folder" aria-label="Sent to Google Drive — open the Drive folder">""" + DRIVE_SVG + """</button></form>{% else %}<span title="Sent to Notesnook" aria-label="Sent to Notesnook">""" + NOTESNOOK_SVG + """</span>{% endif %}</div>
+      <div class="dest">{% if m.status == 'deleted' %}<span title="Trashed" aria-label="Trashed">""" + TRASH_SVG + """</span>{% elif m.route == 'drive' %}<a class="destlink" href="https://drive.google.com/drive/search?q={{ (m.name or m.audio_filename.rsplit('.', 1)[0]) | urlencode }}" target="_blank" rel="noopener" title="Sent to Google Drive — open in Drive" aria-label="Sent to Google Drive — open in Drive">""" + DRIVE_SVG + """</a>{% else %}<span title="Sent to Notesnook" aria-label="Sent to Notesnook">""" + NOTESNOOK_SVG + """</span>{% endif %}</div>
       <div class="when">{{ m.processed_at }}</div>
       <div><form method="post" action="/restore/{{ m.audio_filename }}"><button class="binbtn restore" type="submit">Restore</button></form></div>
       <div><form method="post" action="/purge/{{ m.audio_filename }}" onsubmit="return confirm('Permanently delete this recording? This cannot be undone.');"><button class="binbtn purge" type="submit">Delete</button></form></div>
@@ -381,9 +381,8 @@ def _submitted_fields():
     }
 
 
-def create_app(service, inbox_dir, bin_dir, drive_dir=None, open_folder=None):
+def create_app(service, inbox_dir, bin_dir):
     app = Flask(__name__)
-    open_folder = open_folder or os.startfile  # Windows: opens the folder in Explorer
 
     @app.get("/")
     def index():
@@ -448,12 +447,5 @@ def create_app(service, inbox_dir, bin_dir, drive_dir=None, open_folder=None):
     def restore_all():
         service.restore_all()
         return redirect("/bin")
-
-    @app.post("/open-drive")
-    def open_drive():
-        """Open the local Google Drive folder where music memos are filed."""
-        if drive_dir:
-            open_folder(drive_dir)
-        return ("", 204)
 
     return app

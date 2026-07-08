@@ -74,7 +74,7 @@ def build_app():
         bin_dir=bin_dir,
         route=Router(notesnook=notesnook, drive=drive),
     )
-    app = create_app(service, inbox_dir=inbox_dir, bin_dir=bin_dir, drive_dir=drive_base)
+    app = create_app(service, inbox_dir=inbox_dir, bin_dir=bin_dir)
     return app, service
 
 

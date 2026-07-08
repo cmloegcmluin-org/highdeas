@@ -367,26 +367,27 @@ def test_bin_audio_serves_from_bin(tmp_path):
     assert resp.data == b"BINAUDIO"
 
 
-def test_open_drive_route_opens_the_drive_folder(tmp_path):
-    opened = []
-    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin"),
-                        drive_dir="G:/My Drive/voice", open_folder=opened.append).test_client()
-
-    resp = client.post("/open-drive")
-
-    assert opened == ["G:/My Drive/voice"]
-    assert resp.status_code == 204
-
-
-def test_bin_drive_memo_icon_links_to_the_drive_folder(tmp_path):
+def test_bin_drive_memo_icon_links_into_drive_in_the_browser(tmp_path):
     service = FakeService(binned=[
-        Memo(audio_filename="g.m4a", status="processed", route="drive", processed_at="2026-07-07T01:00"),
+        Memo(audio_filename="g.m4a", name="My Song", status="processed", route="drive", processed_at="2026-07-07T01:00"),
         Memo(audio_filename="d.m4a", status="deleted", processed_at="2026-07-07T02:00"),
     ])
-    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin"),
-                        drive_dir="G:/Drive").test_client()
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     body = client.get("/bin").data.decode()
 
-    # Only the Drive memo's icon opens the Drive folder; trashed/Notesnook icons don't.
-    assert body.count('action="/open-drive"') == 1
+    # Only the Drive memo's icon is a browser link into Google Drive, opened in a
+    # new tab and deep-linked by the memo's name; trashed/Notesnook icons aren't links.
+    assert body.count("https://drive.google.com/drive/search?q=") == 1
+    assert "Song" in body.split("drive/search?q=")[1][:40]
+    assert 'target="_blank"' in body
+
+
+def test_pages_reserve_the_scrollbar_gutter_so_they_dont_shift(tmp_path):
+    service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hi")],
+                          binned=[Memo(audio_filename="b.m4a", status="deleted", processed_at="2026-07-07T03:00")])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    # Same gutter reserved on both, so flipping between them doesn't shift sideways.
+    assert b"scrollbar-gutter: stable" in client.get("/").data
+    assert b"scrollbar-gutter: stable" in client.get("/bin").data
