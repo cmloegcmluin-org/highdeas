@@ -9,11 +9,11 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from voicememo.routers import DriveMusicRouter, NotesnookRouter, Router
-from voicememo.service import ReviewService
-from voicememo.store import MemoStore
-from voicememo.transcribe import Transcriber
-from voicememo.web import create_app
+from highdeas.routers import DriveMusicRouter, NotesnookRouter, Router
+from highdeas.service import ReviewService
+from highdeas.store import MemoStore
+from highdeas.transcribe import Transcriber
+from highdeas.web import create_app
 
 DEFAULT_INBOX = r"C:\Users\Douglas\iCloudDrive\iCloud~is~workflow~my~workflows\VoiceInbox"
 DEFAULT_DRIVE_BASE = r"G:\My Drive\voice memos (top level)"
@@ -38,7 +38,7 @@ APP_NAME = "Highdeas"
 # Windows only merges this app's window into the pinned shortcut when the two match.
 # If they drift, the taskbar falls back to pythonw.exe's generic python icon.
 APP_ID = "Douglas.Highdeas"
-APP_ICON = PROJECT_ROOT / "voicememo.ico"
+APP_ICON = PROJECT_ROOT / "highdeas.ico"
 
 # Shown instantly in the native window for the brief moment before the local server
 # accepts connections, so the user never stares at a blank frame. Self-contained; the

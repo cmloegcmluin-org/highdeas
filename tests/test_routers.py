@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from voicememo.routers import DriveMusicRouter, NotesnookRouter, Router
-from voicememo.store import Memo
+from highdeas.routers import DriveMusicRouter, NotesnookRouter, Router
+from highdeas.store import Memo
 
 
 class RecordingRouter:

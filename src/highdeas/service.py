@@ -4,8 +4,8 @@ import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from voicememo.ingest import find_new_recordings, recording_key, recording_time
-from voicememo.store import Memo
+from highdeas.ingest import find_new_recordings, recording_key, recording_time
+from highdeas.store import Memo
 
 
 def _no_router(memo):

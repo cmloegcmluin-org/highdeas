@@ -1,4 +1,4 @@
-"""Generate ``voicememo.ico`` — a white microphone on a green cannabis leaf.
+"""Generate ``highdeas.ico`` — a white microphone on a green cannabis leaf.
 
 This draws the "Highdeas" app icon: a stylized seven-point cannabis leaf
 (green leaflets radiating from a common centre) with a white microphone glyph
@@ -200,7 +200,7 @@ def render_master() -> Image.Image:
 
 def main() -> None:
     root = Path(__file__).resolve().parents[1]
-    out_path = root / "voicememo.ico"
+    out_path = root / "highdeas.ico"
 
     master = render_master()
     frames = [

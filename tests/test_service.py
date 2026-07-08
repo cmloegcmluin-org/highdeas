@@ -1,9 +1,9 @@
 import threading
 from pathlib import Path
 
-from voicememo.ingest import NewRecording, recording_key
-from voicememo.service import ReviewService
-from voicememo.store import Memo, MemoStore
+from highdeas.ingest import NewRecording, recording_key
+from highdeas.service import ReviewService
+from highdeas.store import Memo, MemoStore
 
 
 class FakeTranscriber:

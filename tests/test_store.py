@@ -1,7 +1,7 @@
 import sqlite3
 import threading
 
-from voicememo.store import Memo, MemoStore
+from highdeas.store import Memo, MemoStore
 
 
 def test_upsert_then_get_roundtrips(tmp_path):

@@ -1,5 +1,5 @@
 [project]
-name = "voicememo"
+name = "highdeas"
 version = "0.1.0"
 description = "Local pipeline that ingests iPhone voice-memo recordings, transcribes them locally, and routes each to Notesnook or Google Drive."
 requires-python = ">=3.11"

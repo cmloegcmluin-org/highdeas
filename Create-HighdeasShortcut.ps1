@@ -3,9 +3,9 @@
 # A plain shortcut to pythonw.exe has no app identity, so when its window appears Windows
 # groups it under pythonw.exe and pins a generic python icon that won't relaunch the app.
 # The fix is to stamp the shortcut's System.AppUserModel.ID with the SAME string the app
-# sets at runtime (voicememo.app.APP_ID = "Douglas.Highdeas", via
+# sets at runtime (highdeas.app.APP_ID = "Douglas.Highdeas", via
 # SetCurrentProcessExplicitAppUserModelID). Matching IDs let Windows merge the running
-# window into the pinned shortcut and show voicememo.ico. WScript.Shell can't write that
+# window into the pinned shortcut and show highdeas.ico. WScript.Shell can't write that
 # property, so this uses the IShellLink + IPropertyStore COM interfaces directly. Modeled
 # on FunGenApp's Update-FunGenShortcut.ps1 -- the known-good taskbar recipe.
 param(
@@ -18,10 +18,10 @@ $ErrorActionPreference = 'Stop'
 if (-not $Root) { $Root = $PSScriptRoot }
 if (-not $ShortcutPath) { $ShortcutPath = Join-Path $Root 'Highdeas.lnk' }
 
-$AppUserModelId = 'Douglas.Highdeas'   # must match voicememo.app.APP_ID
+$AppUserModelId = 'Douglas.Highdeas'   # must match highdeas.app.APP_ID
 $Pythonw = Join-Path $Root '.venv\Scripts\pythonw.exe'
-$Script  = Join-Path $Root 'run_voicememo.py'
-$Icon    = Join-Path $Root 'voicememo.ico'
+$Script  = Join-Path $Root 'run_highdeas.py'
+$Icon    = Join-Path $Root 'highdeas.ico'
 
 foreach ($required in @($Pythonw, $Script, $Icon)) {
     if (-not (Test-Path -LiteralPath $required)) {

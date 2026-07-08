@@ -1,5 +1,5 @@
 @echo off
 cd /d "%~dp0"
 set PYTHONPATH=%~dp0src
-".venv\Scripts\python.exe" -m voicememo.app
+".venv\Scripts\python.exe" -m highdeas.app
 pause

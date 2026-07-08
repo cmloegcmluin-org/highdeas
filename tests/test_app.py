@@ -1,7 +1,7 @@
 import threading
 from pathlib import Path
 
-from voicememo.app import _open_when_ready, _transcribe_in_background, default_bin_dir
+from highdeas.app import _open_when_ready, _transcribe_in_background, default_bin_dir
 
 
 def test_open_when_ready_shows_the_app_only_after_the_server_is_serving():
@@ -48,7 +48,7 @@ def test_transcribe_in_background_survives_a_failing_refresh():
 
 
 def test_chrome_launcher_opens_the_url_in_the_configured_profile(monkeypatch):
-    import voicememo.app as app_mod
+    import highdeas.app as app_mod
     calls = []
     monkeypatch.setattr(app_mod.subprocess, "Popen", lambda args: calls.append(args))
     monkeypatch.setenv("VOICE_CHROME_EXE", r"C:\chrome.exe")
@@ -76,7 +76,7 @@ def test_default_bin_dir_sits_beside_the_inbox(tmp_path):
 def test_set_windows_app_id_uses_the_app_id_the_shortcut_carries(monkeypatch):
     import ctypes
 
-    import voicememo.app as app_mod
+    import highdeas.app as app_mod
 
     calls = []
 

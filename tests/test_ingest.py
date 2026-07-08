@@ -2,7 +2,7 @@ import os
 import struct
 from datetime import datetime
 
-from voicememo.ingest import NewRecording, find_new_recordings, recording_key, recording_time
+from highdeas.ingest import NewRecording, find_new_recordings, recording_key, recording_time
 
 # Seconds between the MP4 epoch (1904-01-01 UTC) and the Unix epoch (1970-01-01 UTC).
 _MP4_TO_UNIX = 2082844800

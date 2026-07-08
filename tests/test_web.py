@@ -1,5 +1,5 @@
-from voicememo.store import Memo
-from voicememo.web import create_app
+from highdeas.store import Memo
+from highdeas.web import create_app
 
 
 class FakeService:
@@ -184,8 +184,8 @@ def test_pending_refreshes_and_renders_just_the_memo_rows(tmp_path):
 
 
 def test_pending_surfaces_a_recording_that_arrives_after_the_page_loads(tmp_path):
-    from voicememo.service import ReviewService
-    from voicememo.store import MemoStore
+    from highdeas.service import ReviewService
+    from highdeas.store import MemoStore
 
     inbox = tmp_path / "inbox"
     inbox.mkdir()

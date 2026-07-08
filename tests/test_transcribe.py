@@ -2,7 +2,7 @@ import subprocess
 
 import pytest
 
-from voicememo.transcribe import AudioDecodeError, Transcriber, decode_to_wav
+from highdeas.transcribe import AudioDecodeError, Transcriber, decode_to_wav
 
 
 class FakeRunner:

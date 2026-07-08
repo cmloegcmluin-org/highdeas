@@ -5,9 +5,6 @@ work. Record on your phone; seconds later the memo is transcribed and waiting on
 local review page, one click from becoming a Notesnook note or a filed Google Drive
 recording.
 
-> The Python package is still named `voicememo`, so the module and commands below use
-> that name (`python -m voicememo.app`).
-
 ## How it works
 
 1. **Capture** — an iOS Shortcut records audio and drops it into iCloud Drive
@@ -51,7 +48,7 @@ generic `pythonw` icon that won't relaunch Highdeas. If one is stuck there, unpi
 pin `Highdeas.lnk` instead.
 
 **Or just run it.** Double-click **`Review Voice Memos.bat`**, or run
-`.venv/Scripts/python -m voicememo.app`. It opens in its own window; the first memo takes
+`.venv/Scripts/python -m highdeas.app`. It opens in its own window; the first memo takes
 ~15s while the transcription model loads — in the background, so the window still opens
 right away. Set `VOICE_DESKTOP=0` to force plain-browser mode.
 
@@ -93,5 +90,5 @@ Everything but the Notesnook key is optional. Set these in `.env`.
 
 - Grouping a multi-clip memo into one shared numbered doc.
 - A single-file standalone `.exe`. The taskbar shortcut still launches through the
-  project's `.venv` (`pythonw run_voicememo.py`), so this folder and its virtualenv need
+  project's `.venv` (`pythonw run_highdeas.py`), so this folder and its virtualenv need
   to stay put.
