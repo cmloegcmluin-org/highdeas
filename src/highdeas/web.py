@@ -61,6 +61,11 @@ _STYLE = """<style>
   .refresh { font: inherit; font-size: .9rem; color: #3b82f6; background: transparent;
              border: none; padding: 0; cursor: pointer; }
   .refresh:disabled { opacity: .5; cursor: default; }
+  /* Shown only when a submit/trash fails, so a note that didn't actually send stays
+     visible and explained instead of silently vanishing from the list. */
+  .notice { margin: 12px 0 0; padding: 10px 12px; border-radius: 8px; font-size: .9rem;
+            color: #e5484d; background: rgba(229,72,77,.12); border: 1px solid rgba(229,72,77,.4); }
+  .notice[hidden] { display: none; }
   .empty { opacity: .7; padding: 48px 0; text-align: center; }
   .grid { display: grid; gap: 14px 18px; align-items: center; }
   .grid.review { grid-template-columns: 26px 300px minmax(220px, 1fr) 34px 200px 100px 104px 104px; }
@@ -88,6 +93,9 @@ _STYLE = """<style>
     width: 100%; box-sizing: border-box; padding: 8px; font: inherit;
     border: 1px solid rgba(128,128,128,.4); border-radius: 8px; background: transparent; color: inherit; }
   .memo textarea { min-height: 60px; resize: vertical; }
+  /* A row whose submit/trash just failed: outline its fields so it's obvious which
+     one stayed behind. */
+  .memo.failed textarea, .memo.failed input[type=text] { border-color: #e5484d; }
   .memo .copy { font: inherit; font-size: 1.4rem; line-height: 1; padding: 0; height: 40px; width: 100%;
                 display: flex; align-items: center; justify-content: center; cursor: pointer;
                 background: transparent; color: inherit; opacity: .45; border-radius: 8px;
@@ -156,6 +164,7 @@ _PAGE_HEAD = """<!doctype html>
         <a href="/bin">Bin →</a>
       </div>
     </div>
+    <div id="notice" class="notice" role="alert" hidden></div>
     {% if memos %}
     <div class="grid review headrow">
       <div class="head"></div>
@@ -216,6 +225,13 @@ _PAGE_TAIL = """  </main>
   // back in.
   var retired = {};
   var countEl = document.getElementById('count');
+  var notice = document.getElementById('notice');
+
+  // A submit/trash only leaves the list once the server confirms it; on failure the
+  // row stays and we surface why here, so a note that never sent can't silently vanish.
+  function notify(msg) { if (notice) { notice.textContent = msg; notice.hidden = false; } }
+  function clearNotice() { if (notice) { notice.textContent = ''; notice.hidden = true; } }
+  function describe(err) { return err && err.message ? ' (' + err.message + ')' : ''; }
 
   function updateCount() {
     if (!countEl) return;
@@ -276,21 +292,29 @@ _PAGE_TAIL = """  </main>
     else { renumber(); updateCount(); }
   }
 
+  // Remove the row only after a 2xx: the memo is retired server-side only on success,
+  // so mirror that here. A non-ok response (routing failed, memo still pending) marks
+  // the row failed and rejects, so callers can keep it and report the failure.
+  function retireOnOk(memo, response) {
+    return Promise.resolve(response).then(function (r) {
+      if (!r.ok) return r.text().then(function (t) { throw new Error(t || 'Failed'); });
+      memo.classList.remove('failed');
+      retired[memo.dataset.file] = true;
+      removeRow(memo);
+    }).catch(function (err) {
+      memo.classList.add('failed');
+      throw err;
+    });
+  }
+
   function submitRow(memo) {
     clearTimeout(memo._timer);
-    var data = fields(memo);
-    var url = urlFor('/submit/', memo);
-    retired[memo.dataset.file] = true;
-    removeRow(memo);
-    post(url, data);
+    return retireOnOk(memo, post(urlFor('/submit/', memo), fields(memo)));
   }
 
   function trashRow(memo) {
     clearTimeout(memo._timer);
-    var url = urlFor('/delete/', memo);
-    retired[memo.dataset.file] = true;
-    removeRow(memo);
-    post(url);
+    return retireOnOk(memo, post(urlFor('/delete/', memo)));
   }
 
   function wire(memo) {
@@ -307,24 +331,53 @@ _PAGE_TAIL = """  </main>
       transcript.value = '';
       flush(memo);
     });
-    memo.querySelector('.go').addEventListener('click', function () { submitRow(memo); });
-    memo.querySelector('.del').addEventListener('click', function () { trashRow(memo); });
+    memo.querySelector('.go').addEventListener('click', function () {
+      clearNotice();
+      submitRow(memo).catch(function (err) {
+        notify("Couldn't send that note — it's still in your inbox." + describe(err));
+      });
+    });
+    memo.querySelector('.del').addEventListener('click', function () {
+      clearNotice();
+      trashRow(memo).catch(function () {
+        notify("Couldn't move that note to the bin — it's still in your inbox.");
+      });
+    });
   }
 
   content.querySelectorAll('.memo').forEach(wire);
   renumber();
   updateCount();
 
+  // Run an action over the rows one at a time — not a 20-wide burst at the local
+  // server and Notesnook — tallying failures so the outcome is reported once at the end.
+  function runEach(memos, action) {
+    var failures = 0;
+    return memos.reduce(function (chain, memo) {
+      return chain.then(function () { return action(memo).catch(function () { failures += 1; }); });
+    }, Promise.resolve()).then(function () { return failures; });
+  }
+
   var submitAll = document.getElementById('submit-all');
   if (submitAll) submitAll.addEventListener('click', function () {
-    content.querySelectorAll('.memo').forEach(submitRow);
+    var memos = Array.prototype.slice.call(content.querySelectorAll('.memo'));
+    if (!memos.length) return;
+    clearNotice();
+    runEach(memos, submitRow).then(function (failures) {
+      if (failures) notify(failures + ' of ' + memos.length + ' note' + (memos.length === 1 ? '' : 's') +
+        " couldn't be sent and are still in your inbox. Check that Notesnook is reachable, then try again.");
+    });
   });
   var trashAll = document.getElementById('trash-all');
   if (trashAll) trashAll.addEventListener('click', function () {
-    var memos = content.querySelectorAll('.memo');
+    var memos = Array.prototype.slice.call(content.querySelectorAll('.memo'));
     if (!memos.length) return;
     if (!confirm('Trash all ' + memos.length + ' memo' + (memos.length === 1 ? '' : 's') + '? They go to the bin.')) return;
-    memos.forEach(trashRow);
+    clearNotice();
+    runEach(memos, trashRow).then(function (failures) {
+      if (failures) notify(failures + ' of ' + memos.length +
+        " couldn't be moved to the bin and are still in your inbox.");
+    });
   });
 
   // Keep the list current with recordings that arrive while the app is open.
@@ -493,7 +546,14 @@ def create_app(service, inbox_dir, bin_dir, launch_drive=None):
     @app.post("/submit/<path:filename>")
     def submit(filename):
         service.edit(filename, **_submitted_fields())
-        service.submit(filename)
+        try:
+            service.submit(filename)
+        except Exception as exc:  # noqa: BLE001 — any routing failure must reach the client
+            # Routing failed (e.g. Notesnook rejected the key), so the memo is still
+            # pending and its audio still in the inbox. Signal the failure instead of a
+            # false 204 so the client keeps the row rather than hiding a note that never
+            # sent — the "Submit all vanished everything but sent nothing" bug.
+            return (f"Submit failed: {exc}", 502)
         return ("", 204)
 
     @app.post("/delete/<path:filename>")

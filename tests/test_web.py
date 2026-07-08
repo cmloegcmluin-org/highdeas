@@ -266,6 +266,64 @@ def test_submit_defaults_route_to_notesnook_when_toggle_off(tmp_path):
     assert service.edits == [("a.m4a", {"name": "X", "transcript": "Y", "route": "notesnook"})]
 
 
+def test_submit_that_fails_to_route_keeps_the_memo_and_signals_the_client(tmp_path):
+    # The "Submit all sent nothing but everything vanished" bug: when routing fails
+    # (e.g. Notesnook rejects the key), the memo must stay pending and the response
+    # must be an error, so the client keeps the row instead of hiding a note that
+    # never actually sent. Uses the real service so the whole seam is exercised.
+    from highdeas.service import ReviewService
+    from highdeas.store import MemoStore
+
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    (inbox / "a.m4a").write_bytes(b"PRECIOUS")
+    bin_dir = tmp_path / "bin"
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="a.m4a", status="pending", transcript="precious idea"))
+
+    class StubTranscriber:
+        def transcribe(self, path):
+            return ""
+
+    def failing_route(memo):
+        raise RuntimeError("HTTP 401 Unauthorized")
+
+    service = ReviewService(inbox_dir=inbox, store=store, transcriber=StubTranscriber(),
+                            bin_dir=bin_dir, route=failing_route, clock=lambda: "T")
+    client = create_app(service, inbox_dir=str(inbox), bin_dir=str(bin_dir)).test_client()
+
+    resp = client.post("/submit/a.m4a", data={"name": "", "transcript": "precious idea", "route": "notesnook"})
+
+    # Failure is signalled, not a false 204.
+    assert resp.status_code == 502
+    # Nothing lost or half-processed: still pending, still in the inbox, not binned.
+    assert [m.audio_filename for m in service.pending()] == ["a.m4a"]
+    assert (inbox / "a.m4a").exists()
+    assert not (bin_dir / "a.m4a").exists()
+
+
+def test_index_has_a_region_to_report_submit_failures(tmp_path):
+    service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hi")])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data.decode()
+
+    # A notice region the client reveals when a submit fails, so a failed send is
+    # visible rather than silently disappearing.
+    assert 'id="notice"' in body
+
+
+def test_submit_js_removes_a_row_only_after_the_server_confirms(tmp_path):
+    service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hi")])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data.decode()
+
+    # The row leaves the list only on a successful (r.ok) response; a failed submit
+    # keeps it. Guards against regressing to optimistic removal.
+    assert "r.ok" in body
+
+
 def test_edit_route_saves_fields_and_returns_204(tmp_path):
     service = FakeService()
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
