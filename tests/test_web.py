@@ -404,7 +404,7 @@ def test_bin_audio_serves_from_bin(tmp_path):
     assert resp.data == b"BINAUDIO"
 
 
-def test_bin_drive_memo_icon_links_into_drive_in_the_browser(tmp_path):
+def test_bin_drive_memo_icon_posts_to_open_drive_with_the_memo_name(tmp_path):
     service = FakeService(binned=[
         Memo(audio_filename="g.m4a", name="My Song", status="processed", route="drive", processed_at="2026-07-07T01:00"),
         Memo(audio_filename="d.m4a", status="deleted", processed_at="2026-07-07T02:00"),
@@ -413,12 +413,21 @@ def test_bin_drive_memo_icon_links_into_drive_in_the_browser(tmp_path):
 
     body = client.get("/bin").data.decode()
 
-    # Only the Drive memo's icon is a browser link into Google Drive, opened in a
-    # new tab, pinned to the primary account (/u/0/), and deep-linked by the memo's
-    # name; trashed/Notesnook icons aren't links.
-    assert body.count("https://drive.google.com/drive/u/0/search?q=") == 1
-    assert "Song" in body.split("search?q=")[1][:40]
-    assert 'target="_blank"' in body
+    # Only the Drive memo's icon opens Drive (via /open-drive, which launches Chrome
+    # in the chosen profile), carrying the memo name; trashed/Notesnook icons don't.
+    assert body.count('action="/open-drive"') == 1
+    assert 'name="q" value="My Song"' in body
+
+
+def test_open_drive_launches_chrome_at_a_drive_search_for_the_memo(tmp_path):
+    launched = []
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin"),
+                        launch_drive=launched.append).test_client()
+
+    resp = client.post("/open-drive", data={"q": "Korok Dance"})
+
+    assert resp.status_code == 204
+    assert launched == ["https://drive.google.com/drive/u/0/search?q=Korok%20Dance"]
 
 
 def test_pages_reserve_the_scrollbar_gutter_so_they_dont_shift(tmp_path):

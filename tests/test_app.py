@@ -47,6 +47,19 @@ def test_transcribe_in_background_survives_a_failing_refresh():
     assert ran.wait(timeout=2)
 
 
+def test_chrome_launcher_opens_the_url_in_the_configured_profile(monkeypatch):
+    import voicememo.app as app_mod
+    calls = []
+    monkeypatch.setattr(app_mod.subprocess, "Popen", lambda args: calls.append(args))
+    monkeypatch.setenv("VOICE_CHROME_EXE", r"C:\chrome.exe")
+    monkeypatch.setenv("VOICE_CHROME_PROFILE", "Default")
+
+    app_mod._chrome_launcher()("https://drive.google.com/x")
+
+    # A link can't choose a Chrome profile, so the app launches Chrome pinned to it.
+    assert calls == [[r"C:\chrome.exe", "--profile-directory=Default", "https://drive.google.com/x"]]
+
+
 def test_default_bin_dir_sits_beside_the_inbox(tmp_path):
     # The bin must live in the same parent folder as the inbox, so retiring a
     # recording (inbox -> bin) moves it *within* the same iCloud tree. Moving a

@@ -1,4 +1,6 @@
 """Local Flask app for reviewing, editing, and routing memos."""
+from urllib.parse import quote
+
 from flask import Flask, redirect, render_template_string, request, send_from_directory
 
 # Inline, self-contained brand icons for the route toggle (no external assets).
@@ -115,7 +117,9 @@ _STYLE = """<style>
   .row .name { font-weight: 600; }
   .row .dest { display: flex; align-items: center; }
   .row .dest svg { width: 20px; height: 20px; display: block; }
-  .row .destlink { display: flex; align-items: center; text-decoration: none; }
+  .row .destlink { display: flex; align-items: center; text-decoration: none;
+                   background: transparent; border: none; padding: 0; cursor: pointer; }
+  .row .dest form { display: contents; }
   .row .when { font-size: .8rem; opacity: .6; }
   .binbtn { font: inherit; padding: 8px 0; width: 100%; border-radius: 8px; cursor: pointer;
             background: transparent; color: inherit; border: 1px solid rgba(128,128,128,.4);
@@ -406,7 +410,7 @@ BIN_HTML = """<!doctype html>
       <audio controls src="/bin-audio/{{ m.audio_filename }}"></audio>
       <div class="text">{{ m.transcript }}</div>
       <div class="name">{{ m.name or m.audio_filename }}</div>
-      <div class="dest">{% if m.status == 'deleted' %}<span title="Trashed" aria-label="Trashed">""" + TRASH_SVG + """</span>{% elif m.route == 'drive' %}<a class="destlink" href="https://drive.google.com/drive/u/0/search?q={{ (m.name or m.audio_filename.rsplit('.', 1)[0]) | urlencode }}" target="_blank" rel="noopener" title="Sent to Google Drive — open in Drive" aria-label="Sent to Google Drive — open in Drive">""" + DRIVE_SVG + """</a>{% else %}<span title="Sent to Notesnook" aria-label="Sent to Notesnook">""" + NOTESNOOK_SVG + """</span>{% endif %}</div>
+      <div class="dest">{% if m.status == 'deleted' %}<span title="Trashed" aria-label="Trashed">""" + TRASH_SVG + """</span>{% elif m.route == 'drive' %}<form method="post" action="/open-drive"><input type="hidden" name="q" value="{{ m.name or m.audio_filename.rsplit('.', 1)[0] }}"><button class="destlink" type="submit" title="Sent to Google Drive — open in Drive" aria-label="Sent to Google Drive — open in Drive">""" + DRIVE_SVG + """</button></form>{% else %}<span title="Sent to Notesnook" aria-label="Sent to Notesnook">""" + NOTESNOOK_SVG + """</span>{% endif %}</div>
       <div class="when">{{ m.processed_at }}</div>
       <div><form method="post" action="/restore/{{ m.audio_filename }}"><button class="binbtn restore" type="submit">Restore</button></form></div>
       <div><form method="post" action="/purge/{{ m.audio_filename }}" onsubmit="return confirm('Permanently delete this recording? This cannot be undone.');"><button class="binbtn purge" type="submit">Delete</button></form></div>
@@ -429,7 +433,7 @@ def _submitted_fields():
     }
 
 
-def create_app(service, inbox_dir, bin_dir):
+def create_app(service, inbox_dir, bin_dir, launch_drive=None):
     app = Flask(__name__)
 
     @app.get("/")
@@ -495,5 +499,14 @@ def create_app(service, inbox_dir, bin_dir):
     def restore_all():
         service.restore_all()
         return redirect("/bin")
+
+    @app.post("/open-drive")
+    def open_drive():
+        """Open a memo in Google Drive. A link can't choose which Chrome profile
+        opens it, so the app launches Chrome itself (launch_drive) at a Drive search
+        for the memo — the server builds the URL so only Drive can be opened."""
+        if launch_drive is not None:
+            launch_drive("https://drive.google.com/drive/u/0/search?q=" + quote(request.form.get("q", "")))
+        return ("", 204)
 
     return app

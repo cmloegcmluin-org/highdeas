@@ -1,6 +1,7 @@
 """Entrypoint: build the real review service and run the local web app."""
 import os
 import socket
+import subprocess
 import threading
 import time
 import webbrowser
@@ -16,6 +17,7 @@ from voicememo.web import create_app
 
 DEFAULT_INBOX = r"C:\Users\Douglas\iCloudDrive\iCloud~is~workflow~my~workflows\VoiceInbox"
 DEFAULT_DRIVE_BASE = r"G:\My Drive\voice memos (top level)"
+DEFAULT_CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -74,8 +76,22 @@ def build_app():
         bin_dir=bin_dir,
         route=Router(notesnook=notesnook, drive=drive),
     )
-    app = create_app(service, inbox_dir=inbox_dir, bin_dir=bin_dir)
+    app = create_app(service, inbox_dir=inbox_dir, bin_dir=bin_dir,
+                     launch_drive=_chrome_launcher())
     return app, service
+
+
+def _chrome_launcher():
+    """Return a callable that opens a URL in a specific Chrome profile. Drive is
+    signed into the wanted Google account only in that profile, and a link can't
+    choose one, so launch Chrome directly with --profile-directory."""
+    chrome = os.environ.get("VOICE_CHROME_EXE", DEFAULT_CHROME)
+    profile = os.environ.get("VOICE_CHROME_PROFILE", "Default")
+
+    def launch(url):
+        subprocess.Popen([chrome, f"--profile-directory={profile}", url])
+
+    return launch
 
 
 def main():
