@@ -50,12 +50,35 @@ def test_notesnook_router_posts_title_and_html_body():
     assert body["content"] == {"type": "html", "data": "<p>buy milk</p><p>and eggs</p>"}
 
 
-def test_notesnook_router_falls_back_to_default_title_when_unnamed():
+def test_notesnook_router_titles_unnamed_memo_with_its_recording_time():
     post = FakePost()
 
-    NotesnookRouter("K", post=post).route(Memo(audio_filename="a.m4a", name="", transcript="hi"))
+    NotesnookRouter("K", post=post).route(
+        Memo(audio_filename="a.m4a", name="", transcript="hi", recorded_at="2026-07-07T15:45:00")
+    )
 
-    assert post.calls[0][1]["json"]["title"] == "Untitled voice note"
+    # Notesnook's own "Note $date$ $time$" style, but for when the memo was recorded.
+    assert post.calls[0][1]["json"]["title"] == "Note 2026-07-07 3:45 PM"
+
+
+def test_notesnook_router_falls_back_to_scan_time_when_recording_time_unknown():
+    post = FakePost()
+
+    NotesnookRouter("K", post=post).route(
+        Memo(audio_filename="a.m4a", name="", recorded_at="", created_at="2026-07-07T09:05:00")
+    )
+
+    assert post.calls[0][1]["json"]["title"] == "Note 2026-07-07 9:05 AM"
+
+
+def test_notesnook_router_never_sends_an_empty_title():
+    # The Inbox API rejects a blank title (title: z.string().min(1)), so an
+    # unnamed memo with no timestamps must still get a non-empty title.
+    post = FakePost()
+
+    NotesnookRouter("K", post=post).route(Memo(audio_filename="a.m4a", name=""))
+
+    assert post.calls[0][1]["json"]["title"]
 
 
 def test_notesnook_router_raises_on_error_response():

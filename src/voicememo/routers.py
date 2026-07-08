@@ -13,6 +13,19 @@ def _text_to_html(text):
     return "".join(f"<p>{p}</p>" for p in paragraphs) or "<p></p>"
 
 
+def _default_title(timestamp):
+    """Name an unnamed memo the way Notesnook names untitled notes ("Note $date$
+    $time$"), from an ISO timestamp. Notesnook's Inbox API requires a non-empty
+    title, so this always returns one even when the timestamp is missing."""
+    try:
+        made = datetime.fromisoformat(timestamp)
+    except ValueError:
+        return "Voice note"
+    hour = made.hour % 12 or 12
+    meridiem = "AM" if made.hour < 12 else "PM"
+    return f"Note {made:%Y-%m-%d} {hour}:{made:%M} {meridiem}"
+
+
 class NotesnookRouter:
     """Create a note via the Notesnook Inbox API (POST https://inbox.notesnook.com/)."""
 
@@ -28,7 +41,7 @@ class NotesnookRouter:
             self.ENDPOINT,
             headers={"Authorization": self._api_key, "Content-Type": "application/json"},
             json={
-                "title": memo.name or "Untitled voice note",
+                "title": memo.name or _default_title(memo.recorded_at or memo.created_at),
                 "type": "note",
                 "source": self._source,
                 "version": 1,
