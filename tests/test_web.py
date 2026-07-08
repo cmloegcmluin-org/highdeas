@@ -67,6 +67,64 @@ def test_index_renders_highdeas_controls(tmp_path):
     assert b"confirm(" not in body
 
 
+def test_index_polls_the_pending_endpoint_to_stay_current(tmp_path):
+    service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hi")])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data
+
+    # The open page keeps itself current by polling the pending fragment.
+    assert b"/pending" in body
+
+
+def test_pending_refreshes_and_renders_just_the_memo_rows(tmp_path):
+    service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hello there")])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    resp = client.get("/pending")
+
+    # Polling rescans the inbox, same as loading the page does.
+    assert service.refreshed == 1
+    assert resp.status_code == 200
+    # The row markup the client splices in, carrying its filename and transcript.
+    assert b'data-file="a.m4a"' in resp.data
+    assert b"hello there" in resp.data
+    # A bare fragment, not the whole page — no <head>/chrome to re-parse.
+    assert b"<title>Highdeas</title>" not in resp.data
+    assert b"<!doctype" not in resp.data
+
+
+def test_pending_surfaces_a_recording_that_arrives_after_the_page_loads(tmp_path):
+    from voicememo.service import ReviewService
+    from voicememo.store import MemoStore
+
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    bin_dir = tmp_path / "bin"
+
+    class StubTranscriber:
+        def transcribe(self, path):
+            return "fresh idea"
+
+    service = ReviewService(
+        inbox_dir=inbox, store=MemoStore(tmp_path / "memos.db"),
+        transcriber=StubTranscriber(), bin_dir=bin_dir,
+        clock=lambda: "2026-07-07T00:00", recorded_time=lambda path: "2026-07-07T00:00",
+    )
+    client = create_app(service, inbox_dir=str(inbox), bin_dir=str(bin_dir)).test_client()
+
+    # The app is open; nothing has been recorded yet.
+    assert b"Nothing to review" in client.get("/pending").data
+
+    # A recording lands in the inbox, as the iOS Shortcut + iCloud would deliver it.
+    (inbox / "voice-8.m4a").write_bytes(b"NEW-RECORDING")
+
+    # The next poll rescans and surfaces the new memo without a page reload.
+    body = client.get("/pending").data
+    assert b"fresh idea" in body
+    assert b'class="memo"' in body
+
+
 def test_submit_saves_edits_then_submits_and_returns_204(tmp_path):
     service = FakeService()
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()

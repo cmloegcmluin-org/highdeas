@@ -34,7 +34,7 @@ TRASH_SVG = (
     '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>'
 )
 
-INDEX_HTML = """<!doctype html>
+_PAGE_HEAD = """<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -110,8 +110,12 @@ INDEX_HTML = """<!doctype html>
       <a href="/bin">Bin →</a>
     </div>
   </div>
-  <main id="content">
-  {% if not memos %}
+  <main id="content">"""
+
+
+# The reviewable-memo list on its own, so it can be rendered both inside the full
+# page and alone for the client's /pending poll (which splices in new rows).
+CONTENT_HTML = """{% if not memos %}
     <p class="empty">Nothing to review. Record a memo and it'll show up here.</p>
   {% else %}
   <div class="grid">
@@ -140,13 +144,20 @@ INDEX_HTML = """<!doctype html>
     </div>
     {% endfor %}
   </div>
-  {% endif %}
-  </main>
+  {% endif %}"""
+
+
+_PAGE_TAIL = """  </main>
 <script>
 (function () {
   var content = document.getElementById('content');
-  var grid = content && content.querySelector('.grid');
-  if (!grid) return;
+  if (!content) return;
+
+  // Rows this window has already submitted or trashed. A poll's snapshot can
+  // still list one as pending (it was taken before the POST landed), so we skip
+  // re-adding anything here — otherwise an optimistically-removed row would flash
+  // back in.
+  var retired = {};
 
   function urlFor(prefix, memo) { return prefix + encodeURIComponent(memo.dataset.file); }
 
@@ -180,6 +191,7 @@ INDEX_HTML = """<!doctype html>
   }
 
   function removeRow(memo) {
+    var grid = memo.closest('.grid');
     var prev = memo.previousElementSibling;
     if (prev && prev.classList.contains('sep')) {
       prev.remove();
@@ -188,13 +200,14 @@ INDEX_HTML = """<!doctype html>
       if (next && next.classList.contains('sep')) next.remove();
     }
     memo.remove();
-    if (!grid.querySelector('.memo')) showEmpty();
+    if (grid && !grid.querySelector('.memo')) showEmpty();
   }
 
   function submitRow(memo) {
     clearTimeout(memo._timer);
     var data = fields(memo);
     var url = urlFor('/submit/', memo);
+    retired[memo.dataset.file] = true;
     removeRow(memo);
     post(url, data);
   }
@@ -202,11 +215,12 @@ INDEX_HTML = """<!doctype html>
   function trashRow(memo) {
     clearTimeout(memo._timer);
     var url = urlFor('/delete/', memo);
+    retired[memo.dataset.file] = true;
     removeRow(memo);
     post(url);
   }
 
-  grid.querySelectorAll('.memo').forEach(function (memo) {
+  function wire(memo) {
     var transcript = memo.querySelector('textarea[name=transcript]');
     var name = memo.querySelector('input[name=name]');
     var route = memo.querySelector('input[name=route]');
@@ -222,21 +236,68 @@ INDEX_HTML = """<!doctype html>
     });
     memo.querySelector('.go').addEventListener('click', function () { submitRow(memo); });
     memo.querySelector('.del').addEventListener('click', function () { trashRow(memo); });
-  });
+  }
+
+  content.querySelectorAll('.memo').forEach(wire);
 
   var submitAll = document.getElementById('submit-all');
   if (submitAll) submitAll.addEventListener('click', function () {
-    grid.querySelectorAll('.memo').forEach(function (m) { submitRow(m); });
+    content.querySelectorAll('.memo').forEach(submitRow);
   });
   var trashAll = document.getElementById('trash-all');
   if (trashAll) trashAll.addEventListener('click', function () {
-    grid.querySelectorAll('.memo').forEach(function (m) { trashRow(m); });
+    content.querySelectorAll('.memo').forEach(trashRow);
   });
+
+  // Keep the list current with recordings that arrive while the app is open.
+  // Poll the server (it rescans the inbox) and splice in only memos we're not
+  // already showing, leaving existing rows — their edits, focus, and playback —
+  // untouched.
+  var POLL_MS = 5000;
+
+  function sep() {
+    var el = document.createElement('div');
+    el.className = 'sep';
+    return el;
+  }
+
+  function merge(html) {
+    var incoming = document.createElement('div');
+    incoming.innerHTML = html;
+    var shown = {};
+    content.querySelectorAll('.memo').forEach(function (m) { shown[m.dataset.file] = true; });
+    var fresh = [];
+    incoming.querySelectorAll('.memo').forEach(function (memo) {
+      var file = memo.dataset.file;
+      if (!shown[file] && !retired[file]) fresh.push(memo);
+    });
+    if (!fresh.length) return;
+    var grid = content.querySelector('.grid');
+    if (!grid) { location.reload(); return; }  // empty page: reload to build the grid + bulk controls
+    fresh.forEach(function (memo) {
+      grid.appendChild(sep());
+      grid.appendChild(memo);
+      wire(memo);
+    });
+  }
+
+  function poll() {
+    fetch('/pending')
+      .then(function (r) { return r.text(); })
+      .then(merge)
+      .catch(function () {})
+      .then(function () { setTimeout(poll, POLL_MS); });
+  }
+
+  setTimeout(poll, POLL_MS);
 })();
 </script>
 </body>
 </html>
 """
+
+
+INDEX_HTML = _PAGE_HEAD + CONTENT_HTML + _PAGE_TAIL
 
 
 BIN_HTML = """<!doctype html>
@@ -317,6 +378,13 @@ def create_app(service, inbox_dir, bin_dir):
     def index():
         service.refresh()
         return render_template_string(INDEX_HTML, memos=service.pending())
+
+    @app.get("/pending")
+    def pending():
+        """The review list alone — polled by the open page to pick up recordings
+        that arrive after load, so the app stays current without a manual reload."""
+        service.refresh()
+        return render_template_string(CONTENT_HTML, memos=service.pending())
 
     @app.get("/audio/<path:filename>")
     def audio(filename):
