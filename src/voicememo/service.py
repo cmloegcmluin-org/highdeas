@@ -95,6 +95,23 @@ class ReviewService:
                 self._store.remove(audio_filename)
         self._store.update(key, status="pending", processed_at="")
 
+    def purge(self, audio_filename):
+        """Permanently remove a single binned recording: its audio and its record."""
+        audio = Path(self._bin_dir) / audio_filename
+        if audio.exists():
+            audio.unlink()
+        self._store.remove(audio_filename)
+
+    def empty_bin(self):
+        """Permanently remove every recording currently in the bin."""
+        for memo in self.binned():
+            self.purge(memo.audio_filename)
+
+    def restore_all(self):
+        """Return every binned recording to the review page as a pending memo."""
+        for memo in self.binned():
+            self.restore(memo.audio_filename)
+
     def purge_expired(self, *, retention_days=90):
         """Forget bin items older than the retention window: delete the audio and the record."""
         cutoff = datetime.fromisoformat(self._clock()) - timedelta(days=retention_days)
@@ -117,7 +134,9 @@ class ReviewService:
         return target
 
     def _retire_audio(self, audio_filename):
-        """Take the recording out of the inbox, unless the route already moved it (Drive)."""
+        """Move the recording from the inbox into the bin. Both routes leave it in
+        the inbox for this step (Notesnook never touches the file, Drive copies it),
+        so it lands in the bin either way; guard in case it's somehow already gone."""
         source = Path(self._inbox_dir) / audio_filename
         if source.exists():
             bin_dir = Path(self._bin_dir)

@@ -138,24 +138,24 @@ def test_submit_retires_inbox_audio_to_bin_when_route_leaves_it(tmp_path):
     assert store.get("a.m4a").status == "processed"
 
 
-def test_submit_leaves_bin_untouched_when_route_already_moved_audio(tmp_path):
+def test_retire_skips_when_the_inbox_file_is_already_gone(tmp_path):
+    # Defensive: if the recording isn't in the inbox at submit time (e.g. an
+    # iCloud placeholder that never materialized), retiring is a silent no-op
+    # rather than a crash — the memo is still marked processed.
     inbox = tmp_path / "inbox"
     inbox.mkdir()
     bin_dir = tmp_path / "bin"
-    (inbox / "a.m4a").write_bytes(b"AUDIO")
     store = MemoStore(tmp_path / "memos.db")
-    store.upsert(Memo(audio_filename="a.m4a", route="drive", status="pending"))
-
-    def drive_route(memo):  # a Drive route moves the audio out of the inbox itself
-        (inbox / "a.m4a").rename(tmp_path / "moved_to_drive.m4a")
+    store.upsert(Memo(audio_filename="a.m4a", route="notesnook", status="pending"))
 
     service = ReviewService(
         inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
-        bin_dir=bin_dir, route=drive_route, clock=lambda: "T",
+        bin_dir=bin_dir, route=lambda memo: None, clock=lambda: "T",
     )
     service.submit("a.m4a")
 
     assert not bin_dir.exists() or list(bin_dir.iterdir()) == []
+    assert store.get("a.m4a").status == "processed"
 
 
 def test_delete_retires_inbox_audio_to_bin(tmp_path):
@@ -287,6 +287,68 @@ def test_refresh_leaves_a_raw_named_pending_memo_already_in_the_inbox_untouched(
     assert [m.audio_filename for m in pending] == ["voice-12.m4a"]
     assert pending[0].transcript == "my idea"  # the original memo, not a re-ingest
     assert (inbox / "voice-12.m4a").read_bytes() == b"AUDIO"
+
+
+def test_purge_permanently_removes_one_binned_recording(tmp_path):
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "a.m4a").write_bytes(b"A")
+    (bin_dir / "b.m4a").write_bytes(b"B")
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="a.m4a", status="deleted", processed_at="2026-07-07T03:00"))
+    store.upsert(Memo(audio_filename="b.m4a", status="processed", processed_at="2026-07-07T04:00"))
+    service = ReviewService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(), bin_dir=bin_dir)
+
+    service.purge("a.m4a")
+
+    assert not (bin_dir / "a.m4a").exists()
+    assert store.get("a.m4a") is None
+    # The other binned item is untouched.
+    assert (bin_dir / "b.m4a").exists()
+    assert store.get("b.m4a") is not None
+
+
+def test_empty_bin_permanently_removes_every_binned_item(tmp_path):
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "a.m4a").write_bytes(b"A")
+    (bin_dir / "b.m4a").write_bytes(b"B")
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="a.m4a", status="deleted", processed_at="2026-07-07T03:00"))
+    store.upsert(Memo(audio_filename="b.m4a", status="processed", processed_at="2026-07-07T04:00"))
+    store.upsert(Memo(audio_filename="p.m4a", status="pending"))
+    service = ReviewService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(), bin_dir=bin_dir)
+
+    service.empty_bin()
+
+    assert list(bin_dir.iterdir()) == []
+    assert service.binned() == []
+    assert store.get("a.m4a") is None and store.get("b.m4a") is None
+    # A pending memo is not in the bin, so it is left alone.
+    assert store.get("p.m4a") is not None
+
+
+def test_restore_all_returns_every_binned_item_to_the_review_page(tmp_path):
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "a.m4a").write_bytes(b"A")
+    (bin_dir / "b.m4a").write_bytes(b"B")
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="a.m4a", status="deleted", processed_at="2026-07-07T03:00"))
+    store.upsert(Memo(audio_filename="b.m4a", status="processed", processed_at="2026-07-07T04:00"))
+    service = ReviewService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(), bin_dir=bin_dir)
+
+    service.restore_all()
+
+    assert len(store.list_by_status("pending")) == 2
+    assert service.binned() == []
+    assert sum(1 for _ in inbox.iterdir()) == 2  # both recordings back in the inbox
 
 
 def test_purge_expired_removes_only_bin_items_past_retention(tmp_path):
