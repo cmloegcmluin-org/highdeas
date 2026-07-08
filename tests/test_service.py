@@ -264,6 +264,31 @@ def test_restoring_a_legacy_memo_whose_content_key_twin_exists_converges_them(tm
     assert (inbox / key).read_bytes() == b"SAME-RECORDING"
 
 
+def test_refresh_leaves_a_raw_named_pending_memo_already_in_the_inbox_untouched(tmp_path):
+    """Refresh must not re-ingest a memo that is already pending with its audio in
+    the inbox. A memo stored under a raw (pre-content-key) name is the trap: its
+    content key differs from its filename, so find_new mistakes it for a brand-new
+    recording and re-transcribes it — hanging 'Back to review' (or 500ing) and
+    spawning a duplicate row. Restore now re-keys incoming files, but a legacy
+    raw-named memo left sitting pending in the inbox never passes through restore,
+    so refresh has to recognize it on its own."""
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="voice-12.m4a", transcript="my idea", status="pending"))
+    (inbox / "voice-12.m4a").write_bytes(b"AUDIO")
+
+    service = ReviewService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
+                            bin_dir=tmp_path / "bin", clock=lambda: "2026-07-07T20:00:00")
+    service.refresh()  # the "Back to review" reload that re-scans the inbox
+
+    # Left exactly as it was — not re-adopted, re-transcribed, or duplicated.
+    pending = service.pending()
+    assert [m.audio_filename for m in pending] == ["voice-12.m4a"]
+    assert pending[0].transcript == "my idea"  # the original memo, not a re-ingest
+    assert (inbox / "voice-12.m4a").read_bytes() == b"AUDIO"
+
+
 def test_purge_expired_removes_only_bin_items_past_retention(tmp_path):
     inbox = tmp_path / "inbox"
     inbox.mkdir()

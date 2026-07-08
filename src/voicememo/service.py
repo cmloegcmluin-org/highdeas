@@ -30,7 +30,17 @@ class ReviewService:
 
     def refresh(self):
         self.purge_expired()
+        # A pending memo's audio already lives in the inbox under its own name, so
+        # never re-ingest it. find_new keys by content: a memo stored under a raw
+        # (pre-content-key) name has a content key that differs from its filename,
+        # so find_new would mistake it for a brand-new recording and re-transcribe
+        # it — hanging "Back to review" (or 500ing) and spawning a duplicate row.
+        # Restore now re-keys incoming files, but a legacy raw-named memo left
+        # sitting pending in the inbox never passes through restore; guard it here.
+        pending = {memo.audio_filename for memo in self._store.list_by_status("pending")}
         for recording in self._find_new(self._inbox_dir, self._store.known_filenames()):
+            if recording.source.name in pending:
+                continue
             adopted = self._adopt(recording)
             self._store.upsert(Memo(
                 audio_filename=recording.name,
