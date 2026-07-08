@@ -16,14 +16,18 @@ def _text_to_html(text):
 def _default_title(timestamp):
     """Name an unnamed memo the way Notesnook names untitled notes ("Note $date$
     $time$"), from an ISO timestamp. Notesnook's Inbox API requires a non-empty
-    title, so this always returns one even when the timestamp is missing."""
+    title, so this always returns one even when the timestamp is missing.
+
+    The time is to the second, not the minute: two unnamed memos recorded in the
+    same minute would otherwise share a title, and same-titled notes collapse to one
+    in the inbox — silently dropping every second recording made within a minute."""
     try:
         made = datetime.fromisoformat(timestamp)
-    except ValueError:
+    except (TypeError, ValueError):
         return "Voice note"
     hour = made.hour % 12 or 12
     meridiem = "AM" if made.hour < 12 else "PM"
-    return f"Note {made:%Y-%m-%d} {hour}:{made:%M} {meridiem}"
+    return f"Note {made:%Y-%m-%d} {hour}:{made:%M}:{made:%S} {meridiem}"
 
 
 class NotesnookRouter:

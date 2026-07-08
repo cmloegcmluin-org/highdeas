@@ -57,8 +57,9 @@ def test_notesnook_router_titles_unnamed_memo_with_its_recording_time():
         Memo(audio_filename="a.m4a", name="", transcript="hi", recorded_at="2026-07-07T15:45:00")
     )
 
-    # Notesnook's own "Note $date$ $time$" style, but for when the memo was recorded.
-    assert post.calls[0][1]["json"]["title"] == "Note 2026-07-07 3:45 PM"
+    # Notesnook's own "Note $date$ $time$" style, but for when the memo was recorded,
+    # and to the second so two memos from the same minute don't collide.
+    assert post.calls[0][1]["json"]["title"] == "Note 2026-07-07 3:45:00 PM"
 
 
 def test_notesnook_router_falls_back_to_scan_time_when_recording_time_unknown():
@@ -68,7 +69,20 @@ def test_notesnook_router_falls_back_to_scan_time_when_recording_time_unknown():
         Memo(audio_filename="a.m4a", name="", recorded_at="", created_at="2026-07-07T09:05:00")
     )
 
-    assert post.calls[0][1]["json"]["title"] == "Note 2026-07-07 9:05 AM"
+    assert post.calls[0][1]["json"]["title"] == "Note 2026-07-07 9:05:00 AM"
+
+
+def test_notesnook_router_gives_two_same_minute_memos_distinct_titles():
+    # Two unnamed memos recorded in the same minute must not share a title: same-title
+    # notes collapse to one in the inbox, so a minute-precision auto-title silently drops
+    # every second recording made within a minute. Seconds keep them distinct.
+    post = FakePost()
+    router = NotesnookRouter("K", post=post)
+
+    router.route(Memo(audio_filename="a.m4a", name="", recorded_at="2026-07-08T10:45:02"))
+    router.route(Memo(audio_filename="b.m4a", name="", recorded_at="2026-07-08T10:45:45"))
+
+    assert post.calls[0][1]["json"]["title"] != post.calls[1][1]["json"]["title"]
 
 
 def test_notesnook_router_never_sends_an_empty_title():
