@@ -1,4 +1,7 @@
 """Discover new voice-memo recordings and read when each was recorded."""
+import hashlib
+import re
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -6,19 +9,54 @@ AUDIO_EXTENSIONS = {".m4a", ".mp3", ".wav", ".aac", ".caf", ".aiff"}
 
 _MP4_EPOCH = datetime(1904, 1, 1, tzinfo=timezone.utc)
 
+# The 12-hex-digit fingerprint recording_key appends, so re-keying an
+# already-keyed file strips the old suffix instead of stacking a second one.
+_KEY_SUFFIX = re.compile(r"-[0-9a-f]{12}$")
+
+
+@dataclass(frozen=True)
+class NewRecording:
+    """A freshly-arrived recording: the raw file as it currently sits in the
+    inbox, and the content-unique `name` (see recording_key) it should be stored
+    and renamed to."""
+    source: Path
+    name: str
+
 
 def find_new_recordings(inbox_dir, known_names):
+    """Inbox recordings not yet in the store, each paired with its content key.
+
+    A recording is new when its recording_key isn't already among `known_names`.
+    Keying by content rather than by the raw filename is what rescues a recycled
+    inbox name — voice-8.m4a reused for a new recording once the inbox has been
+    cleared — from being mistaken for the earlier memo that used that name."""
     inbox = Path(inbox_dir)
     if not inbox.is_dir():
         return []
-    new = [
-        entry
-        for entry in inbox.iterdir()
-        if entry.is_file()
-        and entry.suffix.lower() in AUDIO_EXTENSIONS
-        and entry.name not in known_names
-    ]
-    return sorted(new, key=lambda p: p.name)
+    found = []
+    for entry in sorted(inbox.iterdir(), key=lambda p: p.name):
+        if entry.is_file() and entry.suffix.lower() in AUDIO_EXTENSIONS:
+            name = recording_key(entry)
+            if name not in known_names:
+                found.append(NewRecording(entry, name))
+    return found
+
+
+def recording_key(path):
+    """The filename a recording is stored under, unique to the recording itself.
+
+    The iOS Shortcut recycles inbox names — every new recording lands as
+    voice-8.m4a once the inbox has been cleared — so a name alone can't tell a
+    fresh recording apart from one already processed or deleted. Folding a
+    fingerprint of the file's size and embedded recording time into the name
+    gives every distinct recording its own stable key: unique in the store and
+    on disk, in both the inbox and the bin. Re-keying an already-keyed file
+    yields the same name, so ingest stays idempotent."""
+    path = Path(path)
+    fingerprint = f"{path.stat().st_size}:{recording_time(path)}"
+    digest = hashlib.sha256(fingerprint.encode()).hexdigest()[:12]
+    stem = _KEY_SUFFIX.sub("", path.stem)
+    return f"{stem}-{digest}{path.suffix}"
 
 
 def recording_time(path):

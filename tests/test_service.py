@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from voicememo.ingest import NewRecording
 from voicememo.service import ReviewService
 from voicememo.store import Memo, MemoStore
 
@@ -9,14 +10,21 @@ class FakeTranscriber:
         return f"text for {Path(path).name}"
 
 
-def test_refresh_transcribes_new_recordings_into_pending(tmp_path):
+def test_refresh_adopts_new_recordings_into_pending_under_their_content_key(tmp_path):
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    (inbox / "voice.m4a").write_bytes(b"A")
+    (inbox / "voice-2.m4a").write_bytes(b"B")
     store = MemoStore(tmp_path / "memos.db")
 
-    def find_new(inbox, known):
-        return [Path("/inbox/a.m4a"), Path("/inbox/b.m4a")]
+    def find_new(inbox_dir, known):
+        return [
+            NewRecording(inbox / "voice.m4a", "voice-aaaaaaaaaaaa.m4a"),
+            NewRecording(inbox / "voice-2.m4a", "voice-2-bbbbbbbbbbbb.m4a"),
+        ]
 
     service = ReviewService(
-        inbox_dir="/inbox",
+        inbox_dir=inbox,
         store=store,
         transcriber=FakeTranscriber(),
         bin_dir=tmp_path / "bin",
@@ -27,11 +35,47 @@ def test_refresh_transcribes_new_recordings_into_pending(tmp_path):
 
     service.refresh()
 
+    assert {m.audio_filename for m in store.list_by_status("pending")} == {
+        "voice-aaaaaaaaaaaa.m4a", "voice-2-bbbbbbbbbbbb.m4a"}
+    # Each raw inbox file is renamed to its content key.
+    assert (inbox / "voice-aaaaaaaaaaaa.m4a").exists()
+    assert not (inbox / "voice.m4a").exists()
+    # Transcription and the recording time read the adopted (renamed) file.
+    memo = store.get("voice-aaaaaaaaaaaa.m4a")
+    assert memo.transcript == "text for voice-aaaaaaaaaaaa.m4a"
+    assert memo.recorded_at == "recorded-voice-aaaaaaaaaaaa.m4a"
+    assert memo.created_at == "2026-07-07T00:00"
+
+
+def test_refresh_surfaces_a_new_recording_that_reuses_a_retired_memos_name(tmp_path):
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    store = MemoStore(tmp_path / "memos.db")
+
+    # voice-8.m4a was already processed; its recording sits in the bin.
+    store.upsert(Memo(audio_filename="voice-8.m4a", status="processed",
+                      processed_at="2026-07-07T01:00"))
+    (bin_dir / "voice-8.m4a").write_bytes(b"OLD-RECORDING")
+
+    # The Shortcut recycles the name for a genuinely different new recording.
+    (inbox / "voice-8.m4a").write_bytes(b"NEW-RECORDING")
+
+    service = ReviewService(inbox_dir=inbox, store=store,
+                            transcriber=FakeTranscriber(), bin_dir=bin_dir,
+                            clock=lambda: "2026-07-07T02:00")
+    service.refresh()
+
     pending = store.list_by_status("pending")
-    assert [m.audio_filename for m in pending] == ["a.m4a", "b.m4a"]
-    assert store.get("a.m4a").transcript == "text for a.m4a"
-    assert store.get("a.m4a").created_at == "2026-07-07T00:00"
-    assert store.get("a.m4a").recorded_at == "recorded-a.m4a"
+    assert len(pending) == 1
+    new_name = pending[0].audio_filename
+    # The new recording surfaces under its own content key, not the recycled name.
+    assert new_name != "voice-8.m4a"
+    assert (inbox / new_name).read_bytes() == b"NEW-RECORDING"
+    # The earlier processed memo and its binned audio are left untouched.
+    assert store.get("voice-8.m4a").status == "processed"
+    assert (bin_dir / "voice-8.m4a").read_bytes() == b"OLD-RECORDING"
 
 
 def test_submit_routes_then_marks_processed(tmp_path):

@@ -30,13 +30,14 @@ class ReviewService:
 
     def refresh(self):
         self.purge_expired()
-        for path in self._find_new(self._inbox_dir, self._store.known_filenames()):
+        for recording in self._find_new(self._inbox_dir, self._store.known_filenames()):
+            adopted = self._adopt(recording)
             self._store.upsert(Memo(
-                audio_filename=path.name,
-                transcript=self._transcriber.transcribe(path),
+                audio_filename=recording.name,
+                transcript=self._transcriber.transcribe(adopted),
                 status="pending",
                 created_at=self._clock(),
-                recorded_at=self._recorded_time(path),
+                recorded_at=self._recorded_time(adopted),
             ))
 
     def pending(self):
@@ -78,6 +79,16 @@ class ReviewService:
                 if audio.exists():
                     audio.unlink()
                 self._store.remove(memo.audio_filename)
+
+    def _adopt(self, recording):
+        """Rename a freshly-arrived recording to its content-unique name so a
+        recycled inbox filename can't collide with a past recording — in the
+        store now, or in the bin once it's retired. Returns its new path."""
+        target = Path(self._inbox_dir) / recording.name
+        source = Path(recording.source)
+        if source != target:
+            source.replace(target)
+        return target
 
     def _retire_audio(self, audio_filename):
         """Take the recording out of the inbox, unless the route already moved it (Drive)."""
