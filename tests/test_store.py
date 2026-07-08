@@ -56,7 +56,7 @@ def test_known_filenames_returns_stored_filenames(tmp_path):
 
 
 def test_list_by_status_filters_and_orders_by_recorded_at(tmp_path):
-    # Order by when each memo was recorded, not when it was ingested, so the review
+    # Order by when each memo was recorded, not when it was ingested, so the inbox
     # list always reads oldest-to-newest. Ingestion order can't be trusted: a startup
     # catch-up scans the inbox by filename (voice-10 before voice-2), which is neither
     # recording order nor consistent with the live poll's arrival order.

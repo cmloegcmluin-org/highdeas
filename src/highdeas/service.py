@@ -1,4 +1,7 @@
-"""Application service: turn the inbox into reviewable memos and route submissions."""
+"""Application service: turn inbox recordings into memos and route submissions.
+
+The inbox is the app's main view — the list of pending memos awaiting a Notesnook
+or Drive decision; the bin holds what's been retired."""
 import shutil
 import threading
 from datetime import datetime, timedelta
@@ -16,7 +19,7 @@ def _now():
     return datetime.now().isoformat(timespec="seconds")
 
 
-class ReviewService:
+class InboxService:
     def __init__(self, *, inbox_dir, store, transcriber, bin_dir,
                  find_new=find_new_recordings, route=_no_router, clock=_now,
                  recorded_time=recording_time):
@@ -50,7 +53,7 @@ class ReviewService:
         # never re-ingest it. find_new keys by content: a memo stored under a raw
         # (pre-content-key) name has a content key that differs from its filename,
         # so find_new would mistake it for a brand-new recording and re-transcribe
-        # it — hanging "Back to review" (or 500ing) and spawning a duplicate row.
+        # it — hanging "Back to inbox" (or 500ing) and spawning a duplicate row.
         # Restore now re-keys incoming files, but a legacy raw-named memo left
         # sitting pending in the inbox never passes through restore; guard it here.
         pending = {memo.audio_filename for memo in self._store.list_by_status("pending")}
@@ -71,7 +74,7 @@ class ReviewService:
 
     def has_incoming(self):
         """True when the inbox holds recordings not yet in the store, so a freshly
-        opened page can say "Transcribing…" rather than "Nothing to review" while the
+        opened page can say "Transcribing…" rather than "Your inbox is empty" while the
         background catch-up works through them. A cheap directory scan — no model, no
         decoding — so it's safe on the request path."""
         return bool(self._find_new(self._inbox_dir, self._store.known_filenames()))
@@ -131,7 +134,7 @@ class ReviewService:
             self.purge(memo.audio_filename)
 
     def restore_all(self):
-        """Return every binned recording to the review page as a pending memo."""
+        """Return every binned recording to the inbox as a pending memo."""
         for memo in self.binned():
             self.restore(memo.audio_filename)
 

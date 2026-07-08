@@ -1,4 +1,4 @@
-"""SQLite-backed store for memo review state (transcript, name, route, status)."""
+"""SQLite-backed store for memo state (transcript, name, route, status)."""
 import sqlite3
 import threading
 from dataclasses import dataclass, fields
@@ -63,11 +63,11 @@ class MemoStore:
         return {row["audio_filename"] for row in rows}
 
     def list_by_status(self, status):
-        # Recording time, then ingest time as a stable tiebreak: the review list
+        # Recording time, then ingest time as a stable tiebreak: the inbox list
         # reads oldest-to-newest by when a memo was recorded, regardless of the order
         # a startup catch-up (which scans the inbox by filename) happened to ingest
         # them in. The bin re-sorts its own view by processed_at, so this ordering
-        # only shapes the pending review page.
+        # only shapes the pending inbox page.
         with self._lock:
             rows = self._conn.execute(
                 "SELECT * FROM memos WHERE status = ? ORDER BY recorded_at, created_at",

@@ -1,4 +1,4 @@
-"""Local Flask app for reviewing, editing, and routing memos."""
+"""Local Flask app: the inbox and bin pages for editing and routing memos."""
 from urllib.parse import quote
 
 from flask import Flask, redirect, render_template_string, request, send_from_directory
@@ -36,7 +36,7 @@ TRASH_SVG = (
     '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>'
 )
 
-# One stylesheet shared by the review and bin pages so their chrome is identical —
+# One stylesheet shared by the inbox and bin pages so their chrome is identical —
 # same title bar, top-right link, and header row — and nothing jumps when you flip
 # between them. The two grids share widths too: a tiny row-number column, then
 # 300 | flex | a 334px middle band | two 104px action columns, so only the middle
@@ -44,7 +44,7 @@ TRASH_SVG = (
 _STYLE = """<style>
   /* Reserve the scrollbar gutter on every page so a page with a scrollbar and one
      without stay the same width — otherwise margin:auto re-centers and the layout
-     shifts sideways when you flip between the review and bin views. */
+     shifts sideways when you flip between the inbox and bin views. */
   :root { color-scheme: light dark; scrollbar-gutter: stable; }
   body { font-family: -apple-system, "Segoe UI", system-ui, sans-serif; max-width: 1300px;
          margin: 0 auto; padding: 0 24px 24px; line-height: 1.45; }
@@ -68,7 +68,7 @@ _STYLE = """<style>
   .notice[hidden] { display: none; }
   .empty { opacity: .7; padding: 48px 0; text-align: center; }
   .grid { display: grid; gap: 14px 18px; align-items: center; }
-  .grid.review { grid-template-columns: 26px 300px minmax(220px, 1fr) 34px 200px 100px 104px 104px; }
+  .grid.inbox  { grid-template-columns: 26px 300px minmax(220px, 1fr) 34px 200px 100px 104px 104px; }
   .grid.bin    { grid-template-columns: 26px 300px minmax(220px, 1fr) 170px 56px 108px 104px 104px; }
   .grid.body { margin-top: 12px; }
   .grid .head { font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; opacity: .55;
@@ -86,7 +86,7 @@ _STYLE = """<style>
   #submit-all:hover, .restore-all:hover { border-color: #3b82f6; color: #3b82f6; }
   #trash-all:hover, .empty-bin:hover { border-color: #e5484d; color: #e5484d; }
 
-  /* Review rows */
+  /* Inbox rows */
   .memo { display: contents; }
   .memo audio { width: 100%; }
   .memo textarea, .memo input[type=text] {
@@ -144,7 +144,7 @@ _STYLE = """<style>
 </style>"""
 
 
-# The review page's frozen top: title bar (with the live item count) plus the
+# The inbox page's frozen top: title bar (with the live item count) plus the
 # column headers that carry the bulk Submit/Trash buttons. Rendered with `memos`,
 # so the headers only appear when there's something to act on.
 _PAGE_HEAD = """<!doctype html>
@@ -152,13 +152,13 @@ _PAGE_HEAD = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Highdeas</title>
+<title>Inbox</title>
 """ + _STYLE + """
 </head>
 <body>
   <div class="frozen">
     <div class="topbar">
-      <h1>Highdeas <span id="count">— {{ memos|length }} item{{ 's' if memos|length != 1 else '' }}</span></h1>
+      <h1>Inbox <span id="count">— {{ memos|length }} item{{ 's' if memos|length != 1 else '' }}</span></h1>
       <div class="links">
         <button type="button" id="refresh" class="refresh" title="Check for new notes now">Refresh</button>
         <a href="/bin">Bin →</a>
@@ -166,7 +166,7 @@ _PAGE_HEAD = """<!doctype html>
     </div>
     <div id="notice" class="notice" role="alert" hidden></div>
     {% if memos %}
-    <div class="grid review headrow">
+    <div class="grid inbox headrow">
       <div class="head"></div>
       <div class="head">Audio</div>
       <div class="head">Transcript</div>
@@ -181,16 +181,16 @@ _PAGE_HEAD = """<!doctype html>
   <main id="content">"""
 
 
-# The reviewable-memo rows alone, so they can be rendered both inside the full page
+# The inbox memo rows alone, so they can be rendered both inside the full page
 # and returned bare for the client's /pending poll (which splices in new rows).
 CONTENT_HTML = """{% if not memos %}
     {% if incoming %}
     <p class="empty">Transcribing your memos…</p>
     {% else %}
-    <p class="empty">Nothing to review. Record a memo and it'll show up here.</p>
+    <p class="empty">Your inbox is empty. Record a memo and it'll show up here.</p>
     {% endif %}
   {% else %}
-  <div class="grid review body">
+  <div class="grid inbox body">
     {% for m in memos %}
     {% if not loop.first %}<div class="sep"></div>{% endif %}
     <div class="memo" data-file="{{ m.audio_filename }}">
@@ -270,7 +270,7 @@ _PAGE_TAIL = """  </main>
   function showEmpty() {
     var p = document.createElement('p');
     p.className = 'empty';
-    p.textContent = "Nothing to review. Record a memo and it'll show up here.";
+    p.textContent = "Your inbox is empty. Record a memo and it'll show up here.";
     content.innerHTML = '';
     content.appendChild(p);
     var headrow = document.querySelector('.frozen .headrow');
@@ -458,14 +458,14 @@ BIN_HTML = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Bin — Highdeas</title>
+<title>Bin</title>
 """ + _STYLE + """
 </head>
 <body>
   <div class="frozen">
     <div class="topbar">
       <h1>Bin <span id="count">— {{ memos|length }} item{{ 's' if memos|length != 1 else '' }}</span></h1>
-      <a href="/">← Back to review</a>
+      <a href="/">← Back to inbox</a>
     </div>
     {% if memos %}
     <div class="grid bin headrow">
@@ -475,7 +475,7 @@ BIN_HTML = """<!doctype html>
       <div class="head">Name</div>
       <div class="head">Where</div>
       <div class="head">When</div>
-      <div class="head"><form method="post" action="/restore-all" onsubmit="return confirm('Restore all {{ memos|length }} item{{ 's' if memos|length != 1 else '' }} to the review page?');"><button class="head-btn restore-all" type="submit">Restore all</button></form></div>
+      <div class="head"><form method="post" action="/restore-all" onsubmit="return confirm('Restore all {{ memos|length }} item{{ 's' if memos|length != 1 else '' }} to the inbox?');"><button class="head-btn restore-all" type="submit">Restore all</button></form></div>
       <div class="head"><form method="post" action="/empty-bin" onsubmit="return confirm('Permanently delete all {{ memos|length }} item{{ 's' if memos|length != 1 else '' }}? This cannot be undone.');"><button class="head-btn empty-bin" type="submit">Empty bin</button></form></div>
     </div>
     {% endif %}
@@ -529,7 +529,7 @@ def create_app(service, inbox_dir, bin_dir, launch_drive=None):
 
     @app.get("/pending")
     def pending():
-        """The review rows alone — polled by the open page to pick up recordings
+        """The inbox rows alone — polled by the open page to pick up recordings
         that arrive after load, so the app stays current without a manual reload."""
         service.refresh()
         return render_template_string(CONTENT_HTML, memos=service.pending())

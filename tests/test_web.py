@@ -65,15 +65,15 @@ def test_index_lists_pending_without_blocking_on_a_refresh(tmp_path):
     assert b"hello there" in resp.data
 
 
-def test_index_renders_highdeas_controls(tmp_path):
+def test_index_renders_inbox_controls(tmp_path):
     service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hi", name="Idea")])
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     body = client.get("/").data
 
-    # Rebranded title + header.
-    assert b"<title>Highdeas</title>" in body
-    assert b"Highdeas" in body
+    # The page is titled "Inbox" (the window chrome already carries the app name).
+    assert b"<title>Inbox</title>" in body
+    assert b"Inbox" in body
     # Bulk actions live in their column headers (see the column-header test below).
     assert b"Submit all" in body
     assert b"Trash all" in body
@@ -105,7 +105,7 @@ def test_index_bulk_controls_sit_in_the_column_headers(tmp_path):
     # left by the "Bin →" link.
     assert 'class="bulk"' not in body
     assert 'id="submit-all"' in body and 'id="trash-all"' in body
-    assert body.index('grid review headrow') < body.index('id="submit-all"')
+    assert body.index('grid inbox headrow') < body.index('id="submit-all"')
 
 
 def test_index_shows_the_live_item_count(tmp_path):
@@ -121,7 +121,7 @@ def test_index_shows_the_live_item_count(tmp_path):
     assert b"2 items" in body
 
 
-def test_review_rows_are_numbered(tmp_path):
+def test_inbox_rows_are_numbered(tmp_path):
     service = FakeService(pending=[
         Memo(audio_filename="a.m4a", transcript="one"),
         Memo(audio_filename="b.m4a", transcript="two"),
@@ -135,7 +135,7 @@ def test_review_rows_are_numbered(tmp_path):
 
 def test_index_shows_a_transcribing_hint_while_recordings_await(tmp_path):
     # Opened with an empty store but recordings still waiting in the inbox, the page
-    # says they're being transcribed rather than the misleading "Nothing to review".
+    # says they're being transcribed rather than the misleading "Your inbox is empty".
     service = FakeService(pending=[], incoming=True)
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
@@ -143,16 +143,16 @@ def test_index_shows_a_transcribing_hint_while_recordings_await(tmp_path):
 
     # The visible empty-state is the transcribing hint, not the idle message.
     assert b"Transcribing your memos" in body
-    assert b'<p class="empty">Nothing to review' not in body
+    assert b'<p class="empty">Your inbox is empty' not in body
 
 
-def test_index_shows_nothing_to_review_when_the_inbox_is_idle(tmp_path):
+def test_index_shows_empty_state_when_the_inbox_is_idle(tmp_path):
     service = FakeService(pending=[], incoming=False)
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     body = client.get("/").data
 
-    assert b'<p class="empty">Nothing to review' in body
+    assert b'<p class="empty">Your inbox is empty' in body
     assert b"Transcribing" not in body
 
 
@@ -204,12 +204,12 @@ def test_pending_refreshes_and_renders_just_the_memo_rows(tmp_path):
     assert b'data-file="a.m4a"' in resp.data
     assert b"hello there" in resp.data
     # A bare fragment, not the whole page — no <head>/chrome to re-parse.
-    assert b"<title>Highdeas</title>" not in resp.data
+    assert b"<title>Inbox</title>" not in resp.data
     assert b"<!doctype" not in resp.data
 
 
 def test_pending_surfaces_a_recording_that_arrives_after_the_page_loads(tmp_path):
-    from highdeas.service import ReviewService
+    from highdeas.service import InboxService
     from highdeas.store import MemoStore
 
     inbox = tmp_path / "inbox"
@@ -220,7 +220,7 @@ def test_pending_surfaces_a_recording_that_arrives_after_the_page_loads(tmp_path
         def transcribe(self, path):
             return "fresh idea"
 
-    service = ReviewService(
+    service = InboxService(
         inbox_dir=inbox, store=MemoStore(tmp_path / "memos.db"),
         transcriber=StubTranscriber(), bin_dir=bin_dir,
         clock=lambda: "2026-07-07T00:00", recorded_time=lambda path: "2026-07-07T00:00",
@@ -228,7 +228,7 @@ def test_pending_surfaces_a_recording_that_arrives_after_the_page_loads(tmp_path
     client = create_app(service, inbox_dir=str(inbox), bin_dir=str(bin_dir)).test_client()
 
     # The app is open; nothing has been recorded yet.
-    assert b"Nothing to review" in client.get("/pending").data
+    assert b"Your inbox is empty" in client.get("/pending").data
 
     # A recording lands in the inbox, as the iOS Shortcut + iCloud would deliver it.
     (inbox / "voice-8.m4a").write_bytes(b"NEW-RECORDING")
@@ -271,7 +271,7 @@ def test_submit_that_fails_to_route_keeps_the_memo_and_signals_the_client(tmp_pa
     # (e.g. Notesnook rejects the key), the memo must stay pending and the response
     # must be an error, so the client keeps the row instead of hiding a note that
     # never actually sent. Uses the real service so the whole seam is exercised.
-    from highdeas.service import ReviewService
+    from highdeas.service import InboxService
     from highdeas.store import MemoStore
 
     inbox = tmp_path / "inbox"
@@ -288,7 +288,7 @@ def test_submit_that_fails_to_route_keeps_the_memo_and_signals_the_client(tmp_pa
     def failing_route(memo):
         raise RuntimeError("HTTP 401 Unauthorized")
 
-    service = ReviewService(inbox_dir=inbox, store=store, transcriber=StubTranscriber(),
+    service = InboxService(inbox_dir=inbox, store=store, transcriber=StubTranscriber(),
                             bin_dir=bin_dir, route=failing_route, clock=lambda: "T")
     client = create_app(service, inbox_dir=str(inbox), bin_dir=str(bin_dir)).test_client()
 
@@ -414,7 +414,7 @@ def test_bin_bulk_controls_sit_in_the_column_headers_and_confirm(tmp_path):
 
     body = client.get("/bin").data.decode()
 
-    # Same pattern as the review page: bulk actions live in the grid headers over
+    # Same pattern as the inbox page: bulk actions live in the grid headers over
     # their columns, not in the topbar.
     assert 'action="/restore-all"' in body
     assert 'action="/empty-bin"' in body

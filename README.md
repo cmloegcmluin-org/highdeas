@@ -1,8 +1,8 @@
 # Highdeas
 
 Turns iPhone voice memos into finished notes and filed audio with almost no manual
-work. Record on your phone; seconds later the memo is transcribed and waiting on a
-local review page, one click from becoming a Notesnook note or a filed Google Drive
+work. Record on your phone; seconds later the memo is transcribed and waiting in a
+local inbox page, one click from becoming a Notesnook note or a filed Google Drive
 recording.
 
 ## How it works
@@ -14,7 +14,7 @@ recording.
    content-unique name, so a recycled inbox filename can never collide with a past memo.
 3. **Transcribe** — each recording is transcribed locally (`onnx-asr`, CPU). This runs
    in the background, so the window opens instantly and memos stream in as they finish.
-4. **Review** — a local Flask page opens in its own native window (Edge WebView2). Each
+4. **Inbox** — a local Flask page opens in its own native window (Edge WebView2). Each
    memo row has its audio, an auto-saving editable transcript, a chevron that moves the
    transcript into the Name field, a Name box, a Notesnook⇄Drive toggle, and Submit /
    Delete. Row numbers, a live item count, and a frozen title bar + column headers

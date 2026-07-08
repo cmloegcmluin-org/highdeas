@@ -2,7 +2,7 @@ import threading
 from pathlib import Path
 
 from highdeas.ingest import NewRecording, recording_key
-from highdeas.service import ReviewService
+from highdeas.service import InboxService
 from highdeas.store import Memo, MemoStore
 
 
@@ -24,7 +24,7 @@ def test_refresh_adopts_new_recordings_into_pending_under_their_content_key(tmp_
             NewRecording(inbox / "voice-2.m4a", "voice-2-bbbbbbbbbbbb.m4a"),
         ]
 
-    service = ReviewService(
+    service = InboxService(
         inbox_dir=inbox,
         store=store,
         transcriber=FakeTranscriber(),
@@ -63,7 +63,7 @@ def test_refresh_surfaces_a_new_recording_that_reuses_a_retired_memos_name(tmp_p
     # The Shortcut recycles the name for a genuinely different new recording.
     (inbox / "voice-8.m4a").write_bytes(b"NEW-RECORDING")
 
-    service = ReviewService(inbox_dir=inbox, store=store,
+    service = InboxService(inbox_dir=inbox, store=store,
                             transcriber=FakeTranscriber(), bin_dir=bin_dir,
                             clock=lambda: "2026-07-07T02:00")
     service.refresh()
@@ -84,7 +84,7 @@ def test_submit_routes_then_marks_processed(tmp_path):
     store.upsert(Memo(audio_filename="a.m4a", route="drive", status="pending"))
     routed = []
 
-    service = ReviewService(
+    service = InboxService(
         inbox_dir="/inbox",
         store=store,
         transcriber=FakeTranscriber(),
@@ -105,7 +105,7 @@ def test_delete_marks_memo_deleted(tmp_path):
     store = MemoStore(tmp_path / "memos.db")
     store.upsert(Memo(audio_filename="a.m4a", status="pending"))
 
-    service = ReviewService(
+    service = InboxService(
         inbox_dir="/inbox",
         store=store,
         transcriber=FakeTranscriber(),
@@ -128,7 +128,7 @@ def test_submit_retires_inbox_audio_to_bin_when_route_leaves_it(tmp_path):
     store = MemoStore(tmp_path / "memos.db")
     store.upsert(Memo(audio_filename="a.m4a", route="notesnook", status="pending"))
 
-    service = ReviewService(
+    service = InboxService(
         inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
         bin_dir=bin_dir, route=lambda memo: None, clock=lambda: "T",
     )
@@ -149,7 +149,7 @@ def test_retire_skips_when_the_inbox_file_is_already_gone(tmp_path):
     store = MemoStore(tmp_path / "memos.db")
     store.upsert(Memo(audio_filename="a.m4a", route="notesnook", status="pending"))
 
-    service = ReviewService(
+    service = InboxService(
         inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
         bin_dir=bin_dir, route=lambda memo: None, clock=lambda: "T",
     )
@@ -167,7 +167,7 @@ def test_delete_retires_inbox_audio_to_bin(tmp_path):
     store = MemoStore(tmp_path / "memos.db")
     store.upsert(Memo(audio_filename="a.m4a", status="pending"))
 
-    ReviewService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
+    InboxService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
                   bin_dir=bin_dir, clock=lambda: "T").delete("a.m4a")
 
     assert not (inbox / "a.m4a").exists()
@@ -188,7 +188,7 @@ def test_binned_lists_processed_and_deleted_with_audio_in_bin_newest_first(tmp_p
     store.upsert(Memo(audio_filename="music.m4a", status="processed", route="drive", processed_at="2026-07-07T04:00"))
     store.upsert(Memo(audio_filename="p.m4a", status="pending"))
 
-    service = ReviewService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(), bin_dir=bin_dir)
+    service = InboxService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(), bin_dir=bin_dir)
 
     # music.m4a (Drive) lives in Drive not the bin, so it is excluded; pending excluded; newest first
     assert [m.audio_filename for m in service.binned()] == ["d.m4a", "n.m4a"]
@@ -203,7 +203,7 @@ def test_restore_moves_audio_back_to_inbox_and_marks_pending(tmp_path):
     store = MemoStore(tmp_path / "memos.db")
     store.upsert(Memo(audio_filename="a.m4a", status="deleted", processed_at="2026-07-07T03:00"))
 
-    ReviewService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(), bin_dir=bin_dir).restore("a.m4a")
+    InboxService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(), bin_dir=bin_dir).restore("a.m4a")
 
     pending = store.list_by_status("pending")
     assert len(pending) == 1
@@ -225,7 +225,7 @@ def test_restoring_a_legacy_named_memo_does_not_duplicate_it_on_the_next_refresh
                       status="deleted", processed_at="2026-07-07T03:00"))
     (bin_dir / "voice-9.m4a").write_bytes(b"AUDIO-BYTES")
 
-    service = ReviewService(inbox_dir=inbox, store=store,
+    service = InboxService(inbox_dir=inbox, store=store,
                             transcriber=FakeTranscriber(), bin_dir=bin_dir,
                             clock=lambda: "2026-07-07T09:00")
     service.restore("voice-9.m4a")
@@ -254,7 +254,7 @@ def test_restoring_a_legacy_memo_whose_content_key_twin_exists_converges_them(tm
     key = recording_key(bin_dir / "voice-9.m4a")
     store.upsert(Memo(audio_filename=key, transcript="the idea", status="pending"))
 
-    service = ReviewService(inbox_dir=inbox, store=store,
+    service = InboxService(inbox_dir=inbox, store=store,
                             transcriber=FakeTranscriber(), bin_dir=bin_dir)
     service.restore("voice-9.m4a")
 
@@ -269,7 +269,7 @@ def test_refresh_leaves_a_raw_named_pending_memo_already_in_the_inbox_untouched(
     """Refresh must not re-ingest a memo that is already pending with its audio in
     the inbox. A memo stored under a raw (pre-content-key) name is the trap: its
     content key differs from its filename, so find_new mistakes it for a brand-new
-    recording and re-transcribes it — hanging 'Back to review' (or 500ing) and
+    recording and re-transcribes it — hanging 'Back to inbox' (or 500ing) and
     spawning a duplicate row. Restore now re-keys incoming files, but a legacy
     raw-named memo left sitting pending in the inbox never passes through restore,
     so refresh has to recognize it on its own."""
@@ -279,9 +279,9 @@ def test_refresh_leaves_a_raw_named_pending_memo_already_in_the_inbox_untouched(
     store.upsert(Memo(audio_filename="voice-12.m4a", transcript="my idea", status="pending"))
     (inbox / "voice-12.m4a").write_bytes(b"AUDIO")
 
-    service = ReviewService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
+    service = InboxService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
                             bin_dir=tmp_path / "bin", clock=lambda: "2026-07-07T20:00:00")
-    service.refresh()  # the "Back to review" reload that re-scans the inbox
+    service.refresh()  # the "Back to inbox" reload that re-scans the inbox
 
     # Left exactly as it was — not re-adopted, re-transcribed, or duplicated.
     pending = service.pending()
@@ -300,7 +300,7 @@ def test_purge_permanently_removes_one_binned_recording(tmp_path):
     store = MemoStore(tmp_path / "memos.db")
     store.upsert(Memo(audio_filename="a.m4a", status="deleted", processed_at="2026-07-07T03:00"))
     store.upsert(Memo(audio_filename="b.m4a", status="processed", processed_at="2026-07-07T04:00"))
-    service = ReviewService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(), bin_dir=bin_dir)
+    service = InboxService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(), bin_dir=bin_dir)
 
     service.purge("a.m4a")
 
@@ -322,7 +322,7 @@ def test_empty_bin_permanently_removes_every_binned_item(tmp_path):
     store.upsert(Memo(audio_filename="a.m4a", status="deleted", processed_at="2026-07-07T03:00"))
     store.upsert(Memo(audio_filename="b.m4a", status="processed", processed_at="2026-07-07T04:00"))
     store.upsert(Memo(audio_filename="p.m4a", status="pending"))
-    service = ReviewService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(), bin_dir=bin_dir)
+    service = InboxService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(), bin_dir=bin_dir)
 
     service.empty_bin()
 
@@ -333,7 +333,7 @@ def test_empty_bin_permanently_removes_every_binned_item(tmp_path):
     assert store.get("p.m4a") is not None
 
 
-def test_restore_all_returns_every_binned_item_to_the_review_page(tmp_path):
+def test_restore_all_returns_every_binned_item_to_the_inbox(tmp_path):
     inbox = tmp_path / "inbox"
     inbox.mkdir()
     bin_dir = tmp_path / "bin"
@@ -343,7 +343,7 @@ def test_restore_all_returns_every_binned_item_to_the_review_page(tmp_path):
     store = MemoStore(tmp_path / "memos.db")
     store.upsert(Memo(audio_filename="a.m4a", status="deleted", processed_at="2026-07-07T03:00"))
     store.upsert(Memo(audio_filename="b.m4a", status="processed", processed_at="2026-07-07T04:00"))
-    service = ReviewService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(), bin_dir=bin_dir)
+    service = InboxService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(), bin_dir=bin_dir)
 
     service.restore_all()
 
@@ -377,7 +377,7 @@ def test_concurrent_refreshes_transcribe_each_recording_once(tmp_path):
             return "text"
 
     transcriber = GatedTranscriber()
-    service = ReviewService(
+    service = InboxService(
         inbox_dir=inbox, store=store, transcriber=transcriber,
         bin_dir=tmp_path / "bin", clock=lambda: "2026-07-07T00:00",
         recorded_time=lambda path: "2026-07-07T00:00",
@@ -401,7 +401,7 @@ def test_has_incoming_is_true_when_the_inbox_holds_an_untranscribed_recording(tm
     inbox.mkdir()
     (inbox / "voice.m4a").write_bytes(b"A")
     store = MemoStore(tmp_path / "memos.db")
-    service = ReviewService(inbox_dir=inbox, store=store,
+    service = InboxService(inbox_dir=inbox, store=store,
                             transcriber=FakeTranscriber(), bin_dir=tmp_path / "bin")
 
     assert service.has_incoming() is True
@@ -411,7 +411,7 @@ def test_has_incoming_is_false_when_the_inbox_is_drained(tmp_path):
     inbox = tmp_path / "inbox"
     inbox.mkdir()
     store = MemoStore(tmp_path / "memos.db")
-    service = ReviewService(inbox_dir=inbox, store=store,
+    service = InboxService(inbox_dir=inbox, store=store,
                             transcriber=FakeTranscriber(), bin_dir=tmp_path / "bin")
 
     assert service.has_incoming() is False
@@ -428,7 +428,7 @@ def test_purge_expired_removes_only_bin_items_past_retention(tmp_path):
     store.upsert(Memo(audio_filename="old.m4a", status="processed", processed_at="2026-04-01T00:00:00"))
     store.upsert(Memo(audio_filename="new.m4a", status="deleted", processed_at="2026-06-30T00:00:00"))
 
-    service = ReviewService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
+    service = InboxService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
                             bin_dir=bin_dir, clock=lambda: "2026-07-07T00:00:00")
     service.purge_expired(retention_days=90)
 
@@ -449,7 +449,7 @@ def test_refresh_purges_expired_bin_items(tmp_path):
     store = MemoStore(tmp_path / "memos.db")
     store.upsert(Memo(audio_filename="old.m4a", status="processed", processed_at="2026-01-01T00:00:00"))
 
-    service = ReviewService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
+    service = InboxService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
                             bin_dir=bin_dir, find_new=lambda inbox, known: [],
                             clock=lambda: "2026-07-07T00:00:00")
     service.refresh()

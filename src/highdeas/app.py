@@ -1,4 +1,4 @@
-"""Entrypoint: build the real review service and run the local web app."""
+"""Entrypoint: build the real inbox service and run the local web app."""
 import os
 import socket
 import subprocess
@@ -10,7 +10,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from highdeas.routers import DriveMusicRouter, NotesnookRouter, Router
-from highdeas.service import ReviewService
+from highdeas.service import InboxService
 from highdeas.store import MemoStore
 from highdeas.transcribe import Transcriber
 from highdeas.web import create_app
@@ -74,7 +74,7 @@ def build_app():
     notesnook = NotesnookRouter(os.environ.get("NOTESNOOK_INBOX_API_KEY", ""))
     drive = DriveMusicRouter(inbox_dir, drive_base)
     transcriber = Transcriber()
-    service = ReviewService(
+    service = InboxService(
         inbox_dir=inbox_dir,
         store=MemoStore(db_path),
         transcriber=transcriber,
