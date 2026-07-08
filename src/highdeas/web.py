@@ -96,6 +96,10 @@ _STYLE = """<style>
   /* A row whose submit/trash just failed: outline its fields so it's obvious which
      one stayed behind. */
   .memo.failed textarea, .memo.failed input[type=text] { border-color: #e5484d; }
+  /* A row mid-request: dimmed and locked so a bulk run reads as working through the
+     list, and so a row can't be double-submitted. */
+  .memo.sending { opacity: .5; transition: opacity .15s; }
+  .memo button:disabled { cursor: default; }
   .memo .copy { font: inherit; font-size: 1.4rem; line-height: 1; padding: 0; height: 40px; width: 100%;
                 display: flex; align-items: center; justify-content: center; cursor: pointer;
                 background: transparent; color: inherit; opacity: .45; border-radius: 8px;
@@ -292,16 +296,28 @@ _PAGE_TAIL = """  </main>
     else { renumber(); updateCount(); }
   }
 
+  // Dim and lock a row while its request is in flight, so a bulk run visibly works
+  // through the list one row at a time instead of rows just vanishing without warning.
+  function setBusy(memo, busy) {
+    memo.classList.toggle('sending', busy);
+    ['.go', '.del'].forEach(function (sel) {
+      var btn = memo.querySelector(sel);
+      if (btn) btn.disabled = busy;
+    });
+  }
+
   // Remove the row only after a 2xx: the memo is retired server-side only on success,
-  // so mirror that here. A non-ok response (routing failed, memo still pending) marks
-  // the row failed and rejects, so callers can keep it and report the failure.
+  // so mirror that here. A non-ok response (routing failed, memo still pending) leaves
+  // the row in place, flagged, and rejects, so callers can report the failure.
   function retireOnOk(memo, response) {
+    memo.classList.remove('failed');
+    setBusy(memo, true);
     return Promise.resolve(response).then(function (r) {
       if (!r.ok) return r.text().then(function (t) { throw new Error(t || 'Failed'); });
-      memo.classList.remove('failed');
       retired[memo.dataset.file] = true;
       removeRow(memo);
     }).catch(function (err) {
+      setBusy(memo, false);
       memo.classList.add('failed');
       throw err;
     });
@@ -309,7 +325,10 @@ _PAGE_TAIL = """  </main>
 
   function submitRow(memo) {
     clearTimeout(memo._timer);
-    return retireOnOk(memo, post(urlFor('/submit/', memo), fields(memo)));
+    var go = memo.querySelector('.go');
+    if (go) go.textContent = 'Sending…';
+    return retireOnOk(memo, post(urlFor('/submit/', memo), fields(memo)))
+      .catch(function (err) { if (go) go.textContent = 'Submit'; throw err; });
   }
 
   function trashRow(memo) {

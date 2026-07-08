@@ -324,6 +324,18 @@ def test_submit_js_removes_a_row_only_after_the_server_confirms(tmp_path):
     assert "r.ok" in body
 
 
+def test_index_shows_a_per_row_sending_state_while_a_submit_is_in_flight(tmp_path):
+    service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hi")])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data.decode()
+
+    # A row dims/locks and its button reads "Sending…" while its request is in flight,
+    # so Submit all visibly works through the list instead of rows silently vanishing.
+    assert "Sending" in body           # the in-flight button label
+    assert ".memo.sending" in body     # the dim-and-lock style the JS toggles
+
+
 def test_edit_route_saves_fields_and_returns_204(tmp_path):
     service = FakeService()
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
