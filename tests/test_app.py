@@ -71,3 +71,29 @@ def test_default_bin_dir_sits_beside_the_inbox(tmp_path):
 
     assert result == tmp_path / "VoiceBin"
     assert result.parent == inbox.parent
+
+
+def test_set_windows_app_id_uses_the_app_id_the_shortcut_carries(monkeypatch):
+    import ctypes
+
+    import voicememo.app as app_mod
+
+    calls = []
+
+    class FakeShell32:
+        def SetCurrentProcessExplicitAppUserModelID(self, app_id):
+            calls.append(app_id)
+
+    class FakeWinDLL:
+        shell32 = FakeShell32()
+
+    monkeypatch.setattr(ctypes, "windll", FakeWinDLL(), raising=False)
+
+    app_mod._set_windows_app_id()
+
+    # Windows only merges the running window into the pinned Highdeas.lnk when this
+    # process AUMID exactly equals the shortcut's System.AppUserModel.ID. Pin the two
+    # values together here: if the app or Create-HighdeasShortcut.ps1 changes it, the
+    # taskbar silently regresses to pythonw.exe's generic python icon.
+    assert calls == ["Douglas.Highdeas"]
+    assert app_mod.APP_ID == "Douglas.Highdeas"

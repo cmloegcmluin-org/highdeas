@@ -33,6 +33,11 @@ def default_bin_dir(inbox_dir):
     return str(Path(inbox_dir).parent / "VoiceBin")
 
 APP_NAME = "Highdeas"
+# Windows taskbar identity. Must stay byte-for-byte identical to the
+# System.AppUserModel.ID that "Create-HighdeasShortcut.ps1" stamps on Highdeas.lnk:
+# Windows only merges this app's window into the pinned shortcut when the two match.
+# If they drift, the taskbar falls back to pythonw.exe's generic python icon.
+APP_ID = "Douglas.Highdeas"
 APP_ICON = PROJECT_ROOT / "voicememo.ico"
 
 # Shown instantly in the native window for the brief moment before the local server
@@ -189,7 +194,7 @@ def _set_windows_app_id():
     try:
         import ctypes
 
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Douglas.Highdeas")
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_ID)
     except Exception:  # noqa: BLE001 — non-Windows or unavailable; harmless
         pass
 

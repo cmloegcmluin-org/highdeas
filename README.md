@@ -21,6 +21,17 @@ Working review app: capture → ingest → local transcription → a local web p
 
 Double-click **`Review Voice Memos.bat`** (or run `.venv/Scripts/python -m voicememo.app`). It opens in its own **app window**. The first open takes ~15s while the transcription model loads; after that it's quick. (Set `VOICE_DESKTOP=0` to force browser mode.)
 
+## Pin to the taskbar
+
+Run **`Create Highdeas Shortcut.bat`** once. It rebuilds **`Highdeas.lnk`** in this
+folder and stamps it with the app's own Windows taskbar identity
+(`System.AppUserModel.ID`), so pinning it shows the Highdeas icon and relaunches the app.
+Right-click that `Highdeas.lnk` → **Pin to taskbar**.
+
+Pin the **shortcut file**, not the running window: pinning the live window instead
+captures a generic `pythonw` icon that won't relaunch Highdeas. If that stale pin is
+still on your taskbar, unpin it and pin `Highdeas.lnk` instead.
+
 ## Setup
 
 - Copy `.env.example` to `.env` and fill in your Notesnook Inbox API key (required to submit memos to Notesnook).
