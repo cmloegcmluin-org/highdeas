@@ -39,28 +39,41 @@ INDEX_HTML = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Voice Memos to Review</title>
+<title>Highdeas</title>
 <style>
   :root { color-scheme: light dark; }
   body { font-family: -apple-system, "Segoe UI", system-ui, sans-serif; max-width: 1300px;
          margin: 0 auto; padding: 24px; line-height: 1.45; }
-  h1 { font-size: 1.35rem; }
-  .topbar { display: flex; justify-content: space-between; align-items: baseline; }
-  .topbar a { color: #3b82f6; text-decoration: none; font-size: .9rem; }
+  h1 { font-size: 1.35rem; margin: 0; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
+  .actions { display: flex; align-items: center; gap: 14px; }
+  .actions a { color: #3b82f6; text-decoration: none; font-size: .9rem; }
+  .bulk { display: flex; gap: 8px; }
+  .bulk button { font: inherit; font-size: .85rem; padding: 6px 12px; border-radius: 8px; cursor: pointer;
+                 background: transparent; color: inherit; border: 1px solid rgba(128,128,128,.4);
+                 transition: color .15s, border-color .15s; }
+  #submit-all:hover { border-color: #3b82f6; color: #3b82f6; }
+  #trash-all:hover { border-color: #e5484d; color: #e5484d; }
   .empty { opacity: .7; padding: 48px 0; text-align: center; }
   .grid { display: grid;
-          grid-template-columns: 300px minmax(240px, 1fr) 210px 100px 104px 48px;
+          grid-template-columns: 300px minmax(220px, 1fr) 34px 200px 100px 104px 48px;
           gap: 14px 18px; align-items: center; }
   .grid .head { font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; opacity: .55;
                 display: flex; align-items: flex-end; min-height: 18px;
                 padding-bottom: 4px; border-bottom: 1px solid rgba(128,128,128,.25); }
   .grid .sep { grid-column: 1 / -1; border-top: 1px solid rgba(128,128,128,.18); }
-  form.memo { display: contents; }
+  .memo { display: contents; }
   .memo audio { width: 100%; }
   .memo textarea, .memo input[type=text] {
     width: 100%; box-sizing: border-box; padding: 8px; font: inherit;
     border: 1px solid rgba(128,128,128,.4); border-radius: 8px; background: transparent; color: inherit; }
   .memo textarea { min-height: 60px; resize: vertical; }
+  .memo .copy { font: inherit; font-size: 1.4rem; line-height: 1; padding: 0; height: 40px; width: 100%;
+                display: flex; align-items: center; justify-content: center; cursor: pointer;
+                background: transparent; color: inherit; opacity: .45; border-radius: 8px;
+                border: 1px solid rgba(128,128,128,.35);
+                transition: opacity .15s, color .15s, border-color .15s; }
+  .memo .copy:hover { opacity: 1; color: #3b82f6; border-color: #3b82f6; }
   .memo .go { font: inherit; padding: 9px 0; width: 100%; border-radius: 8px; border: none;
               background: #3b82f6; color: #fff; cursor: pointer; }
   .memo .del { padding: 9px 0; width: 100%; border-radius: 8px; cursor: pointer;
@@ -85,22 +98,36 @@ INDEX_HTML = """<!doctype html>
 </style>
 </head>
 <body>
-  <div class="topbar"><h1>Voice memos to review — {{ memos|length }} pending</h1><a href="/bin">Bin →</a></div>
+  <div class="topbar">
+    <h1>Highdeas</h1>
+    <div class="actions">
+      {% if memos %}
+      <div class="bulk">
+        <button type="button" id="submit-all">Submit all</button>
+        <button type="button" id="trash-all">Trash all</button>
+      </div>
+      {% endif %}
+      <a href="/bin">Bin →</a>
+    </div>
+  </div>
+  <main id="content">
   {% if not memos %}
     <p class="empty">Nothing to review. Record a memo and it'll show up here.</p>
   {% else %}
   <div class="grid">
     <div class="head">Audio</div>
     <div class="head">Transcript</div>
+    <div class="head"></div>
     <div class="head">Name</div>
     <div class="head">Route</div>
     <div class="head"></div>
     <div class="head"></div>
     {% for m in memos %}
     {% if not loop.first %}<div class="sep"></div>{% endif %}
-    <form class="memo" method="post" action="/submit/{{ m.audio_filename }}">
+    <div class="memo" data-file="{{ m.audio_filename }}">
       <audio controls src="/audio/{{ m.audio_filename }}"></audio>
       <textarea name="transcript" aria-label="Transcript">{{ m.transcript }}</textarea>
+      <button type="button" class="copy" title="Copy transcript into name" aria-label="Copy transcript into name">&rsaquo;</button>
       <input type="text" name="name" value="{{ m.name }}" placeholder="Name…" autocomplete="off" aria-label="Name">
       <label class="toggle" title="Left = Notesnook, right = Google Drive">
         <input type="checkbox" name="route" value="drive" {{ 'checked' if m.route == 'drive' }}>
@@ -108,14 +135,104 @@ INDEX_HTML = """<!doctype html>
         <span class="track"></span>
         <span class="ic dr" aria-label="Google Drive">""" + DRIVE_SVG + """</span>
       </label>
-      <button type="submit" class="go">Submit</button>
-      <button type="submit" class="del" formaction="/delete/{{ m.audio_filename }}" formnovalidate
-              title="Delete" aria-label="Delete"
-              onclick="return confirm('Delete this memo? This removes it from your list.')">""" + TRASH_SVG + """</button>
-    </form>
+      <button type="button" class="go">Submit</button>
+      <button type="button" class="del" title="Delete" aria-label="Delete">""" + TRASH_SVG + """</button>
+    </div>
     {% endfor %}
   </div>
   {% endif %}
+  </main>
+<script>
+(function () {
+  var content = document.getElementById('content');
+  var grid = content && content.querySelector('.grid');
+  if (!grid) return;
+
+  function urlFor(prefix, memo) { return prefix + encodeURIComponent(memo.dataset.file); }
+
+  function fields(memo) {
+    return new URLSearchParams({
+      name: memo.querySelector('input[name=name]').value,
+      transcript: memo.querySelector('textarea[name=transcript]').value,
+      route: memo.querySelector('input[name=route]').checked ? 'drive' : 'notesnook',
+    });
+  }
+
+  function post(url, data) { return fetch(url, { method: 'POST', body: data }); }
+
+  function save(memo) { return post(urlFor('/edit/', memo), fields(memo)); }
+
+  function scheduleSave(memo) {
+    clearTimeout(memo._timer);
+    memo._timer = setTimeout(function () { save(memo); }, 400);
+  }
+
+  function flush(memo) { clearTimeout(memo._timer); return save(memo); }
+
+  function showEmpty() {
+    var p = document.createElement('p');
+    p.className = 'empty';
+    p.textContent = "Nothing to review. Record a memo and it'll show up here.";
+    content.innerHTML = '';
+    content.appendChild(p);
+    var bulk = document.querySelector('.bulk');
+    if (bulk) bulk.remove();
+  }
+
+  function removeRow(memo) {
+    var prev = memo.previousElementSibling;
+    if (prev && prev.classList.contains('sep')) {
+      prev.remove();
+    } else {
+      var next = memo.nextElementSibling;
+      if (next && next.classList.contains('sep')) next.remove();
+    }
+    memo.remove();
+    if (!grid.querySelector('.memo')) showEmpty();
+  }
+
+  function submitRow(memo) {
+    clearTimeout(memo._timer);
+    var data = fields(memo);
+    var url = urlFor('/submit/', memo);
+    removeRow(memo);
+    post(url, data);
+  }
+
+  function trashRow(memo) {
+    clearTimeout(memo._timer);
+    var url = urlFor('/delete/', memo);
+    removeRow(memo);
+    post(url);
+  }
+
+  grid.querySelectorAll('.memo').forEach(function (memo) {
+    var transcript = memo.querySelector('textarea[name=transcript]');
+    var name = memo.querySelector('input[name=name]');
+    var route = memo.querySelector('input[name=route]');
+    [transcript, name].forEach(function (el) {
+      el.addEventListener('input', function () { scheduleSave(memo); });
+      el.addEventListener('blur', function () { flush(memo); });
+    });
+    route.addEventListener('change', function () { flush(memo); });
+    memo.querySelector('.copy').addEventListener('click', function () {
+      name.value = transcript.value;
+      flush(memo);
+    });
+    memo.querySelector('.go').addEventListener('click', function () { submitRow(memo); });
+    memo.querySelector('.del').addEventListener('click', function () { trashRow(memo); });
+  });
+
+  var submitAll = document.getElementById('submit-all');
+  if (submitAll) submitAll.addEventListener('click', function () {
+    grid.querySelectorAll('.memo').forEach(function (m) { submitRow(m); });
+  });
+  var trashAll = document.getElementById('trash-all');
+  if (trashAll) trashAll.addEventListener('click', function () {
+    grid.querySelectorAll('.memo').forEach(function (m) { trashRow(m); });
+  });
+})();
+</script>
 </body>
 </html>
 """
@@ -183,6 +300,15 @@ BIN_HTML = """<!doctype html>
 """
 
 
+def _submitted_fields():
+    """Editable field values shared by auto-save (/edit) and Submit (/submit)."""
+    return {
+        "name": request.form["name"],
+        "transcript": request.form["transcript"],
+        "route": request.form.get("route", "notesnook"),
+    }
+
+
 def create_app(service, inbox_dir, bin_dir):
     app = Flask(__name__)
 
@@ -195,21 +321,21 @@ def create_app(service, inbox_dir, bin_dir):
     def audio(filename):
         return send_from_directory(inbox_dir, filename)
 
+    @app.post("/edit/<path:filename>")
+    def edit(filename):
+        service.edit(filename, **_submitted_fields())
+        return ("", 204)
+
     @app.post("/submit/<path:filename>")
     def submit(filename):
-        service.edit(
-            filename,
-            name=request.form["name"],
-            transcript=request.form["transcript"],
-            route=request.form.get("route", "notesnook"),
-        )
+        service.edit(filename, **_submitted_fields())
         service.submit(filename)
-        return redirect("/")
+        return ("", 204)
 
     @app.post("/delete/<path:filename>")
     def delete(filename):
         service.delete(filename)
-        return redirect("/")
+        return ("", 204)
 
     @app.get("/bin")
     def bin_view():
