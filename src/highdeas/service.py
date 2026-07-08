@@ -60,14 +60,21 @@ class InboxService:
         for recording in self._find_new(self._inbox_dir, self._store.known_filenames()):
             if recording.source.name in pending:
                 continue
-            adopted = self._adopt(recording)
-            self._store.upsert(Memo(
-                audio_filename=recording.name,
-                transcript=self._transcriber.transcribe(adopted),
-                status="pending",
-                created_at=self._clock(),
-                recorded_at=self._recorded_time(adopted),
-            ))
+            try:
+                adopted = self._adopt(recording)
+                self._store.upsert(Memo(
+                    audio_filename=recording.name,
+                    transcript=self._transcriber.transcribe(adopted),
+                    status="pending",
+                    created_at=self._clock(),
+                    recorded_at=self._recorded_time(adopted),
+                ))
+            except Exception as exc:  # noqa: BLE001 — one bad recording must not strand the rest
+                # A single unreadable or half-downloaded recording used to abort the whole
+                # scan, hiding every recording sorted after it until that one file finally
+                # decoded. Skip it and press on; the next refresh retries it (its content
+                # key still isn't in the store, so nothing is lost).
+                print(f"Highdeas: skipping {recording.name} this pass ({exc}).")
 
     def pending(self):
         return self._store.list_by_status("pending")

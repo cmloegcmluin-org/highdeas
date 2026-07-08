@@ -48,6 +48,39 @@ def test_refresh_adopts_new_recordings_into_pending_under_their_content_key(tmp_
     assert memo.created_at == "2026-07-07T00:00"
 
 
+def test_refresh_isolates_a_failing_recording_so_the_rest_still_ingest(tmp_path):
+    # One unreadable/half-synced recording must not abort the whole scan and hide every
+    # recording sorted after it — the batch keeps going and the bad one is retried later.
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    (inbox / "bad.m4a").write_bytes(b"BAD")
+    (inbox / "good.m4a").write_bytes(b"GOOD")
+    store = MemoStore(tmp_path / "memos.db")
+
+    def find_new(inbox_dir, known):
+        return [
+            NewRecording(inbox / "bad.m4a", "bad-aaaaaaaaaaaa.m4a"),
+            NewRecording(inbox / "good.m4a", "good-bbbbbbbbbbbb.m4a"),
+        ]
+
+    class PickyTranscriber:
+        def transcribe(self, path):
+            if Path(path).name.startswith("bad"):
+                raise RuntimeError("cannot decode a half-downloaded file")
+            return "a good idea"
+
+    service = InboxService(
+        inbox_dir=inbox, store=store, transcriber=PickyTranscriber(),
+        bin_dir=tmp_path / "bin", find_new=find_new,
+        clock=lambda: "2026-07-08T00:00", recorded_time=lambda path: "2026-07-08T00:00",
+    )
+    service.refresh()
+
+    pending = {m.audio_filename for m in store.list_by_status("pending")}
+    assert "good-bbbbbbbbbbbb.m4a" in pending  # ingested despite the earlier failure
+    assert "bad-aaaaaaaaaaaa.m4a" not in pending  # the bad one is skipped, not stored
+
+
 def test_refresh_surfaces_a_new_recording_that_reuses_a_retired_memos_name(tmp_path):
     inbox = tmp_path / "inbox"
     inbox.mkdir()
