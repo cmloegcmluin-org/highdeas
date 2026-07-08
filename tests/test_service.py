@@ -22,6 +22,7 @@ def test_refresh_transcribes_new_recordings_into_pending(tmp_path):
         bin_dir=tmp_path / "bin",
         find_new=find_new,
         clock=lambda: "2026-07-07T00:00",
+        recorded_time=lambda path: f"recorded-{Path(path).name}",
     )
 
     service.refresh()
@@ -30,6 +31,7 @@ def test_refresh_transcribes_new_recordings_into_pending(tmp_path):
     assert [m.audio_filename for m in pending] == ["a.m4a", "b.m4a"]
     assert store.get("a.m4a").transcript == "text for a.m4a"
     assert store.get("a.m4a").created_at == "2026-07-07T00:00"
+    assert store.get("a.m4a").recorded_at == "recorded-a.m4a"
 
 
 def test_submit_routes_then_marks_processed(tmp_path):

@@ -3,7 +3,7 @@ import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from voicememo.ingest import find_new_recordings
+from voicememo.ingest import find_new_recordings, recording_time
 from voicememo.store import Memo
 
 
@@ -17,7 +17,8 @@ def _now():
 
 class ReviewService:
     def __init__(self, *, inbox_dir, store, transcriber, bin_dir,
-                 find_new=find_new_recordings, route=_no_router, clock=_now):
+                 find_new=find_new_recordings, route=_no_router, clock=_now,
+                 recorded_time=recording_time):
         self._inbox_dir = inbox_dir
         self._store = store
         self._transcriber = transcriber
@@ -25,6 +26,7 @@ class ReviewService:
         self._find_new = find_new
         self._route = route
         self._clock = clock
+        self._recorded_time = recorded_time
 
     def refresh(self):
         self.purge_expired()
@@ -34,6 +36,7 @@ class ReviewService:
                 transcript=self._transcriber.transcribe(path),
                 status="pending",
                 created_at=self._clock(),
+                recorded_at=self._recorded_time(path),
             ))
 
     def pending(self):
