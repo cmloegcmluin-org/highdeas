@@ -77,7 +77,12 @@ class ReviewService:
         key = recording_key(landed) if landed.exists() else audio_filename
         if key != audio_filename:
             landed.replace(Path(self._inbox_dir) / key)
-            self._store.rekey(audio_filename, key)
+            if self._store.get(key) is None:
+                self._store.rekey(audio_filename, key)
+            else:
+                # A pre-fix restore already spawned this recording's keyed twin;
+                # drop the raw duplicate and converge onto the keyed memo.
+                self._store.remove(audio_filename)
         self._store.update(key, status="pending", processed_at="")
 
     def purge_expired(self, *, retention_days=90):

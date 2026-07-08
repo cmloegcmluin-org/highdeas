@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from voicememo.ingest import NewRecording
+from voicememo.ingest import NewRecording, recording_key
 from voicememo.service import ReviewService
 from voicememo.store import Memo, MemoStore
 
@@ -237,6 +237,31 @@ def test_restoring_a_legacy_named_memo_does_not_duplicate_it_on_the_next_refresh
     # Its audio is on disk under the memo's stored filename, so it still plays.
     assert (inbox / memo.audio_filename).read_bytes() == b"AUDIO-BYTES"
     assert not (inbox / "voice-9.m4a").exists()  # nothing left under the raw name
+
+
+def test_restoring_a_legacy_memo_whose_content_key_twin_exists_converges_them(tmp_path):
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    store = MemoStore(tmp_path / "memos.db")
+    (bin_dir / "voice-9.m4a").write_bytes(b"SAME-RECORDING")
+    # The raw legacy record whose audio still sits in the bin...
+    store.upsert(Memo(audio_filename="voice-9.m4a", status="processed",
+                      processed_at="2026-07-07T03:00"))
+    # ...and the content-keyed twin an earlier (pre-fix) restore already spawned.
+    key = recording_key(bin_dir / "voice-9.m4a")
+    store.upsert(Memo(audio_filename=key, transcript="the idea", status="pending"))
+
+    service = ReviewService(inbox_dir=inbox, store=store,
+                            transcriber=FakeTranscriber(), bin_dir=bin_dir)
+    service.restore("voice-9.m4a")
+
+    # They converge onto the single keyed memo; the raw duplicate is dropped.
+    assert store.get("voice-9.m4a") is None
+    assert [m.audio_filename for m in store.list_by_status("pending")] == [key]
+    assert store.get(key).transcript == "the idea"  # the kept memo, with its edits
+    assert (inbox / key).read_bytes() == b"SAME-RECORDING"
 
 
 def test_purge_expired_removes_only_bin_items_past_retention(tmp_path):
