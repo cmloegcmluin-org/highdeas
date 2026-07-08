@@ -63,9 +63,15 @@ class MemoStore:
         return {row["audio_filename"] for row in rows}
 
     def list_by_status(self, status):
+        # Recording time, then ingest time as a stable tiebreak: the review list
+        # reads oldest-to-newest by when a memo was recorded, regardless of the order
+        # a startup catch-up (which scans the inbox by filename) happened to ingest
+        # them in. The bin re-sorts its own view by processed_at, so this ordering
+        # only shapes the pending review page.
         with self._lock:
             rows = self._conn.execute(
-                "SELECT * FROM memos WHERE status = ? ORDER BY created_at", (status,)
+                "SELECT * FROM memos WHERE status = ? ORDER BY recorded_at, created_at",
+                (status,),
             ).fetchall()
         return [_row_to_memo(row) for row in rows]
 

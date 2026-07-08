@@ -55,14 +55,22 @@ def test_known_filenames_returns_stored_filenames(tmp_path):
     assert store.known_filenames() == {"a.m4a", "b.m4a"}
 
 
-def test_list_by_status_filters_and_orders_by_created_at(tmp_path):
+def test_list_by_status_filters_and_orders_by_recorded_at(tmp_path):
+    # Order by when each memo was recorded, not when it was ingested, so the review
+    # list always reads oldest-to-newest. Ingestion order can't be trusted: a startup
+    # catch-up scans the inbox by filename (voice-10 before voice-2), which is neither
+    # recording order nor consistent with the live poll's arrival order.
     store = MemoStore(tmp_path / "memos.db")
-    store.upsert(Memo(audio_filename="b.m4a", status="pending", created_at="2026-07-07T02:00"))
-    store.upsert(Memo(audio_filename="a.m4a", status="pending", created_at="2026-07-07T01:00"))
-    store.upsert(Memo(audio_filename="done.m4a", status="processed", created_at="2026-07-07T03:00"))
+    store.upsert(Memo(audio_filename="b.m4a", status="pending",
+                      recorded_at="2026-07-07T02:00", created_at="2026-07-07T08:00"))
+    store.upsert(Memo(audio_filename="a.m4a", status="pending",
+                      recorded_at="2026-07-07T01:00", created_at="2026-07-07T09:00"))
+    store.upsert(Memo(audio_filename="done.m4a", status="processed",
+                      recorded_at="2026-07-07T03:00"))
 
     pending = store.list_by_status("pending")
 
+    # a was recorded first though ingested last, so it still sorts ahead of b.
     assert [m.audio_filename for m in pending] == ["a.m4a", "b.m4a"]
 
 
