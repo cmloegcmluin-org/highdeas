@@ -75,8 +75,16 @@ def test_index_renders_highdeas_controls(tmp_path):
     assert b'data-file="a.m4a"' in body
     # The "copy transcript into name" control between Transcript and Name.
     assert b'class="copy"' in body
-    # The delete confirmation popup is gone.
-    assert b"confirm(" not in body
+
+
+def test_index_trash_all_asks_for_confirmation(tmp_path):
+    service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hi")])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data
+
+    # Trashing everything at once is bulk + easy to fat-finger, so it confirms first.
+    assert b"confirm(" in body
 
 
 def test_index_bulk_controls_sit_in_the_column_headers(tmp_path):
@@ -90,7 +98,7 @@ def test_index_bulk_controls_sit_in_the_column_headers(tmp_path):
     # left by the "Bin →" link.
     assert 'class="bulk"' not in body
     assert 'id="submit-all"' in body and 'id="trash-all"' in body
-    assert body.index('class="grid"') < body.index('id="submit-all"')
+    assert body.index('class="grid review"') < body.index('id="submit-all"')
 
 
 def test_index_polls_the_pending_endpoint_to_stay_current(tmp_path):
@@ -260,16 +268,21 @@ def test_bin_row_offers_restore_and_confirmed_permanent_delete(tmp_path):
     assert b"confirm(" in body  # permanent deletion asks first
 
 
-def test_bin_offers_restore_all_and_empty_bin(tmp_path):
+def test_bin_bulk_controls_sit_in_the_column_headers_and_confirm(tmp_path):
     service = FakeService(binned=[
         Memo(audio_filename="b.m4a", status="deleted", processed_at="2026-07-07T03:00"),
     ])
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
-    body = client.get("/bin").data
+    body = client.get("/bin").data.decode()
 
-    assert b'action="/restore-all"' in body
-    assert b'action="/empty-bin"' in body
+    # Same pattern as the review page: bulk actions live in the grid headers over
+    # their columns, not in the topbar.
+    assert 'action="/restore-all"' in body
+    assert 'action="/empty-bin"' in body
+    assert body.index('class="grid bin"') < body.index('action="/restore-all"')
+    # Both bulk actions confirm first (restore-all is disruptive, empty-bin destroys).
+    assert body.count("confirm(") >= 2
 
 
 def test_purge_route_permanently_deletes_and_redirects(tmp_path):
@@ -322,3 +335,28 @@ def test_bin_audio_serves_from_bin(tmp_path):
 
     assert resp.status_code == 200
     assert resp.data == b"BINAUDIO"
+
+
+def test_open_drive_route_opens_the_drive_folder(tmp_path):
+    opened = []
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin"),
+                        drive_dir="G:/My Drive/voice", open_folder=opened.append).test_client()
+
+    resp = client.post("/open-drive")
+
+    assert opened == ["G:/My Drive/voice"]
+    assert resp.status_code == 204
+
+
+def test_bin_drive_memo_icon_links_to_the_drive_folder(tmp_path):
+    service = FakeService(binned=[
+        Memo(audio_filename="g.m4a", status="processed", route="drive", processed_at="2026-07-07T01:00"),
+        Memo(audio_filename="d.m4a", status="deleted", processed_at="2026-07-07T02:00"),
+    ])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin"),
+                        drive_dir="G:/Drive").test_client()
+
+    body = client.get("/bin").data.decode()
+
+    # Only the Drive memo's icon opens the Drive folder; trashed/Notesnook icons don't.
+    assert body.count('action="/open-drive"') == 1

@@ -1,4 +1,6 @@
 """Local Flask app for reviewing, editing, and routing memos."""
+import os
+
 from flask import Flask, redirect, render_template_string, request, send_from_directory
 
 # Inline, self-contained brand icons for the route toggle (no external assets).
@@ -34,37 +36,36 @@ TRASH_SVG = (
     '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>'
 )
 
-_PAGE_HEAD = """<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Highdeas</title>
-<style>
+# One stylesheet shared by the review and bin pages so their chrome is identical —
+# same title bar, top-right link, and header row — and nothing jumps when you flip
+# between them. Their grids share widths too: 300 | flex | a 334px middle band |
+# two 104px action columns, so only the middle band's contents differ per page.
+_STYLE = """<style>
   :root { color-scheme: light dark; }
   body { font-family: -apple-system, "Segoe UI", system-ui, sans-serif; max-width: 1300px;
          margin: 0 auto; padding: 24px; line-height: 1.45; }
   h1 { font-size: 1.35rem; margin: 0; }
   .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
   .topbar a { color: #3b82f6; text-decoration: none; font-size: .9rem; }
-  /* Bulk actions live in the Submit/Trash column headers so they line up over
-     their columns instead of being pushed left by the Bin link. */
-  .head-btn { font: inherit; font-size: .72rem; text-transform: none; letter-spacing: normal;
-              padding: 4px 9px; border-radius: 7px; cursor: pointer; background: transparent;
-              color: inherit; border: 1px solid rgba(128,128,128,.4);
-              transition: color .15s, border-color .15s; }
-  #submit-all:hover { border-color: #3b82f6; color: #3b82f6; }
-  .head-icon { border: none; padding: 2px; opacity: .5; display: flex; align-items: center; }
-  .head-icon svg { width: 16px; height: 16px; display: block; }
-  #trash-all:hover { opacity: 1; color: #e5484d; }
   .empty { opacity: .7; padding: 48px 0; text-align: center; }
-  .grid { display: grid;
-          grid-template-columns: 300px minmax(220px, 1fr) 34px 200px 100px 104px 48px;
-          gap: 14px 18px; align-items: center; }
+  .grid { display: grid; gap: 14px 18px; align-items: center; }
+  .grid.review { grid-template-columns: 300px minmax(220px, 1fr) 34px 200px 100px 104px 104px; }
+  .grid.bin    { grid-template-columns: 300px minmax(220px, 1fr) 170px 56px 108px 104px 104px; }
   .grid .head { font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; opacity: .55;
-                display: flex; align-items: flex-end; min-height: 18px;
+                display: flex; align-items: flex-end; min-height: 32px;
                 padding-bottom: 4px; border-bottom: 1px solid rgba(128,128,128,.25); }
   .grid .sep { grid-column: 1 / -1; border-top: 1px solid rgba(128,128,128,.18); }
+  /* Bulk actions live in their own column headers so they sit directly over the
+     column they act on, instead of being pushed around by the topbar link. */
+  .head form { width: 100%; margin: 0; }
+  .head-btn { font: inherit; font-size: .72rem; text-transform: none; letter-spacing: normal;
+              width: 100%; padding: 4px 9px; border-radius: 7px; cursor: pointer; background: transparent;
+              color: inherit; border: 1px solid rgba(128,128,128,.4);
+              transition: color .15s, border-color .15s; }
+  #submit-all:hover, .restore-all:hover { border-color: #3b82f6; color: #3b82f6; }
+  #trash-all:hover, .empty-bin:hover { border-color: #e5484d; color: #e5484d; }
+
+  /* Review rows */
   .memo { display: contents; }
   .memo audio { width: 100%; }
   .memo textarea, .memo input[type=text] {
@@ -98,7 +99,33 @@ _PAGE_HEAD = """<!doctype html>
                           border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.35); transition: transform .15s; }
   .toggle input:checked ~ .track { background: #2684fc; }
   .toggle input:checked ~ .track::after { transform: translateX(18px); }
-</style>
+
+  /* Bin rows */
+  .row { display: contents; }
+  .row audio { width: 100%; }
+  .row .text { font-size: .9rem; white-space: pre-wrap; max-height: 5.5em; overflow: auto; opacity: .85; }
+  .row .name { font-weight: 600; }
+  .row .dest { display: flex; align-items: center; }
+  .row .dest svg { width: 20px; height: 20px; display: block; }
+  .row .destlink { background: transparent; border: none; padding: 0; cursor: pointer;
+                   display: flex; align-items: center; }
+  .row .when { font-size: .8rem; opacity: .6; }
+  .binbtn { font: inherit; padding: 8px 0; width: 100%; border-radius: 8px; cursor: pointer;
+            background: transparent; color: inherit; border: 1px solid rgba(128,128,128,.4);
+            transition: color .15s, border-color .15s; }
+  .binbtn.restore:hover { border-color: #3b82f6; color: #3b82f6; }
+  .binbtn.purge:hover { border-color: #e5484d; color: #e5484d; }
+  .row form { width: 100%; margin: 0; }
+</style>"""
+
+
+_PAGE_HEAD = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Highdeas</title>
+""" + _STYLE + """
 </head>
 <body>
   <div class="topbar">
@@ -113,14 +140,14 @@ _PAGE_HEAD = """<!doctype html>
 CONTENT_HTML = """{% if not memos %}
     <p class="empty">Nothing to review. Record a memo and it'll show up here.</p>
   {% else %}
-  <div class="grid">
+  <div class="grid review">
     <div class="head">Audio</div>
     <div class="head">Transcript</div>
     <div class="head"></div>
     <div class="head">Name</div>
     <div class="head">Route</div>
     <div class="head"><button type="button" id="submit-all" class="head-btn">Submit all</button></div>
-    <div class="head"><button type="button" id="trash-all" class="head-btn head-icon" title="Trash all" aria-label="Trash all">""" + TRASH_SVG + """</button></div>
+    <div class="head"><button type="button" id="trash-all" class="head-btn">Trash all</button></div>
     {% for m in memos %}
     {% if not loop.first %}<div class="sep"></div>{% endif %}
     <div class="memo" data-file="{{ m.audio_filename }}">
@@ -239,7 +266,10 @@ _PAGE_TAIL = """  </main>
   });
   var trashAll = document.getElementById('trash-all');
   if (trashAll) trashAll.addEventListener('click', function () {
-    content.querySelectorAll('.memo').forEach(trashRow);
+    var memos = content.querySelectorAll('.memo');
+    if (!memos.length) return;
+    if (!confirm('Trash all ' + memos.length + ' memo' + (memos.length === 1 ? '' : 's') + '? They go to the bin.')) return;
+    memos.forEach(trashRow);
   });
 
   // Keep the list current with recordings that arrive while the app is open.
@@ -298,81 +328,41 @@ BIN_HTML = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Bin — Voice Memos</title>
-<style>
-  :root { color-scheme: light dark; }
-  body { font-family: -apple-system, "Segoe UI", system-ui, sans-serif; max-width: 1300px;
-         margin: 0 auto; padding: 24px; line-height: 1.45; }
-  .topbar { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
-  .topbar a { color: #3b82f6; text-decoration: none; font-size: .9rem; }
-  h1 { font-size: 1.35rem; margin: 0; }
-  .empty { opacity: .7; padding: 48px 0; text-align: center; }
-  .grid { display: grid; grid-template-columns: 300px minmax(200px, 1fr) 160px 56px 140px 180px;
-          gap: 14px 18px; align-items: center; }
-  .grid .head { font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; opacity: .55;
-                display: flex; align-items: flex-end; min-height: 18px;
-                padding-bottom: 4px; border-bottom: 1px solid rgba(128,128,128,.25); }
-  .grid .sep { grid-column: 1 / -1; border-top: 1px solid rgba(128,128,128,.18); }
-  .row { display: contents; }
-  .row audio { width: 100%; }
-  .row .text { font-size: .9rem; white-space: pre-wrap; max-height: 5.5em; overflow: auto; opacity: .85; }
-  .row .name { font-weight: 600; }
-  .row .dest { display: flex; align-items: center; }
-  .row .dest svg { width: 20px; height: 20px; display: block; }
-  .row .when { font-size: .8rem; opacity: .6; }
-  .acts { display: flex; gap: 8px; }
-  .acts form { flex: 1; margin: 0; }
-  .acts button { font: inherit; font-size: .82rem; padding: 8px 0; width: 100%; border-radius: 8px;
-                 cursor: pointer; background: transparent; color: inherit;
-                 border: 1px solid rgba(128,128,128,.4); transition: color .15s, border-color .15s; }
-  .restore:hover { border-color: #3b82f6; color: #3b82f6; }
-  .purge:hover { border-color: #e5484d; color: #e5484d; }
-  .binactions { display: flex; align-items: center; gap: 12px; }
-  .binactions form { margin: 0; }
-  .baction { font: inherit; font-size: .82rem; padding: 5px 11px; border-radius: 8px; cursor: pointer;
-             background: transparent; color: inherit; border: 1px solid rgba(128,128,128,.4);
-             transition: color .15s, border-color .15s; }
-  .restore-all:hover { border-color: #3b82f6; color: #3b82f6; }
-  .empty-bin:hover { border-color: #e5484d; color: #e5484d; }
-</style>
+<title>Bin — Highdeas</title>
+""" + _STYLE + """
 </head>
 <body>
   <div class="topbar">
     <h1>Bin — {{ memos|length }} item{{ 's' if memos|length != 1 else '' }}</h1>
-    <div class="binactions">
-      {% if memos %}
-      <form method="post" action="/restore-all"><button class="baction restore-all" type="submit">Restore all</button></form>
-      <form method="post" action="/empty-bin" onsubmit="return confirm('Permanently delete all {{ memos|length }} item{{ 's' if memos|length != 1 else '' }}? This cannot be undone.');"><button class="baction empty-bin" type="submit">Empty bin</button></form>
-      {% endif %}
-      <a href="/">&larr; Back to review</a>
-    </div>
+    <a href="/">← Back to review</a>
   </div>
+  <main id="content">
   {% if not memos %}
     <p class="empty">Nothing in the bin. Submitted and deleted memos land here (kept for 90 days).</p>
   {% else %}
-  <div class="grid">
+  <div class="grid bin">
     <div class="head">Audio</div>
     <div class="head">Transcript</div>
     <div class="head">Name</div>
     <div class="head">Where</div>
     <div class="head">When</div>
-    <div class="head"></div>
+    <div class="head"><form method="post" action="/restore-all" onsubmit="return confirm('Restore all {{ memos|length }} item{{ 's' if memos|length != 1 else '' }} to the review page?');"><button class="head-btn restore-all" type="submit">Restore all</button></form></div>
+    <div class="head"><form method="post" action="/empty-bin" onsubmit="return confirm('Permanently delete all {{ memos|length }} item{{ 's' if memos|length != 1 else '' }}? This cannot be undone.');"><button class="head-btn empty-bin" type="submit">Empty bin</button></form></div>
     {% for m in memos %}
     {% if not loop.first %}<div class="sep"></div>{% endif %}
     <div class="row">
       <audio controls src="/bin-audio/{{ m.audio_filename }}"></audio>
       <div class="text">{{ m.transcript }}</div>
       <div class="name">{{ m.name or m.audio_filename }}</div>
-      <div class="dest">{% if m.status == 'deleted' %}<span title="Trashed" aria-label="Trashed">""" + TRASH_SVG + """</span>{% elif m.route == 'drive' %}<span title="Sent to Google Drive" aria-label="Sent to Google Drive">""" + DRIVE_SVG + """</span>{% else %}<span title="Sent to Notesnook" aria-label="Sent to Notesnook">""" + NOTESNOOK_SVG + """</span>{% endif %}</div>
+      <div class="dest">{% if m.status == 'deleted' %}<span title="Trashed" aria-label="Trashed">""" + TRASH_SVG + """</span>{% elif m.route == 'drive' %}<form method="post" action="/open-drive"><button class="destlink" type="submit" title="Sent to Google Drive — open the Drive folder" aria-label="Sent to Google Drive — open the Drive folder">""" + DRIVE_SVG + """</button></form>{% else %}<span title="Sent to Notesnook" aria-label="Sent to Notesnook">""" + NOTESNOOK_SVG + """</span>{% endif %}</div>
       <div class="when">{{ m.processed_at }}</div>
-      <div class="acts">
-        <form method="post" action="/restore/{{ m.audio_filename }}"><button class="restore" type="submit">Restore</button></form>
-        <form method="post" action="/purge/{{ m.audio_filename }}" onsubmit="return confirm('Permanently delete this recording? This cannot be undone.');"><button class="purge" type="submit" title="Delete permanently">Delete</button></form>
-      </div>
+      <div><form method="post" action="/restore/{{ m.audio_filename }}"><button class="binbtn restore" type="submit">Restore</button></form></div>
+      <div><form method="post" action="/purge/{{ m.audio_filename }}" onsubmit="return confirm('Permanently delete this recording? This cannot be undone.');"><button class="binbtn purge" type="submit">Delete</button></form></div>
     </div>
     {% endfor %}
   </div>
   {% endif %}
+  </main>
 </body>
 </html>
 """
@@ -387,8 +377,9 @@ def _submitted_fields():
     }
 
 
-def create_app(service, inbox_dir, bin_dir):
+def create_app(service, inbox_dir, bin_dir, drive_dir=None, open_folder=None):
     app = Flask(__name__)
+    open_folder = open_folder or os.startfile  # Windows: opens the folder in Explorer
 
     @app.get("/")
     def index():
@@ -449,5 +440,12 @@ def create_app(service, inbox_dir, bin_dir):
     def restore_all():
         service.restore_all()
         return redirect("/bin")
+
+    @app.post("/open-drive")
+    def open_drive():
+        """Open the local Google Drive folder where music memos are filed."""
+        if drive_dir:
+            open_folder(drive_dir)
+        return ("", 204)
 
     return app

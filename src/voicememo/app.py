@@ -63,8 +63,9 @@ def build_app():
     inbox_dir = os.environ.get("VOICE_INBOX_DIR", DEFAULT_INBOX)
     db_path = os.environ.get("VOICE_DB", str(PROJECT_ROOT / "memos.db"))
     bin_dir = os.environ.get("VOICE_BIN_DIR", default_bin_dir(inbox_dir))
+    drive_base = os.environ.get("VOICE_DRIVE_BASE", DEFAULT_DRIVE_BASE)
     notesnook = NotesnookRouter(os.environ.get("NOTESNOOK_INBOX_API_KEY", ""))
-    drive = DriveMusicRouter(inbox_dir, os.environ.get("VOICE_DRIVE_BASE", DEFAULT_DRIVE_BASE))
+    drive = DriveMusicRouter(inbox_dir, drive_base)
     transcriber = Transcriber()
     service = ReviewService(
         inbox_dir=inbox_dir,
@@ -73,7 +74,7 @@ def build_app():
         bin_dir=bin_dir,
         route=Router(notesnook=notesnook, drive=drive),
     )
-    app = create_app(service, inbox_dir=inbox_dir, bin_dir=bin_dir)
+    app = create_app(service, inbox_dir=inbox_dir, bin_dir=bin_dir, drive_dir=drive_base)
 
     def warmup():
         """Load the model and transcribe any waiting memos so the first page is instant."""
