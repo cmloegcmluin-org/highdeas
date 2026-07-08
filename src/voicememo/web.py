@@ -36,26 +36,33 @@ TRASH_SVG = (
 
 # One stylesheet shared by the review and bin pages so their chrome is identical —
 # same title bar, top-right link, and header row — and nothing jumps when you flip
-# between them. Their grids share widths too: 300 | flex | a 334px middle band |
-# two 104px action columns, so only the middle band's contents differ per page.
+# between them. The two grids share widths too: a tiny row-number column, then
+# 300 | flex | a 334px middle band | two 104px action columns, so only the middle
+# band's contents differ per page.
 _STYLE = """<style>
   /* Reserve the scrollbar gutter on every page so a page with a scrollbar and one
      without stay the same width — otherwise margin:auto re-centers and the layout
      shifts sideways when you flip between the review and bin views. */
   :root { color-scheme: light dark; scrollbar-gutter: stable; }
   body { font-family: -apple-system, "Segoe UI", system-ui, sans-serif; max-width: 1300px;
-         margin: 0 auto; padding: 24px; line-height: 1.45; }
+         margin: 0 auto; padding: 0 24px 24px; line-height: 1.45; }
   h1 { font-size: 1.35rem; margin: 0; }
-  .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
+  #count { opacity: .55; font-weight: 400; }
+  /* The title bar and the column headers stay pinned while the rows scroll, so the
+     item count and the bulk (Submit/Trash/Restore/Empty) buttons are always in reach. */
+  .frozen { position: sticky; top: 0; z-index: 3; background: Canvas; padding-top: 24px; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
   .topbar a { color: #3b82f6; text-decoration: none; font-size: .9rem; }
   .empty { opacity: .7; padding: 48px 0; text-align: center; }
   .grid { display: grid; gap: 14px 18px; align-items: center; }
-  .grid.review { grid-template-columns: 300px minmax(220px, 1fr) 34px 200px 100px 104px 104px; }
-  .grid.bin    { grid-template-columns: 300px minmax(220px, 1fr) 170px 56px 108px 104px 104px; }
+  .grid.review { grid-template-columns: 26px 300px minmax(220px, 1fr) 34px 200px 100px 104px 104px; }
+  .grid.bin    { grid-template-columns: 26px 300px minmax(220px, 1fr) 170px 56px 108px 104px 104px; }
+  .grid.body { margin-top: 12px; }
   .grid .head { font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; opacity: .55;
                 display: flex; align-items: flex-end; min-height: 32px;
                 padding-bottom: 4px; border-bottom: 1px solid rgba(128,128,128,.25); }
   .grid .sep { grid-column: 1 / -1; border-top: 1px solid rgba(128,128,128,.18); }
+  .num { font-size: .8rem; opacity: .4; text-align: right; font-variant-numeric: tabular-nums; }
   /* Bulk actions live in their own column headers so they sit directly over the
      column they act on, instead of being pushed around by the topbar link. */
   .head form { width: 100%; margin: 0; }
@@ -119,6 +126,9 @@ _STYLE = """<style>
 </style>"""
 
 
+# The review page's frozen top: title bar (with the live item count) plus the
+# column headers that carry the bulk Submit/Trash buttons. Rendered with `memos`,
+# so the headers only appear when there's something to act on.
 _PAGE_HEAD = """<!doctype html>
 <html lang="en">
 <head>
@@ -128,15 +138,29 @@ _PAGE_HEAD = """<!doctype html>
 """ + _STYLE + """
 </head>
 <body>
-  <div class="topbar">
-    <h1>Highdeas</h1>
-    <a href="/bin">Bin →</a>
+  <div class="frozen">
+    <div class="topbar">
+      <h1>Highdeas <span id="count">— {{ memos|length }} item{{ 's' if memos|length != 1 else '' }}</span></h1>
+      <a href="/bin">Bin →</a>
+    </div>
+    {% if memos %}
+    <div class="grid review headrow">
+      <div class="head"></div>
+      <div class="head">Audio</div>
+      <div class="head">Transcript</div>
+      <div class="head"></div>
+      <div class="head">Name</div>
+      <div class="head">Route</div>
+      <div class="head"><button type="button" id="submit-all" class="head-btn">Submit all</button></div>
+      <div class="head"><button type="button" id="trash-all" class="head-btn">Trash all</button></div>
+    </div>
+    {% endif %}
   </div>
   <main id="content">"""
 
 
-# The reviewable-memo list on its own, so it can be rendered both inside the full
-# page and alone for the client's /pending poll (which splices in new rows).
+# The reviewable-memo rows alone, so they can be rendered both inside the full page
+# and returned bare for the client's /pending poll (which splices in new rows).
 CONTENT_HTML = """{% if not memos %}
     {% if incoming %}
     <p class="empty">Transcribing your memos…</p>
@@ -144,17 +168,11 @@ CONTENT_HTML = """{% if not memos %}
     <p class="empty">Nothing to review. Record a memo and it'll show up here.</p>
     {% endif %}
   {% else %}
-  <div class="grid review">
-    <div class="head">Audio</div>
-    <div class="head">Transcript</div>
-    <div class="head"></div>
-    <div class="head">Name</div>
-    <div class="head">Route</div>
-    <div class="head"><button type="button" id="submit-all" class="head-btn">Submit all</button></div>
-    <div class="head"><button type="button" id="trash-all" class="head-btn">Trash all</button></div>
+  <div class="grid review body">
     {% for m in memos %}
     {% if not loop.first %}<div class="sep"></div>{% endif %}
     <div class="memo" data-file="{{ m.audio_filename }}">
+      <div class="num">{{ loop.index }}</div>
       <audio controls src="/audio/{{ m.audio_filename }}"></audio>
       <textarea name="transcript" aria-label="Transcript">{{ m.transcript }}</textarea>
       <button type="button" class="copy" title="Move transcript into Name" aria-label="Move transcript into Name">&rsaquo;</button>
@@ -184,6 +202,20 @@ _PAGE_TAIL = """  </main>
   // re-adding anything here — otherwise an optimistically-removed row would flash
   // back in.
   var retired = {};
+  var countEl = document.getElementById('count');
+
+  function updateCount() {
+    if (!countEl) return;
+    var n = content.querySelectorAll('.memo').length;
+    countEl.textContent = '— ' + n + ' item' + (n === 1 ? '' : 's');
+  }
+
+  // Row numbers are a spreadsheet-style anchor, not IDs, so they always run 1..N
+  // in display order — renumber after anything is added or removed.
+  function renumber() {
+    var i = 0;
+    content.querySelectorAll('.memo .num').forEach(function (el) { el.textContent = ++i; });
+  }
 
   function urlFor(prefix, memo) { return prefix + encodeURIComponent(memo.dataset.file); }
 
@@ -212,6 +244,9 @@ _PAGE_TAIL = """  </main>
     p.textContent = "Nothing to review. Record a memo and it'll show up here.";
     content.innerHTML = '';
     content.appendChild(p);
+    var headrow = document.querySelector('.frozen .headrow');
+    if (headrow) headrow.remove();
+    updateCount();
   }
 
   function removeRow(memo) {
@@ -224,7 +259,8 @@ _PAGE_TAIL = """  </main>
       if (next && next.classList.contains('sep')) next.remove();
     }
     memo.remove();
-    if (grid && !grid.querySelector('.memo')) showEmpty();
+    if (grid && !grid.querySelector('.memo')) { showEmpty(); }
+    else { renumber(); updateCount(); }
   }
 
   function submitRow(memo) {
@@ -263,6 +299,8 @@ _PAGE_TAIL = """  </main>
   }
 
   content.querySelectorAll('.memo').forEach(wire);
+  renumber();
+  updateCount();
 
   var submitAll = document.getElementById('submit-all');
   if (submitAll) submitAll.addEventListener('click', function () {
@@ -300,12 +338,14 @@ _PAGE_TAIL = """  </main>
     });
     if (!fresh.length) return;
     var grid = content.querySelector('.grid');
-    if (!grid) { location.reload(); return; }  // empty page: reload to build the grid + bulk controls
+    if (!grid) { location.reload(); return; }  // empty page: reload to build the grid + frozen header
     fresh.forEach(function (memo) {
       grid.appendChild(sep());
       grid.appendChild(memo);
       wire(memo);
     });
+    renumber();
+    updateCount();
   }
 
   function poll() {
@@ -336,29 +376,37 @@ BIN_HTML = """<!doctype html>
 """ + _STYLE + """
 </head>
 <body>
-  <div class="topbar">
-    <h1>Bin — {{ memos|length }} item{{ 's' if memos|length != 1 else '' }}</h1>
-    <a href="/">← Back to review</a>
+  <div class="frozen">
+    <div class="topbar">
+      <h1>Bin <span id="count">— {{ memos|length }} item{{ 's' if memos|length != 1 else '' }}</span></h1>
+      <a href="/">← Back to review</a>
+    </div>
+    {% if memos %}
+    <div class="grid bin headrow">
+      <div class="head"></div>
+      <div class="head">Audio</div>
+      <div class="head">Transcript</div>
+      <div class="head">Name</div>
+      <div class="head">Where</div>
+      <div class="head">When</div>
+      <div class="head"><form method="post" action="/restore-all" onsubmit="return confirm('Restore all {{ memos|length }} item{{ 's' if memos|length != 1 else '' }} to the review page?');"><button class="head-btn restore-all" type="submit">Restore all</button></form></div>
+      <div class="head"><form method="post" action="/empty-bin" onsubmit="return confirm('Permanently delete all {{ memos|length }} item{{ 's' if memos|length != 1 else '' }}? This cannot be undone.');"><button class="head-btn empty-bin" type="submit">Empty bin</button></form></div>
+    </div>
+    {% endif %}
   </div>
   <main id="content">
   {% if not memos %}
     <p class="empty">Nothing in the bin. Submitted and deleted memos land here (kept for 90 days).</p>
   {% else %}
-  <div class="grid bin">
-    <div class="head">Audio</div>
-    <div class="head">Transcript</div>
-    <div class="head">Name</div>
-    <div class="head">Where</div>
-    <div class="head">When</div>
-    <div class="head"><form method="post" action="/restore-all" onsubmit="return confirm('Restore all {{ memos|length }} item{{ 's' if memos|length != 1 else '' }} to the review page?');"><button class="head-btn restore-all" type="submit">Restore all</button></form></div>
-    <div class="head"><form method="post" action="/empty-bin" onsubmit="return confirm('Permanently delete all {{ memos|length }} item{{ 's' if memos|length != 1 else '' }}? This cannot be undone.');"><button class="head-btn empty-bin" type="submit">Empty bin</button></form></div>
+  <div class="grid bin body">
     {% for m in memos %}
     {% if not loop.first %}<div class="sep"></div>{% endif %}
     <div class="row">
+      <div class="num">{{ loop.index }}</div>
       <audio controls src="/bin-audio/{{ m.audio_filename }}"></audio>
       <div class="text">{{ m.transcript }}</div>
       <div class="name">{{ m.name or m.audio_filename }}</div>
-      <div class="dest">{% if m.status == 'deleted' %}<span title="Trashed" aria-label="Trashed">""" + TRASH_SVG + """</span>{% elif m.route == 'drive' %}<a class="destlink" href="https://drive.google.com/drive/search?q={{ (m.name or m.audio_filename.rsplit('.', 1)[0]) | urlencode }}" target="_blank" rel="noopener" title="Sent to Google Drive — open in Drive" aria-label="Sent to Google Drive — open in Drive">""" + DRIVE_SVG + """</a>{% else %}<span title="Sent to Notesnook" aria-label="Sent to Notesnook">""" + NOTESNOOK_SVG + """</span>{% endif %}</div>
+      <div class="dest">{% if m.status == 'deleted' %}<span title="Trashed" aria-label="Trashed">""" + TRASH_SVG + """</span>{% elif m.route == 'drive' %}<a class="destlink" href="https://drive.google.com/drive/u/0/search?q={{ (m.name or m.audio_filename.rsplit('.', 1)[0]) | urlencode }}" target="_blank" rel="noopener" title="Sent to Google Drive — open in Drive" aria-label="Sent to Google Drive — open in Drive">""" + DRIVE_SVG + """</a>{% else %}<span title="Sent to Notesnook" aria-label="Sent to Notesnook">""" + NOTESNOOK_SVG + """</span>{% endif %}</div>
       <div class="when">{{ m.processed_at }}</div>
       <div><form method="post" action="/restore/{{ m.audio_filename }}"><button class="binbtn restore" type="submit">Restore</button></form></div>
       <div><form method="post" action="/purge/{{ m.audio_filename }}" onsubmit="return confirm('Permanently delete this recording? This cannot be undone.');"><button class="binbtn purge" type="submit">Delete</button></form></div>
@@ -395,7 +443,7 @@ def create_app(service, inbox_dir, bin_dir):
 
     @app.get("/pending")
     def pending():
-        """The review list alone — polled by the open page to pick up recordings
+        """The review rows alone — polled by the open page to pick up recordings
         that arrive after load, so the app stays current without a manual reload."""
         service.refresh()
         return render_template_string(CONTENT_HTML, memos=service.pending())

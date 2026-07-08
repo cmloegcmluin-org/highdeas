@@ -105,7 +105,32 @@ def test_index_bulk_controls_sit_in_the_column_headers(tmp_path):
     # left by the "Bin →" link.
     assert 'class="bulk"' not in body
     assert 'id="submit-all"' in body and 'id="trash-all"' in body
-    assert body.index('class="grid review"') < body.index('id="submit-all"')
+    assert body.index('grid review headrow') < body.index('id="submit-all"')
+
+
+def test_index_shows_the_live_item_count(tmp_path):
+    service = FakeService(pending=[
+        Memo(audio_filename="a.m4a", transcript="one"),
+        Memo(audio_filename="b.m4a", transcript="two"),
+    ])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data
+    # Same "— N items" the bin shows, in a span the client keeps current as rows change.
+    assert b'id="count"' in body
+    assert b"2 items" in body
+
+
+def test_review_rows_are_numbered(tmp_path):
+    service = FakeService(pending=[
+        Memo(audio_filename="a.m4a", transcript="one"),
+        Memo(audio_filename="b.m4a", transcript="two"),
+    ])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data
+    assert b'class="num">1</div>' in body
+    assert b'class="num">2</div>' in body
 
 
 def test_index_shows_a_transcribing_hint_while_recordings_await(tmp_path):
@@ -310,9 +335,21 @@ def test_bin_bulk_controls_sit_in_the_column_headers_and_confirm(tmp_path):
     # their columns, not in the topbar.
     assert 'action="/restore-all"' in body
     assert 'action="/empty-bin"' in body
-    assert body.index('class="grid bin"') < body.index('action="/restore-all"')
+    assert body.index('grid bin headrow') < body.index('action="/restore-all"')
     # Both bulk actions confirm first (restore-all is disruptive, empty-bin destroys).
     assert body.count("confirm(") >= 2
+
+
+def test_bin_rows_are_numbered(tmp_path):
+    service = FakeService(binned=[
+        Memo(audio_filename="a.m4a", status="deleted", processed_at="2026-07-07T03:00"),
+        Memo(audio_filename="b.m4a", status="processed", processed_at="2026-07-07T02:00"),
+    ])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/bin").data
+    assert b'class="num">1</div>' in body
+    assert b'class="num">2</div>' in body
 
 
 def test_purge_route_permanently_deletes_and_redirects(tmp_path):
@@ -377,9 +414,10 @@ def test_bin_drive_memo_icon_links_into_drive_in_the_browser(tmp_path):
     body = client.get("/bin").data.decode()
 
     # Only the Drive memo's icon is a browser link into Google Drive, opened in a
-    # new tab and deep-linked by the memo's name; trashed/Notesnook icons aren't links.
-    assert body.count("https://drive.google.com/drive/search?q=") == 1
-    assert "Song" in body.split("drive/search?q=")[1][:40]
+    # new tab, pinned to the primary account (/u/0/), and deep-linked by the memo's
+    # name; trashed/Notesnook icons aren't links.
+    assert body.count("https://drive.google.com/drive/u/0/search?q=") == 1
+    assert "Song" in body.split("search?q=")[1][:40]
     assert 'target="_blank"' in body
 
 
