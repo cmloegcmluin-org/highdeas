@@ -114,7 +114,7 @@ def test_router_skips_drive_when_not_configured():
     assert notesnook.routed == []
 
 
-def test_drive_router_moves_audio_into_dated_folder_and_writes_doc(tmp_path):
+def test_drive_router_copies_audio_into_dated_folder_and_writes_doc(tmp_path):
     inbox = tmp_path / "inbox"
     inbox.mkdir()
     drive = tmp_path / "drive"
@@ -131,7 +131,8 @@ def test_drive_router_moves_audio_into_dated_folder_and_writes_doc(tmp_path):
 
     folder = drive / "_2026_07_07_NOT_YET_PROCESSED_MUSIC"
     assert (folder / "Korok Dance.m4a").read_bytes() == b"AUDIO"
-    assert not (inbox / "voice-3.m4a").exists()
+    # The original stays in the inbox so the service also retires it to the local bin.
+    assert (inbox / "voice-3.m4a").read_bytes() == b"AUDIO"
     assert docs == [(folder / "Korok Dance.docx", "la la la")]
 
 
