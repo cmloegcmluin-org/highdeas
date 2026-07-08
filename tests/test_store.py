@@ -1,3 +1,4 @@
+import sqlite3
 import threading
 
 from voicememo.store import Memo, MemoStore
@@ -17,10 +18,33 @@ def test_upsert_then_get_roundtrips(tmp_path):
     assert store.get("voice-4.m4a") == memo
 
 
+def test_recorded_at_roundtrips(tmp_path):
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="a.m4a", recorded_at="2026-07-07T13:37:04"))
+
+    assert store.get("a.m4a").recorded_at == "2026-07-07T13:37:04"
+
+
 def test_get_unknown_returns_none(tmp_path):
     store = MemoStore(tmp_path / "memos.db")
 
     assert store.get("nope.m4a") is None
+
+
+def test_store_migrates_a_db_created_before_recorded_at_existed(tmp_path):
+    db = tmp_path / "memos.db"
+    legacy = sqlite3.connect(db)
+    legacy.execute(
+        "CREATE TABLE memos (audio_filename TEXT PRIMARY KEY, transcript TEXT, "
+        "name TEXT, route TEXT, status TEXT, created_at TEXT, processed_at TEXT)"
+    )
+    legacy.commit()
+    legacy.close()
+
+    store = MemoStore(db)  # opening the older DB must add the missing column
+    store.upsert(Memo(audio_filename="a.m4a", recorded_at="2026-07-07T13:37:04"))
+
+    assert store.get("a.m4a").recorded_at == "2026-07-07T13:37:04"
 
 
 def test_known_filenames_returns_stored_filenames(tmp_path):

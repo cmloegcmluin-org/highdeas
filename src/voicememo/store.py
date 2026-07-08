@@ -12,6 +12,7 @@ class Memo:
     route: str = "notesnook"
     status: str = "pending"
     created_at: str = ""
+    recorded_at: str = ""
     processed_at: str = ""
 
 
@@ -34,6 +35,10 @@ class MemoStore:
             self._conn.execute(
                 f"CREATE TABLE IF NOT EXISTS memos ({columns}, PRIMARY KEY (audio_filename))"
             )
+            present = {row["name"] for row in self._conn.execute("PRAGMA table_info(memos)")}
+            for column in _COLUMNS:
+                if column not in present:
+                    self._conn.execute(f"ALTER TABLE memos ADD COLUMN {column} TEXT")
             self._conn.commit()
 
     def upsert(self, memo):
