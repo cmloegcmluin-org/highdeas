@@ -18,6 +18,18 @@ DEFAULT_INBOX = r"C:\Users\Douglas\iCloudDrive\iCloud~is~workflow~my~workflows\V
 DEFAULT_DRIVE_BASE = r"G:\My Drive\voice memos (top level)"
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
+
+def default_bin_dir(inbox_dir):
+    """Where retired recordings go, kept beside the inbox on purpose.
+
+    Submit and Trash move a recording from the inbox to the bin. If the bin sits
+    outside the inbox's iCloud folder, that move drags the file off iCloud, and
+    iCloud Drive on Windows pops a per-file "move to this PC" confirmation for
+    every action — and a cancelled/hung move leaves the file behind to be
+    re-ingested. Keeping the bin a sibling of the inbox means the move stays
+    within iCloud: silent, and it actually completes."""
+    return str(Path(inbox_dir).parent / "VoiceBin")
+
 APP_NAME = "Highdeas"
 APP_ICON = PROJECT_ROOT / "voicememo.ico"
 
@@ -50,7 +62,7 @@ def build_app():
     load_dotenv(PROJECT_ROOT / ".env")
     inbox_dir = os.environ.get("VOICE_INBOX_DIR", DEFAULT_INBOX)
     db_path = os.environ.get("VOICE_DB", str(PROJECT_ROOT / "memos.db"))
-    bin_dir = os.environ.get("VOICE_BIN_DIR", str(PROJECT_ROOT / "bin"))
+    bin_dir = os.environ.get("VOICE_BIN_DIR", default_bin_dir(inbox_dir))
     notesnook = NotesnookRouter(os.environ.get("NOTESNOOK_INBOX_API_KEY", ""))
     drive = DriveMusicRouter(inbox_dir, os.environ.get("VOICE_DRIVE_BASE", DEFAULT_DRIVE_BASE))
     transcriber = Transcriber()
