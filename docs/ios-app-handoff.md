@@ -77,6 +77,24 @@ Server binding today (`src/highdeas/app.py`): desktop mode runs Flask on a **ran
 loopback-only port** behind the native window; browser mode on `127.0.0.1:HIGHDEAS_PORT`
 (default 5000). Nothing is reachable from the LAN yet.
 
+## The wire contract (as built, 2026-07-10)
+
+`POST /upload` — multipart form, one file field named **`audio`**, header
+**`Authorization: Bearer <HIGHDEAS_UPLOAD_TOKEN>`**. Responses: **201**
+`{"stored": "<keyed filename>"}` on first receipt; **200** same body when the
+server already has it (retry of a landed upload); **400** no/empty file; **401**
+missing/bad token; **413** body over 1GB; **415** suffix not in
+`AUDIO_EXTENSIONS`. Any 2xx means durably stored — the phone may delete. 4xx
+means retrying won't help (fix settings / drop the file); everything else
+retries with backoff.
+
+Known limitation, accepted for v1: retry dedupe rides `recording_key`, whose
+fingerprint falls back to file mtime for formats without an embedded
+`moov/mvhd` time (.wav/.mp3/.aac/.caf/.aiff). A retried non-m4a upload whose
+2xx was lost re-lands under a fresh key as a duplicate memo. Our client only
+sends m4a (AVAudioRecorder stamps the container), so this bites only foreign
+clients; fixing it would mean changing the fingerprint scheme itself.
+
 ## Workstream 1 — server (Python, this repo, strict TDD)
 
 1. **`POST /upload`** on the Flask app: multipart audio file, auth via a shared token
