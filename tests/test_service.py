@@ -538,24 +538,75 @@ def test_has_incoming_is_false_when_the_inbox_is_drained(tmp_path):
     assert service.has_incoming() is False
 
 
-def test_group_remembers_what_it_folded_so_it_can_be_broken_back_up(tmp_path):
-    # Grouping is reversible, so it has to keep what it consumed: which notes went in,
-    # and the note the survivor was before its own text became the first bullet.
+def test_group_keeps_a_trail_of_the_merges_it_swallowed(tmp_path):
+    # Each merge is walked back on its own, so each leaves its own entry: the notes it
+    # took in, and the memo as it read before it took them.
     inbox = tmp_path / "inbox"
     inbox.mkdir()
-    (inbox / "a.m4a").write_bytes(b"A")
-    (inbox / "b.m4a").write_bytes(b"B")
+    for name in ("a.m4a", "b.m4a", "c.m4a"):
+        (inbox / name).write_bytes(name.encode())
     store = MemoStore(tmp_path / "memos.db")
     store.upsert(Memo(audio_filename="a.m4a", name="Verse", transcript="one",
                       recorded_at="2026-07-10T01:00"))
     store.upsert(Memo(audio_filename="b.m4a", transcript="two", recorded_at="2026-07-10T02:00"))
+    store.upsert(Memo(audio_filename="c.m4a", transcript="three", recorded_at="2026-07-10T03:00"))
 
     service = InboxService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
                             bin_dir=tmp_path / "bin", clock=lambda: "T")
     service.group(["a.m4a", "b.m4a"])
+    service.group(["a.m4a", "c.m4a"])
 
-    assert store.get("b.m4a").group_of == "a.m4a"
-    assert json.loads(store.get("a.m4a").pre_group) == {"name": "Verse", "transcript": "one"}
+    assert json.loads(store.get("a.m4a").merges) == [
+        {"files": ["b.m4a"], "kind": "note", "name": "Verse", "transcript": "one"},
+        {"files": ["c.m4a"], "kind": "group", "name": "", "transcript": "- Verse: one\n- two"},
+    ]
+
+
+def test_unmerge_walks_back_the_last_merge_and_leaves_the_ones_before_it(tmp_path):
+    # Undo has to step back one merge at a time. Walking back the note dragged into a
+    # group must not dissolve the group the merges before it built.
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    for name in ("a.m4a", "b.m4a", "c.m4a"):
+        (inbox / name).write_bytes(name.encode())
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="a.m4a", transcript="one", recorded_at="2026-07-10T01:00"))
+    store.upsert(Memo(audio_filename="b.m4a", transcript="two", recorded_at="2026-07-10T02:00"))
+    store.upsert(Memo(audio_filename="c.m4a", transcript="three", recorded_at="2026-07-10T03:00"))
+
+    service = InboxService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
+                            bin_dir=tmp_path / "bin", clock=lambda: "T")
+    service.group(["a.m4a", "b.m4a"])
+    service.group(["a.m4a", "c.m4a"])
+
+    service.unmerge("a.m4a")
+
+    group = store.get("a.m4a")
+    assert group.kind == "group"                       # still the group b was folded into
+    assert group.transcript == "- one\n- two"
+    assert [m.audio_filename for m in service.pending()] == ["a.m4a", "c.m4a"]
+    assert (inbox / "c.m4a").exists()
+
+    service.unmerge("a.m4a")
+
+    note = store.get("a.m4a")
+    assert (note.kind, note.transcript, note.merges) == ("note", "one", "")
+    assert [m.audio_filename for m in service.pending()] == ["a.m4a", "b.m4a", "c.m4a"]
+
+
+def test_unmerge_refuses_a_memo_that_is_not_a_group(tmp_path):
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="a.m4a", transcript="one"))
+
+    service = InboxService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
+                            bin_dir=tmp_path / "bin", clock=lambda: "T")
+
+    with pytest.raises(ValueError):
+        service.unmerge("a.m4a")
+
+    assert store.get("a.m4a").transcript == "one"
 
 
 def test_ungroup_breaks_a_group_back_into_its_separate_notes(tmp_path):
@@ -579,19 +630,19 @@ def test_ungroup_breaks_a_group_back_into_its_separate_notes(tmp_path):
     assert [m.audio_filename for m in service.pending()] == ["a.m4a", "b.m4a"]
     survivor = store.get("a.m4a")
     assert (survivor.kind, survivor.name, survivor.transcript) == ("note", "Verse", "one")
-    assert survivor.pre_group == ""
+    assert survivor.merges == ""
     absorbed = store.get("b.m4a")
     assert (absorbed.status, absorbed.name, absorbed.transcript) == ("pending", "Chorus", "two")
-    assert absorbed.group_of == ""
     # Its recording is playable again from the inbox, and gone from the bin.
     assert (inbox / "b.m4a").read_bytes() == b"B"
     assert service.binned() == []
 
 
-def test_ungroup_keeps_the_text_of_a_group_that_never_recorded_the_note_it_was(tmp_path):
-    # A group folded before grouping learned to remember what it consumed has no note to
-    # hand back. Breaking it up frees the notes it holds and leaves its bullets where they
-    # are — an absent snapshot must not be read as an empty name and an empty transcript.
+def test_ungroup_keeps_the_text_of_a_group_that_kept_no_trail(tmp_path):
+    # A group folded before the trail existed has no merge to walk back. Breaking it up
+    # only stops it being a group, leaving its bullets where they are — an absent trail
+    # must not be read as an empty name and an empty transcript. Its notes stay in the
+    # bin, restorable one at a time.
     inbox = tmp_path / "inbox"
     inbox.mkdir()
     bin_dir = tmp_path / "bin"
@@ -601,7 +652,7 @@ def test_ungroup_keeps_the_text_of_a_group_that_never_recorded_the_note_it_was(t
     store.upsert(Memo(audio_filename="g.m4a", kind="group", name="Song ideas",
                       transcript="- one\n- two", recorded_at="2026-07-10T01:00"))
     store.upsert(Memo(audio_filename="b.m4a", transcript="two", status="grouped",
-                      group_of="g.m4a", recorded_at="2026-07-10T02:00"))
+                      processed_at="2026-07-10T05:00", recorded_at="2026-07-10T02:00"))
 
     service = InboxService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
                             bin_dir=bin_dir, clock=lambda: "T")
@@ -609,7 +660,7 @@ def test_ungroup_keeps_the_text_of_a_group_that_never_recorded_the_note_it_was(t
 
     survivor = store.get("g.m4a")
     assert (survivor.kind, survivor.name, survivor.transcript) == ("note", "Song ideas", "- one\n- two")
-    assert store.get("b.m4a").status == "pending"
+    assert [m.audio_filename for m in service.binned()] == ["b.m4a"]
 
 
 def test_ungroup_refuses_a_memo_that_is_not_a_group(tmp_path):
@@ -650,9 +701,9 @@ def test_ungroup_returns_a_note_dragged_into_an_existing_group(tmp_path):
     assert [m.transcript for m in service.pending()] == ["one", "two", "three"]
 
 
-def test_restoring_an_absorbed_note_from_the_bin_unlinks_it_from_its_group(tmp_path):
-    # Restore is the other way back out of a group. A note that has already walked it
-    # must not still answer to the group, or breaking that group up would claim it twice.
+def test_a_note_restored_from_the_bin_is_not_claimed_again_when_its_group_breaks_up(tmp_path):
+    # Restore is the other way back out of a group. A note that has already walked it must
+    # come back once, not twice, when the group it left is broken up behind it.
     inbox = tmp_path / "inbox"
     inbox.mkdir()
     (inbox / "a.m4a").write_bytes(b"A")
@@ -665,10 +716,10 @@ def test_restoring_an_absorbed_note_from_the_bin_unlinks_it_from_its_group(tmp_p
                             bin_dir=tmp_path / "bin", clock=lambda: "T")
     service.group(["a.m4a", "b.m4a"])
     service.restore("b.m4a")  # restore re-keys it by content on the way back in
+    service.ungroup("a.m4a")
 
-    restored = next(m for m in service.pending() if m.transcript == "two")
-    assert restored.group_of == ""
-    assert store.list_grouped_into("a.m4a") == []
+    assert sorted(m.transcript for m in service.pending()) == ["one", "two"]
+    assert service.binned() == []
 
 
 def test_group_merges_the_selected_notes_into_one_bulleted_group(tmp_path):
