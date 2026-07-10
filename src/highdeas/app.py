@@ -16,7 +16,7 @@ from highdeas.transcribe import Transcriber
 from highdeas.web import create_app
 from highdeas.window_state import WindowGeometryTracker, load_geometry
 
-DEFAULT_INBOX = r"C:\Users\Douglas\iCloudDrive\iCloud~is~workflow~my~workflows\VoiceInbox"
+DEFAULT_INBOX = r"C:\Users\Douglas\iCloudDrive\iCloud~is~workflow~my~workflows\Highdeas"
 DEFAULT_DRIVE_BASE = r"G:\My Drive\voice memos (top level)"
 DEFAULT_CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -31,7 +31,7 @@ def default_bin_dir(inbox_dir):
     every action — and a cancelled/hung move leaves the file behind to be
     re-ingested. Keeping the bin a sibling of the inbox means the move stays
     within iCloud: silent, and it actually completes."""
-    return str(Path(inbox_dir).parent / "VoiceBin")
+    return str(Path(inbox_dir).parent / "Highdeas Bin")
 
 APP_NAME = "Highdeas"
 # Windows taskbar identity. Must stay byte-for-byte identical to the

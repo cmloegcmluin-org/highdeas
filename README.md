@@ -8,8 +8,8 @@ recording.
 ## How it works
 
 1. **Capture** — an iOS Shortcut records audio and drops it into iCloud Drive
-   (`VoiceInbox/`), which iCloud for Windows mirrors to this PC. No Voice Memos app,
-   no manual upload.
+   (`Shortcuts/Highdeas/`), which iCloud for Windows mirrors to this PC. No Voice Memos
+   app, no manual upload.
 2. **Ingest** — the app watches the inbox and adopts each new recording under a
    content-unique name, so a recycled inbox filename can never collide with a past memo.
 3. **Transcribe** — each recording is transcribed locally (`onnx-asr`, CPU), along with
@@ -84,9 +84,9 @@ Everything but the Notesnook key is optional. Set these in `.env`.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `NOTESNOOK_INBOX_API_KEY` | — | Auth for posting notes to Notesnook. |
-| `VOICE_INBOX_DIR` | iCloud `VoiceInbox` | Folder the iOS Shortcut drops recordings into. |
+| `VOICE_INBOX_DIR` | iCloud `Shortcuts/Highdeas` | Folder the iOS Shortcut drops recordings into. |
 | `VOICE_DRIVE_BASE` | `G:\My Drive\voice memos (top level)` | Where music-routed audio is filed. |
-| `VOICE_BIN_DIR` | `VoiceBin` beside the inbox | Where retired recordings wait (recoverable for 90 days). |
+| `VOICE_BIN_DIR` | `Highdeas Bin` beside the inbox | Where retired recordings wait (recoverable for 90 days). |
 | `VOICE_DB` | `memos.db` in this folder | SQLite store of memo state. |
 | `VOICE_CHROME_EXE` / `VOICE_CHROME_PROFILE` | system Chrome / `Default` | Chrome + profile used to open Drive links. |
 | `VOICE_DESKTOP` | `1` | `1` = native window, `0` = plain browser. |
