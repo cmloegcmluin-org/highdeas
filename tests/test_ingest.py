@@ -1,7 +1,7 @@
 import os
-import struct
 from datetime import datetime
 
+from audio_files import box as _box, mp4 as _mp4, mvhd as _mvhd
 from highdeas.ingest import (
     NewRecording,
     find_new_recordings,
@@ -16,29 +16,6 @@ from highdeas.ingest import (
 _RECALL_ON_DATA_ACCESS = 0x0040_0000
 _PINNED = 0x0008_0000
 _UNPINNED = 0x0010_0000
-
-# Seconds between the MP4 epoch (1904-01-01 UTC) and the Unix epoch (1970-01-01 UTC).
-_MP4_TO_UNIX = 2082844800
-
-
-def _box(box_type, payload):
-    return struct.pack(">I", 8 + len(payload)) + box_type + payload
-
-
-def _mvhd(creation_seconds, *, version=0):
-    head = bytes([version, 0, 0, 0])  # version + 3 flag bytes
-    if version == 1:
-        stamp = struct.pack(">Q", creation_seconds) + b"\x00" * 20
-    else:
-        stamp = struct.pack(">I", creation_seconds) + b"\x00" * 12
-    return _box(b"mvhd", head + stamp)
-
-
-def _mp4(unix_seconds, *, version=0, moov_first=True):
-    ftyp = _box(b"ftyp", b"isom")
-    moov = _box(b"moov", _mvhd(unix_seconds + _MP4_TO_UNIX, version=version))
-    mdat = _box(b"mdat", b"\x00" * 16)
-    return ftyp + moov + mdat if moov_first else ftyp + mdat + moov
 
 
 def _local_iso(unix_seconds):
