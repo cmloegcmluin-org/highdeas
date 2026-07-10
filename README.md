@@ -111,6 +111,32 @@ right away. Set `HIGHDEAS_DESKTOP=0` to force plain-browser mode.
 4. **Paths** — if your inbox or Drive folders differ from the defaults, set
    `HIGHDEAS_INBOX_DIR` and `HIGHDEAS_DRIVE_BASE` in `.env`.
 
+## Phone uploads (iOS app)
+
+The iOS capture app (in `ios/`) pushes each recording straight to this PC over the
+home Wi-Fi — no iCloud mirror, no hours-late sync. One-time setup on the PC:
+
+1. **Set the shared token.** In `.env`, set `HIGHDEAS_UPLOAD_TOKEN` to any long
+   random string (e.g. the output of `openssl rand -hex 32`, or in PowerShell:
+   `-join ((1..32) | ForEach-Object { '{0:x2}' -f (Get-Random -Max 256) })`). The
+   upload listener stays off until this is set. Restart Highdeas afterwards.
+2. **Allow the upload port through Windows Firewall** (one time, admin PowerShell):
+
+       New-NetFirewallRule -DisplayName "Highdeas upload" -Direction Inbound `
+         -Action Allow -Protocol TCP -LocalPort 5055 -Profile Private
+
+   (Use your `HIGHDEAS_UPLOAD_PORT` if you changed it. `-Profile Private` keeps the
+   rule off public networks.)
+3. **Find the PC's LAN address:** `ipconfig`, then the *IPv4 Address* of the active
+   Wi-Fi/Ethernet adapter (e.g. `192.168.1.23`). Consider reserving that address for
+   the PC in your router's DHCP settings so it doesn't drift.
+4. **Point the phone at it:** in the app's settings screen enter the server URL
+   `http://<that address>:5055` and the same token.
+
+Only `POST /upload` is reachable from the network — the inbox page and its
+submit/delete routes stay loopback-only. Recordings made away from home simply wait
+in the app's retry queue until the phone is back on the home Wi-Fi.
+
 ## Configuration
 
 Everything but the keys for the destinations you use is optional. Set these in `.env`.
@@ -136,8 +162,9 @@ Everything but the keys for the destinations you use is optional. Set these in `
 
 ## Not yet wired
 
-- A native iOS capture app that records and pushes straight to this server instead of
-  waiting on the iCloud mirror. Scoped and handed off in `docs/ios-app-handoff.md`.
+- The iOS capture app itself (`ios/`) — the server side of it (`POST /upload`, the
+  LAN listener, the setup steps above) is in; the app is being built against it.
+  Scope and decisions live in `docs/ios-app-handoff.md`.
 - Grouping a multi-clip memo into one shared numbered doc.
 - A single-file standalone `.exe`. The taskbar shortcut still launches through the
   project's `.venv` (`pythonw run_highdeas.py`), so this folder and its virtualenv need
