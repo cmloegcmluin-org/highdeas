@@ -25,6 +25,15 @@ def _word_times(words):
     return json.dumps([[word.start, word.text] for word in words], separators=(",", ":"))
 
 
+def _bullet(memo):
+    """One consolidated note as a bullet: its name, colon, then its transcript."""
+    text = memo.transcript.strip()
+    name = memo.name.strip()
+    if name and text:
+        return f"- {name}: {text}"
+    return f"- {name or text}"
+
+
 class InboxService:
     def __init__(self, *, inbox_dir, store, transcriber, bin_dir,
                  find_new=find_new_recordings, route=_no_router, clock=_now,
@@ -62,7 +71,7 @@ class InboxService:
         # it — hanging "Back to inbox" (or 500ing) and spawning a duplicate row.
         # Restore now re-keys incoming files, but a legacy raw-named memo left
         # sitting pending in the inbox never passes through restore; guard it here.
-        pending = {memo.audio_filename for memo in self._store.list_by_status("pending")}
+        pending = {memo.audio_filename for memo in self._store.list_pending()}
         for recording in self._find_new(self._inbox_dir, self._store.known_filenames()):
             if recording.source.name in pending:
                 continue
@@ -85,7 +94,7 @@ class InboxService:
                 print(f"Highdeas: skipping {recording.name} this pass ({exc}).")
 
     def pending(self):
-        return self._store.list_by_status("pending")
+        return self._store.list_pending()
 
     def has_incoming(self):
         """True when the inbox holds recordings not yet in the store, so a freshly
@@ -95,11 +104,10 @@ class InboxService:
         return bool(self._find_new(self._inbox_dir, self._store.known_filenames()))
 
     def binned(self):
-        """Processed/deleted memos whose recording sits in the local bin, newest first."""
+        """Retired memos whose recording sits in the local bin, newest first."""
         bin_path = Path(self._bin_dir)
         present = {p.name for p in bin_path.iterdir()} if bin_path.exists() else set()
-        retired = self._store.list_by_status("processed") + self._store.list_by_status("deleted")
-        in_bin = [memo for memo in retired if memo.audio_filename in present]
+        in_bin = [memo for memo in self._store.list_retired() if memo.audio_filename in present]
         return sorted(in_bin, key=lambda memo: memo.processed_at, reverse=True)
 
     def edit(self, audio_filename, **fields):
@@ -109,14 +117,40 @@ class InboxService:
         """Fix the inbox to the order the user dragged its rows into."""
         self._store.reorder(audio_filenames)
 
+    def group(self, audio_filenames):
+        """Consolidate the named pending notes into a single group memo.
+
+        The notes become bullets, in inbox order rather than the order they were
+        picked. An already-grouped note among them is the survivor — the others fold
+        into its existing bullets — otherwise the topmost note is promoted to a group
+        and its own name and transcript become the first bullet, leaving the group
+        free to be titled. The absorbed notes retire to the bin, still restorable."""
+        chosen = [m for m in self.pending() if m.audio_filename in set(audio_filenames)]
+        if len(chosen) < 2:
+            raise ValueError("Grouping needs at least two notes still in the inbox.")
+        groups = [memo for memo in chosen if memo.kind == "group"]
+        if len(groups) > 1:
+            raise ValueError("Two groups have no obvious survivor; merge into one at a time.")
+        target = groups[0] if groups else chosen[0]
+        absorbed = [memo for memo in chosen if memo is not target]
+        # A note promoted to a group starts as a group holding one bullet: its own.
+        head, promotion = ((target.transcript.rstrip(), {}) if target.kind == "group"
+                           else (_bullet(target), {"kind": "group", "name": ""}))
+        self._store.update(
+            target.audio_filename,
+            transcript="\n".join([head, *(_bullet(memo) for memo in absorbed)]),
+            **promotion,
+        )
+        for memo in absorbed:
+            self._retire(memo.audio_filename, "grouped")
+        return self._store.get(target.audio_filename)
+
     def submit(self, audio_filename):
         self._route(self._store.get(audio_filename))
-        self._retire_audio(audio_filename)
-        self._store.update(audio_filename, status="processed", processed_at=self._clock())
+        self._retire(audio_filename, "processed")
 
     def delete(self, audio_filename):
-        self._retire_audio(audio_filename)
-        self._store.update(audio_filename, status="deleted", processed_at=self._clock())
+        self._retire(audio_filename, "deleted")
 
     def restore(self, audio_filename):
         """Bring a binned recording back into the inbox as a pending memo.
@@ -164,7 +198,7 @@ class InboxService:
         """Forget bin items older than the retention window: delete the audio and the record."""
         cutoff = datetime.fromisoformat(self._clock()) - timedelta(days=retention_days)
         bin_dir = Path(self._bin_dir)
-        for memo in self._store.list_by_status("processed") + self._store.list_by_status("deleted"):
+        for memo in self._store.list_retired():
             if memo.processed_at and datetime.fromisoformat(memo.processed_at) < cutoff:
                 audio = bin_dir / memo.audio_filename
                 if audio.exists():
@@ -181,12 +215,17 @@ class InboxService:
             source.replace(target)
         return target
 
-    def _retire_audio(self, audio_filename):
-        """Move the recording from the inbox into the bin. Both routes leave it in
-        the inbox for this step (Notesnook never touches the file, Drive copies it),
-        so it lands in the bin either way; guard in case it's somehow already gone."""
+    def _retire(self, audio_filename, status):
+        """Take a memo out of the inbox: its recording moves to the bin and it stops
+        being pending. Submitting, trashing, and grouping differ only in the status
+        they leave behind, which the bin reads back as where the memo went.
+
+        Both routes leave the recording in the inbox for this step (Notesnook never
+        touches the file, Drive copies it), so it lands in the bin either way; guard in
+        case it's somehow already gone."""
         source = Path(self._inbox_dir) / audio_filename
         if source.exists():
             bin_dir = Path(self._bin_dir)
             bin_dir.mkdir(parents=True, exist_ok=True)
             shutil.move(str(source), str(bin_dir / audio_filename))
+        self._store.update(audio_filename, status=status, processed_at=self._clock())

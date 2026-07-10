@@ -2,6 +2,8 @@ import json
 import threading
 from pathlib import Path
 
+import pytest
+
 from highdeas.ingest import NewRecording, recording_key
 from highdeas.service import InboxService
 from highdeas.store import Memo, MemoStore
@@ -38,7 +40,7 @@ def test_refresh_adopts_new_recordings_into_pending_under_their_content_key(tmp_
 
     service.refresh()
 
-    assert {m.audio_filename for m in store.list_by_status("pending")} == {
+    assert {m.audio_filename for m in store.list_pending()} == {
         "voice-aaaaaaaaaaaa.m4a", "voice-2-bbbbbbbbbbbb.m4a"}
     # Each raw inbox file is renamed to its content key.
     assert (inbox / "voice-aaaaaaaaaaaa.m4a").exists()
@@ -107,7 +109,7 @@ def test_refresh_isolates_a_failing_recording_so_the_rest_still_ingest(tmp_path)
     )
     service.refresh()
 
-    pending = {m.audio_filename for m in store.list_by_status("pending")}
+    pending = {m.audio_filename for m in store.list_pending()}
     assert "good-bbbbbbbbbbbb.m4a" in pending  # ingested despite the earlier failure
     assert "bad-aaaaaaaaaaaa.m4a" not in pending  # the bad one is skipped, not stored
 
@@ -132,7 +134,7 @@ def test_refresh_surfaces_a_new_recording_that_reuses_a_retired_memos_name(tmp_p
                             clock=lambda: "2026-07-07T02:00")
     service.refresh()
 
-    pending = store.list_by_status("pending")
+    pending = store.list_pending()
     assert len(pending) == 1
     new_name = pending[0].audio_filename
     # The new recording surfaces under its own content key, not the recycled name.
@@ -281,7 +283,7 @@ def test_restore_moves_audio_back_to_inbox_and_marks_pending(tmp_path):
 
     InboxService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(), bin_dir=bin_dir).restore("a.m4a")
 
-    pending = store.list_by_status("pending")
+    pending = store.list_pending()
     assert len(pending) == 1
     memo = pending[0]
     assert memo.processed_at == ""
@@ -307,7 +309,7 @@ def test_restore_drops_a_memos_old_position_so_it_lands_at_the_end(tmp_path):
 
     # Restore re-keys the recording, so identify it by what it isn't: it trails the
     # memo that stayed, instead of reclaiming its old leading slot.
-    pending = store.list_by_status("pending")
+    pending = store.list_pending()
     assert len(pending) == 2
     assert pending[0].audio_filename == "here.m4a"
 
@@ -330,7 +332,7 @@ def test_restoring_a_legacy_named_memo_does_not_duplicate_it_on_the_next_refresh
     service.restore("voice-9.m4a")
     service.refresh()  # the page reload that re-scans the inbox
 
-    pending = store.list_by_status("pending")
+    pending = store.list_pending()
     assert len(pending) == 1  # one memo restored, not two copies
     memo = pending[0]
     assert memo.transcript == "an idea"  # the original memo, not a fresh re-ingest
@@ -359,7 +361,7 @@ def test_restoring_a_legacy_memo_whose_content_key_twin_exists_converges_them(tm
 
     # They converge onto the single keyed memo; the raw duplicate is dropped.
     assert store.get("voice-9.m4a") is None
-    assert [m.audio_filename for m in store.list_by_status("pending")] == [key]
+    assert [m.audio_filename for m in store.list_pending()] == [key]
     assert store.get(key).transcript == "the idea"  # the kept memo, with its edits
     assert (inbox / key).read_bytes() == b"SAME-RECORDING"
 
@@ -446,7 +448,7 @@ def test_restore_all_returns_every_binned_item_to_the_inbox(tmp_path):
 
     service.restore_all()
 
-    assert len(store.list_by_status("pending")) == 2
+    assert len(store.list_pending()) == 2
     assert service.binned() == []
     assert sum(1 for _ in inbox.iterdir()) == 2  # both recordings back in the inbox
 
@@ -492,7 +494,7 @@ def test_concurrent_refreshes_transcribe_each_recording_once(tmp_path):
     first.join(timeout=2)
 
     assert transcriber.calls == 1
-    assert len(store.list_by_status("pending")) == 1
+    assert len(store.list_pending()) == 1
 
 
 def test_has_incoming_is_true_when_the_inbox_holds_an_untranscribed_recording(tmp_path):
@@ -514,6 +516,165 @@ def test_has_incoming_is_false_when_the_inbox_is_drained(tmp_path):
                             transcriber=FakeTranscriber(), bin_dir=tmp_path / "bin")
 
     assert service.has_incoming() is False
+
+
+def test_group_merges_the_selected_notes_into_one_bulleted_group(tmp_path):
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="a.m4a", transcript="first idea", recorded_at="2026-07-08T01:00"))
+    store.upsert(Memo(audio_filename="b.m4a", transcript="second idea", name="Chorus",
+                      recorded_at="2026-07-08T02:00"))
+
+    service = InboxService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
+                            bin_dir=tmp_path / "bin", clock=lambda: "2026-07-08T09:00")
+    service.group(["a.m4a", "b.m4a"])
+
+    group = store.get("a.m4a")
+    assert group.kind == "group"
+    # Every consolidated note becomes a bullet; a named note prefixes its name with a
+    # colon. Both routers already turn "- " lines into real lists (see routers.py).
+    assert group.transcript == "- first idea\n- Chorus: second idea"
+
+
+def test_group_retires_the_absorbed_recordings_to_the_bin(tmp_path):
+    # The group keeps its own recording and stays in the inbox; the notes merged into
+    # it leave, their audio moving to the bin so it's still playable and restorable.
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    bin_dir = tmp_path / "bin"
+    (inbox / "a.m4a").write_bytes(b"A")
+    (inbox / "b.m4a").write_bytes(b"B")
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="a.m4a", transcript="one", recorded_at="2026-07-08T01:00"))
+    store.upsert(Memo(audio_filename="b.m4a", transcript="two", recorded_at="2026-07-08T02:00"))
+
+    service = InboxService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
+                            bin_dir=bin_dir, clock=lambda: "2026-07-08T09:00")
+    service.group(["a.m4a", "b.m4a"])
+
+    assert [m.audio_filename for m in service.pending()] == ["a.m4a"]
+    assert (inbox / "a.m4a").exists()
+    absorbed = store.get("b.m4a")
+    assert absorbed.status == "grouped"
+    assert absorbed.processed_at == "2026-07-08T09:00"
+    assert (bin_dir / "b.m4a").read_bytes() == b"B"
+    assert not (inbox / "b.m4a").exists()
+
+
+def test_group_consolidates_into_an_existing_group_rather_than_starting_a_new_one(tmp_path):
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="a.m4a", transcript="loose note", recorded_at="2026-07-08T01:00"))
+    store.upsert(Memo(audio_filename="g.m4a", kind="group", name="Song ideas",
+                      transcript="- one\n- two", recorded_at="2026-07-08T02:00"))
+
+    service = InboxService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
+                            bin_dir=tmp_path / "bin", clock=lambda: "2026-07-08T09:00")
+    service.group(["a.m4a", "g.m4a"])
+
+    # The existing group survives — bullets appended, its own name and text untouched —
+    # even though the loose note sits above it in the inbox.
+    group = store.get("g.m4a")
+    assert group.transcript == "- one\n- two\n- loose note"
+    assert group.name == "Song ideas"
+    assert store.get("a.m4a").status == "grouped"
+
+
+def test_a_new_group_folds_its_first_notes_name_into_a_bullet_and_starts_unnamed(tmp_path):
+    # The surviving note's own name becomes part of its bullet, so the fresh group has
+    # no name of its own — it's the title of the consolidated note, waiting to be typed.
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="a.m4a", name="Verse", transcript="one",
+                      recorded_at="2026-07-08T01:00"))
+    store.upsert(Memo(audio_filename="b.m4a", transcript="two", recorded_at="2026-07-08T02:00"))
+
+    service = InboxService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
+                            bin_dir=tmp_path / "bin", clock=lambda: "T")
+    service.group(["a.m4a", "b.m4a"])
+
+    group = store.get("a.m4a")
+    assert group.name == ""
+    assert group.transcript == "- Verse: one\n- two"
+
+
+def test_group_does_not_leave_a_blank_line_when_the_group_text_ends_in_a_newline(tmp_path):
+    # The group's transcript is edited by hand in the editor; leaving a trailing blank
+    # line is routine, and must not push an empty line between the bullets on the next
+    # merge — a blank line closes the list, splitting one list into two.
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="g.m4a", kind="group", transcript="- one\n",
+                      recorded_at="2026-07-08T01:00"))
+    store.upsert(Memo(audio_filename="b.m4a", transcript="two", recorded_at="2026-07-08T02:00"))
+
+    service = InboxService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
+                            bin_dir=tmp_path / "bin", clock=lambda: "T")
+    service.group(["g.m4a", "b.m4a"])
+
+    assert store.get("g.m4a").transcript == "- one\n- two"
+
+
+def test_group_refuses_a_selection_holding_two_groups(tmp_path):
+    # Two groups have no obvious survivor — which one's name and recording win? — so the
+    # UI disables the button and the service refuses, leaving both untouched.
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="g1.m4a", kind="group", transcript="- one",
+                      recorded_at="2026-07-08T01:00"))
+    store.upsert(Memo(audio_filename="g2.m4a", kind="group", transcript="- two",
+                      recorded_at="2026-07-08T02:00"))
+
+    service = InboxService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
+                            bin_dir=tmp_path / "bin", clock=lambda: "T")
+
+    with pytest.raises(ValueError):
+        service.group(["g1.m4a", "g2.m4a"])
+
+    assert [m.audio_filename for m in service.pending()] == ["g1.m4a", "g2.m4a"]
+    assert store.get("g1.m4a").transcript == "- one"
+
+
+def test_group_refuses_fewer_than_two_pending_notes(tmp_path):
+    # A stale selection — a row already submitted from another window — must not
+    # silently turn its one surviving companion into a one-bullet "group".
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="a.m4a", transcript="one"))
+
+    service = InboxService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
+                            bin_dir=tmp_path / "bin", clock=lambda: "T")
+
+    with pytest.raises(ValueError):
+        service.group(["a.m4a", "gone.m4a"])
+
+    assert store.get("a.m4a").kind == "note"
+
+
+def test_binned_lists_the_notes_absorbed_into_a_group(tmp_path):
+    # Grouping moves the absorbed recordings into the bin, so the bin has to show them.
+    # Otherwise their audio sits there unreachable — unplayable, unrestorable, and never
+    # swept up by the retention purge.
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    bin_dir = tmp_path / "bin"
+    (inbox / "a.m4a").write_bytes(b"A")
+    (inbox / "b.m4a").write_bytes(b"B")
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="a.m4a", transcript="one", recorded_at="2026-07-08T01:00"))
+    store.upsert(Memo(audio_filename="b.m4a", transcript="two", recorded_at="2026-07-08T02:00"))
+
+    service = InboxService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
+                            bin_dir=bin_dir, clock=lambda: "2026-07-08T09:00")
+    service.group(["a.m4a", "b.m4a"])
+
+    assert [m.audio_filename for m in service.binned()] == ["b.m4a"]
 
 
 def test_purge_expired_removes_only_bin_items_past_retention(tmp_path):

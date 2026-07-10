@@ -16,11 +16,15 @@ class Memo:
     processed_at: str = ""
     # Where the user dragged this memo in the inbox. None until they reorder, and
     # again once a memo re-enters the inbox, so unplaced memos fall back to
-    # recorded order (see list_by_status).
+    # recorded order (see list_pending).
     position: int = None
     # When each transcribed word was spoken, as the JSON the editor reads back:
     # [[startSeconds, word], …]. Empty for memos transcribed before timings existed.
     word_times: str = ""
+    # "note" or "group": a group's transcript is a bulleted consolidation of the
+    # notes merged into it. Memos stored before this column existed read back as
+    # None, which is simply "not a group".
+    kind: str = "note"
 
 
 _COLUMNS = [f.name for f in fields(Memo)]
@@ -75,21 +79,30 @@ class MemoStore:
             rows = self._conn.execute("SELECT audio_filename FROM memos").fetchall()
         return {row["audio_filename"] for row in rows}
 
-    def list_by_status(self, status):
-        # A memo the user dragged into place leads with its position. Everything else
-        # has no position and falls back to recording time, then ingest time as a stable
-        # tiebreak: an untouched inbox reads oldest-to-newest by when each memo was
-        # recorded, regardless of the order a startup catch-up (which scans the inbox by
-        # filename) happened to ingest them in. Unplaced memos sort after placed ones, so
-        # a recording that lands after a reorder joins the end rather than jumping the
-        # queue. The bin re-sorts its own view by processed_at, so this ordering only
-        # shapes the pending inbox page.
+    def list_pending(self):
+        """Every memo still in the inbox, in the order the inbox shows them.
+
+        A memo the user dragged into place leads with its position. Everything else has
+        no position and falls back to recording time, then ingest time as a stable
+        tiebreak: an untouched inbox reads oldest-to-newest by when each memo was
+        recorded, regardless of the order a startup catch-up (which scans the inbox by
+        filename) happened to ingest them in. Unplaced memos sort after placed ones, so a
+        recording that lands after a reorder joins the end rather than jumping the queue.
+        The bin re-sorts its own view by processed_at, so this ordering only shapes the
+        inbox."""
         with self._lock:
             rows = self._conn.execute(
-                "SELECT * FROM memos WHERE status = ? "
-                "ORDER BY position IS NULL, position, recorded_at, created_at",
-                (status,),
+                "SELECT * FROM memos WHERE status = 'pending' "
+                "ORDER BY position IS NULL, position, recorded_at, created_at"
             ).fetchall()
+        return [_row_to_memo(row) for row in rows]
+
+    def list_retired(self):
+        """Every memo that has left the inbox — submitted, trashed, or absorbed into a
+        group. Their recordings share the bin, so the bin lists them all; callers that
+        care which way a memo left read its status."""
+        with self._lock:
+            rows = self._conn.execute("SELECT * FROM memos WHERE status != 'pending'").fetchall()
         return [_row_to_memo(row) for row in rows]
 
     def reorder(self, audio_filenames):

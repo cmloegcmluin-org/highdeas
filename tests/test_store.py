@@ -51,7 +51,7 @@ def test_store_migrates_a_db_created_before_the_newer_columns_existed(tmp_path):
     store.reorder(names)
 
     assert store.get("0.m4a").recorded_at == "2026-07-07T13:37:04"
-    assert [m.audio_filename for m in store.list_by_status("pending")] == names
+    assert [m.audio_filename for m in store.list_pending()] == names
 
 
 def test_known_filenames_returns_stored_filenames(tmp_path):
@@ -62,7 +62,7 @@ def test_known_filenames_returns_stored_filenames(tmp_path):
     assert store.known_filenames() == {"a.m4a", "b.m4a"}
 
 
-def test_list_by_status_filters_and_orders_by_recorded_at(tmp_path):
+def test_list_pending_filters_and_orders_by_recorded_at(tmp_path):
     # Order by when each memo was recorded, not when it was ingested, so the inbox
     # list always reads oldest-to-newest. Ingestion order can't be trusted: a startup
     # catch-up scans the inbox by filename (voice-10 before voice-2), which is neither
@@ -75,7 +75,7 @@ def test_list_by_status_filters_and_orders_by_recorded_at(tmp_path):
     store.upsert(Memo(audio_filename="done.m4a", status="processed",
                       recorded_at="2026-07-07T03:00"))
 
-    pending = store.list_by_status("pending")
+    pending = store.list_pending()
 
     # a was recorded first though ingested last, so it still sorts ahead of b.
     assert [m.audio_filename for m in pending] == ["a.m4a", "b.m4a"]
@@ -90,7 +90,7 @@ def test_reorder_pins_pending_memos_to_the_given_order(tmp_path):
 
     store.reorder(["c.m4a", "a.m4a", "b.m4a"])
 
-    assert [m.audio_filename for m in store.list_by_status("pending")] == ["c.m4a", "a.m4a", "b.m4a"]
+    assert [m.audio_filename for m in store.list_pending()] == ["c.m4a", "a.m4a", "b.m4a"]
 
 
 def test_a_memo_with_no_position_lists_after_the_reordered_ones(tmp_path):
@@ -103,7 +103,7 @@ def test_a_memo_with_no_position_lists_after_the_reordered_ones(tmp_path):
 
     store.upsert(Memo(audio_filename="fresh.m4a", status="pending", recorded_at="2026-07-07T00:30"))
 
-    assert [m.audio_filename for m in store.list_by_status("pending")] == [
+    assert [m.audio_filename for m in store.list_pending()] == [
         "b.m4a", "a.m4a", "fresh.m4a"]
 
 
@@ -116,7 +116,7 @@ def test_reorder_stays_numeric_past_the_tenth_memo(tmp_path):
 
     store.reorder(names)
 
-    assert [m.audio_filename for m in store.list_by_status("pending")] == names
+    assert [m.audio_filename for m in store.list_pending()] == names
 
 
 def test_update_changes_named_fields_only(tmp_path):
