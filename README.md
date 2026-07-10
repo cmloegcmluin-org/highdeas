@@ -2,8 +2,8 @@
 
 Turns iPhone voice memos into finished notes and filed audio with almost no manual
 work. Record on your phone; seconds later the memo is transcribed and waiting in a
-local inbox page, one click from becoming a Notesnook note or a filed Google Drive
-recording.
+local inbox page, one click from becoming a Notesnook note, a filed Google Drive
+recording, or a subtask on an Asana task.
 
 ## How it works
 
@@ -18,8 +18,10 @@ recording.
 4. **Inbox** — a local Flask page opens in its own native window (Edge WebView2), at the
    size, monitor, and maximized state it was last closed at — maximized until you say
    otherwise. Each memo row has a select checkbox, its audio, a transcript preview, a
-   chevron that moves the transcript into the Name field, a Name box, a Notesnook⇄Drive
-   toggle, and Submit / Delete. Drag a row by its number to reorder the list. Row numbers,
+   chevron that moves the transcript into the Name field, a Name box, a three-icon
+   destination picker (Notesnook / Drive / Asana — the lit icon is where Submit sends
+   it; lighting Asana reveals a dropdown choosing which task the note lands under),
+   and Submit / Delete. Drag a row by its number to reorder the list. Row numbers,
    a live item count, and a frozen title bar + column headers (carrying **Submit all** /
    **Trash all**) stay in reach as the list scrolls. Recordings
    that arrive while the page is open are polled in automatically.
@@ -43,15 +45,20 @@ recording.
    - **Google Drive (music)** — the audio is copied into a dated
      `_YYYY_MM_DD_NOT_YET_PROCESSED_MUSIC` folder under your Drive base, renamed from the
      memo's name, with a `.docx` of the transcript alongside if there is one.
+   - **Asana** — the transcript becomes a subtask of the parent task picked in the
+     row's dropdown (the small set you configure via `ASANA_PARENT_TASKS`). Only the
+     text is sent — the audio never leaves this PC. The created task's link is kept
+     for the bin.
 8. **Retire to the bin** — on Submit, Delete, or being merged into a group, the recording
    leaves the inbox for a local bin, kept beside the inbox by default so the move stays
    inside iCloud and never triggers a per-file "move off iCloud" prompt. The inbox
    therefore only ever holds unprocessed recordings.
-9. **Bin tab** (`/bin`) — lists everything retired (sent to Notesnook, sent to Drive,
+9. **Bin tab** (`/bin`) — lists everything retired (sent to Notesnook, Drive, or Asana,
    merged into a group, or deleted) with its audio, transcript, a destination icon, and
    date, plus **Restore** / **Delete** and bulk **Restore all** / **Empty bin**. The Drive
-   icon reopens that memo in Drive in your chosen Chrome profile. Items older than 90 days
-   are purged automatically whenever the app runs.
+   icon reopens that memo in Drive in your chosen Chrome profile; the Asana icon opens
+   the created task the same way. Items older than 90 days are purged automatically
+   whenever the app runs.
 
 ## Launch it
 
@@ -81,21 +88,28 @@ right away. Set `HIGHDEAS_DESKTOP=0` to force plain-browser mode.
 2. **Notesnook key** — run **`Set Notesnook Key.bat`** and paste your Inbox API key
    (Notesnook → Settings → Inbox → Enable Inbox API → create a key), or copy
    `.env.example` to `.env` and fill it in. Needed only to submit memos to Notesnook.
-3. **Paths** — if your inbox or Drive folders differ from the defaults, set
+3. **Asana** — run **`Set Asana Token.bat`** and paste a personal access token
+   (create one at <https://app.asana.com/0/my-apps> → Create new token), then list
+   the tasks new notes can land under as `ASANA_PARENT_TASKS` in `.env`
+   (`task_gid=Label` pairs separated by `;` — see `.env.example`; a task's gid is
+   the long number in its URL). Needed only to submit memos to Asana.
+4. **Paths** — if your inbox or Drive folders differ from the defaults, set
    `HIGHDEAS_INBOX_DIR` and `HIGHDEAS_DRIVE_BASE` in `.env`.
 
 ## Configuration
 
-Everything but the Notesnook key is optional. Set these in `.env`.
+Everything but the keys for the destinations you use is optional. Set these in `.env`.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `NOTESNOOK_INBOX_API_KEY` | — | Auth for posting notes to Notesnook. |
+| `ASANA_ACCESS_TOKEN` | — | Personal access token for creating Asana subtasks. |
+| `ASANA_PARENT_TASKS` | — | `gid=Label` pairs (`;`-separated) the Asana dropdown offers; the first is the default. |
 | `HIGHDEAS_INBOX_DIR` | iCloud `Shortcuts/Highdeas` | Folder the iOS Shortcut drops recordings into. |
 | `HIGHDEAS_DRIVE_BASE` | `G:\My Drive\voice memos (top level)` | Where music-routed audio is filed. |
 | `HIGHDEAS_BIN_DIR` | `Highdeas Bin` beside the inbox | Where retired recordings wait (recoverable for 90 days). |
 | `HIGHDEAS_DB` | `memos.db` in this folder | SQLite store of memo state. |
-| `HIGHDEAS_CHROME_EXE` / `HIGHDEAS_CHROME_PROFILE` | system Chrome / `Default` | Chrome + profile used to open Drive links. |
+| `HIGHDEAS_CHROME_EXE` / `HIGHDEAS_CHROME_PROFILE` | system Chrome / `Default` | Chrome + profile used to open Drive and Asana links. |
 | `HIGHDEAS_DESKTOP` | `1` | `1` = native window, `0` = plain browser. |
 | `HIGHDEAS_PORT` | `5000` | Local port in browser mode. |
 
