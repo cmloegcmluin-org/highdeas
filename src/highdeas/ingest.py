@@ -1,4 +1,5 @@
-"""Discover new voice-memo recordings and read when each was recorded."""
+"""Discover new voice-memo recordings, ask iCloud for the ones it is still holding
+in the cloud, and read when each was recorded."""
 import hashlib
 import re
 from dataclasses import dataclass
@@ -7,10 +8,20 @@ from pathlib import Path
 
 AUDIO_EXTENSIONS = {".m4a", ".mp3", ".wav", ".aac", ".caf", ".aiff"}
 
+# Windows file attributes. The first three mark a file the sync engine is holding in
+# the cloud: its name is on this PC, its bytes are not. The last two are the pin state
+# Explorer's "Always keep on this device" / "Free up space" write.
+_OFFLINE = 0x0000_1000
+_RECALL_ON_OPEN = 0x0004_0000
+_RECALL_ON_DATA_ACCESS = 0x0040_0000
+_CLOUD_ONLY = _OFFLINE | _RECALL_ON_OPEN | _RECALL_ON_DATA_ACCESS
+_PINNED = 0x0008_0000
+_UNPINNED = 0x0010_0000
+
 _MP4_EPOCH = datetime(1904, 1, 1, tzinfo=timezone.utc)
 
-# The 12-hex-digit fingerprint recording_key appends, so re-keying an
-# already-keyed file strips the old suffix instead of stacking a second one.
+# The 12-hex-digit fingerprint recording_key appends, so an already-keyed name is
+# recognised as one and handed straight back rather than keyed a second time.
 _KEY_SUFFIX = re.compile(r"-[0-9a-f]{12}$")
 
 
@@ -23,22 +34,62 @@ class NewRecording:
     name: str
 
 
-def find_new_recordings(inbox_dir, known_names):
+def _file_attributes(path):
+    """The Windows attribute bits of `path`; 0 where a platform has none."""
+    return getattr(Path(path).stat(), "st_file_attributes", 0)
+
+
+def is_cloud_placeholder(path, *, attributes_of=_file_attributes):
+    """True when the recording's name is on this PC but its bytes are still in iCloud.
+
+    Reading the attributes never pulls a file down; opening one does."""
+    return bool(attributes_of(path) & _CLOUD_ONLY)
+
+
+def request_local_copy(path):
+    """Ask iCloud to bring a recording it is holding in the cloud down to this PC.
+
+    Highdeas must never be the one to pull a recording down. Reading a cloud-only
+    file makes Windows recall it on the caller's behalf, and Windows announces every
+    such recall with its "Automatic file downloads" toast — titled after python, the
+    process that asked. Pinning the file is what Explorer's "Always keep on this
+    device" writes: the download becomes iCloud's to do, and a later scan finds the
+    recording whole, on this PC, and silent."""
+    try:
+        import ctypes
+
+        attributes = _file_attributes(path)
+        ctypes.windll.kernel32.SetFileAttributesW(
+            str(path), (attributes | _PINNED) & ~_UNPINNED,
+        )
+    except Exception:  # noqa: BLE001 — not Windows, or the sync engine refused; scan on
+        pass
+
+
+def find_new_recordings(inbox_dir, known_names, *, still_in_cloud=is_cloud_placeholder,
+                        request_download=request_local_copy):
     """Inbox recordings not yet in the store, each paired with its content key.
 
     A recording is new when its recording_key isn't already among `known_names`.
     Keying by content rather than by the raw filename is what rescues a recycled
     inbox name — voice-8.m4a reused for a new recording once the inbox has been
-    cleared — from being mistaken for the earlier memo that used that name."""
+    cleared — from being mistaken for the earlier memo that used that name.
+
+    A recording iCloud hasn't finished bringing down has no content to key, so it is
+    left shut and asked for instead; the scan that runs once it lands picks it up."""
     inbox = Path(inbox_dir)
     if not inbox.is_dir():
         return []
     found = []
     for entry in sorted(inbox.iterdir(), key=lambda p: p.name):
-        if entry.is_file() and entry.suffix.lower() in AUDIO_EXTENSIONS:
-            name = recording_key(entry)
-            if name not in known_names:
-                found.append(NewRecording(entry, name))
+        if not (entry.is_file() and entry.suffix.lower() in AUDIO_EXTENSIONS):
+            continue
+        if still_in_cloud(entry):
+            request_download(entry)
+            continue
+        name = recording_key(entry)
+        if name not in known_names:
+            found.append(NewRecording(entry, name))
     return found
 
 
@@ -50,13 +101,17 @@ def recording_key(path):
     fresh recording apart from one already processed or deleted. Folding a
     fingerprint of the file's size and embedded recording time into the name
     gives every distinct recording its own stable key: unique in the store and
-    on disk, in both the inbox and the bin. Re-keying an already-keyed file
-    yields the same name, so ingest stays idempotent."""
+    on disk, in both the inbox and the bin.
+
+    Only Highdeas writes a key into a name, so a name that already carries one is
+    taken at its word: re-keying is idempotent, and — since opening a file is what
+    pulls it down from iCloud — an adopted recording is never read again to be named."""
     path = Path(path)
+    if _KEY_SUFFIX.search(path.stem):
+        return path.name
     fingerprint = f"{path.stat().st_size}:{recording_time(path)}"
     digest = hashlib.sha256(fingerprint.encode()).hexdigest()[:12]
-    stem = _KEY_SUFFIX.sub("", path.stem)
-    return f"{stem}-{digest}{path.suffix}"
+    return f"{path.stem}-{digest}{path.suffix}"
 
 
 def recording_time(path):

@@ -55,7 +55,7 @@ class InboxService:
 
     def refresh(self):
         """Ingest and transcribe any waiting recordings, skipping when a refresh is
-        already running. The client poll, the startup catch-up, and a second browser
+        already running. The app's own scan, the client poll, and a second browser
         tab can all land here at once; letting two scans race on the same inbox would
         transcribe a recording twice, or crash renaming a file the other just moved.
         The in-flight scan is already ingesting them, so the skipped caller loses
@@ -104,8 +104,8 @@ class InboxService:
     def has_incoming(self):
         """True when the inbox holds recordings not yet in the store, so a freshly
         opened page can say "Transcribing…" rather than "Your inbox is empty" while the
-        background catch-up works through them. A cheap directory scan — no model, no
-        decoding — so it's safe on the request path."""
+        background scan works through them. A cheap directory scan — no model, no
+        decoding, and nothing pulled down from iCloud — so it's safe on the request path."""
         return bool(self._find_new(self._inbox_dir, self._store.known_filenames()))
 
     def binned(self):
