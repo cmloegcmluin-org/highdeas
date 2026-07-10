@@ -1,4 +1,4 @@
-"""Routers that deliver a submitted memo to Notesnook or Google Drive."""
+"""Routers that deliver a submitted memo to Notesnook, Google Drive, or Asana."""
 import html
 import re
 import shutil
@@ -87,6 +87,53 @@ class NotesnookRouter:
             timeout=30,
         )
         response.raise_for_status()
+
+
+def parse_asana_parents(raw):
+    """Read ASANA_PARENT_TASKS — ";"-separated "task_gid=Label" pairs — into an
+    ordered list of (gid, label). The first pair is the default parent and leads
+    the inbox dropdown. A pair without "=Label" is labelled by its gid."""
+    parents = []
+    for pair in (raw or "").split(";"):
+        gid, _, label = pair.partition("=")
+        gid, label = gid.strip(), label.strip()
+        if gid:
+            parents.append((gid, label or gid))
+    return parents
+
+
+class AsanaRouter:
+    """Create the memo's text as a subtask of its chosen Asana parent task
+    (POST /tasks/{parent}/subtasks). Only the text goes to Asana — the note's
+    name and transcript; the recording itself stays local and retires to the
+    bin like every other route. Reports the created task's permalink for the
+    memo's record, so the bin icon can open the task."""
+
+    ENDPOINT = "https://app.asana.com/api/1.0/tasks/{parent}/subtasks"
+
+    def __init__(self, token, *, default_parent="", post=requests.post):
+        self._token = token
+        self._default_parent = default_parent
+        self._post = post
+
+    def route(self, memo):
+        if not self._token:
+            raise RuntimeError("Asana access token not set — put ASANA_ACCESS_TOKEN in .env.")
+        parent = memo.asana_parent or self._default_parent
+        if not parent:
+            raise RuntimeError("No Asana parent task configured — put ASANA_PARENT_TASKS in .env.")
+        response = self._post(
+            self.ENDPOINT.format(parent=parent),
+            headers={"Authorization": f"Bearer {self._token}", "Content-Type": "application/json"},
+            params={"opt_fields": "permalink_url"},
+            json={"data": {
+                "name": memo.name or _default_title(memo.recorded_at or memo.created_at),
+                "notes": memo.transcript,
+            }},
+            timeout=30,
+        )
+        response.raise_for_status()
+        return {"asana_url": response.json().get("data", {}).get("permalink_url", "")}
 
 
 class Router:

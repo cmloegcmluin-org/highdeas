@@ -10,6 +10,9 @@ class Memo:
     transcript: str = ""
     name: str = ""
     route: str = "notesnook"
+    # The Asana task this memo becomes a subtask of when its route is "asana" —
+    # a gid from the ASANA_PARENT_TASKS dropdown. Empty means the configured default.
+    asana_parent: str = ""
     # The link Asana returned for the task this memo became, so the bin can open it.
     # Empty for other routes and for memos sent before permalinks were stored.
     asana_url: str = ""

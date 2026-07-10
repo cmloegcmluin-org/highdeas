@@ -2,7 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from highdeas.routers import DriveMusicRouter, NotesnookRouter, Router, write_docx
+from highdeas.routers import (
+    AsanaRouter, DriveMusicRouter, NotesnookRouter, Router, parse_asana_parents, write_docx,
+)
 from highdeas.store import Memo
 
 
@@ -15,22 +17,27 @@ class RecordingRouter:
 
 
 class FakeResponse:
-    def __init__(self, status_code=200):
+    def __init__(self, status_code=200, body=None):
         self.status_code = status_code
+        self._body = body or {}
 
     def raise_for_status(self):
         if self.status_code >= 400:
             raise RuntimeError(f"HTTP {self.status_code}")
 
+    def json(self):
+        return self._body
+
 
 class FakePost:
-    def __init__(self, status_code=200):
+    def __init__(self, status_code=200, body=None):
         self.calls = []
         self._status_code = status_code
+        self._body = body
 
     def __call__(self, url, **kwargs):
         self.calls.append((url, kwargs))
-        return FakeResponse(self._status_code)
+        return FakeResponse(self._status_code, self._body)
 
 
 def test_notesnook_router_posts_title_and_html_body():
@@ -178,6 +185,86 @@ def test_router_dispatches_to_asana_and_returns_its_outcome():
 
     assert outcome == {"asana_url": "https://app.asana.com/0/0/9/f"}
     assert notesnook.routed == []
+
+
+def test_asana_router_creates_a_subtask_under_the_memos_chosen_parent():
+    post = FakePost(body={"data": {"gid": "42", "permalink_url": "https://app.asana.com/0/0/42/f"}})
+    router = AsanaRouter("PAT", default_parent="111", post=post)
+
+    outcome = router.route(Memo(audio_filename="a.m4a", name="Bassline idea",
+                                transcript="dum dum da dum", route="asana", asana_parent="222"))
+
+    url, kwargs = post.calls[0]
+    # The memo's own chosen parent wins over the configured default.
+    assert url == "https://app.asana.com/api/1.0/tasks/222/subtasks"
+    assert kwargs["headers"] == {"Authorization": "Bearer PAT", "Content-Type": "application/json"}
+    # Ask Asana to return the created task's permalink so the bin can link to it.
+    assert kwargs["params"] == {"opt_fields": "permalink_url"}
+    # Only the text travels: the name and transcript, never the audio.
+    assert kwargs["json"] == {"data": {"name": "Bassline idea", "notes": "dum dum da dum"}}
+    assert outcome == {"asana_url": "https://app.asana.com/0/0/42/f"}
+
+
+def test_asana_router_falls_back_to_the_default_parent_when_none_chosen():
+    # A memo submitted before its dropdown was ever touched has no stored parent;
+    # it lands under the first configured task rather than failing.
+    post = FakePost(body={"data": {}})
+
+    AsanaRouter("PAT", default_parent="111", post=post).route(
+        Memo(audio_filename="a.m4a", name="X", transcript="y", route="asana"))
+
+    assert post.calls[0][0] == "https://app.asana.com/api/1.0/tasks/111/subtasks"
+
+
+def test_asana_router_explains_missing_setup_instead_of_calling_asana():
+    # An unset token or an empty parent list would otherwise surface as an opaque
+    # Asana 401/404; name the .env variable to fix instead, and never hit the wire.
+    post = FakePost()
+
+    with pytest.raises(RuntimeError, match="ASANA_ACCESS_TOKEN"):
+        AsanaRouter("", default_parent="111", post=post).route(
+            Memo(audio_filename="a.m4a", route="asana", asana_parent="222"))
+    with pytest.raises(RuntimeError, match="ASANA_PARENT_TASKS"):
+        AsanaRouter("PAT", post=post).route(Memo(audio_filename="a.m4a", route="asana"))
+    assert post.calls == []
+
+
+def test_asana_router_titles_unnamed_memo_with_its_recording_time():
+    # Same auto-title convention as Notesnook, so an unnamed note is findable by
+    # when it was recorded on any destination.
+    post = FakePost(body={"data": {}})
+
+    AsanaRouter("PAT", default_parent="1", post=post).route(
+        Memo(audio_filename="a.m4a", name="", transcript="hi",
+             recorded_at="2026-07-07T15:45:00", route="asana"))
+
+    assert post.calls[0][1]["json"]["data"]["name"] == "Note 2026-07-07 3:45:00 PM"
+
+
+def test_asana_router_raises_on_error_response():
+    post = FakePost(status_code=403)
+
+    with pytest.raises(RuntimeError):
+        AsanaRouter("PAT", default_parent="1", post=post).route(
+            Memo(audio_filename="a.m4a", name="X", transcript="y", route="asana"))
+
+
+def test_parse_asana_parents_reads_gid_label_pairs():
+    # The .env format: "task_gid=Label" pairs, ";"-separated, whitespace-tolerant.
+    # Order is kept — the first pair is the default parent and leads the dropdown.
+    raw = " 1200000000000001 = Song ideas ;1200000000000002=App ideas; "
+
+    assert parse_asana_parents(raw) == [
+        ("1200000000000001", "Song ideas"),
+        ("1200000000000002", "App ideas"),
+    ]
+
+
+def test_parse_asana_parents_handles_missing_or_bare_config():
+    assert parse_asana_parents("") == []
+    assert parse_asana_parents(None) == []
+    # A bare gid with no "=Label" still works, labelled by its gid.
+    assert parse_asana_parents("1200000000000001") == [("1200000000000001", "1200000000000001")]
 
 
 def test_drive_router_copies_audio_into_dated_folder_and_writes_doc(tmp_path):

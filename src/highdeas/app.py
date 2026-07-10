@@ -9,7 +9,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from highdeas.routers import DriveMusicRouter, NotesnookRouter, Router
+from highdeas.routers import AsanaRouter, DriveMusicRouter, NotesnookRouter, Router, parse_asana_parents
 from highdeas.service import InboxService
 from highdeas.store import MemoStore
 from highdeas.transcribe import Transcriber
@@ -76,13 +76,18 @@ def build_app():
     drive_base = os.environ.get("HIGHDEAS_DRIVE_BASE", DEFAULT_DRIVE_BASE)
     notesnook = NotesnookRouter(os.environ.get("NOTESNOOK_INBOX_API_KEY", ""))
     drive = DriveMusicRouter(inbox_dir, drive_base)
+    asana_parents = parse_asana_parents(os.environ.get("ASANA_PARENT_TASKS", ""))
+    asana = AsanaRouter(
+        os.environ.get("ASANA_ACCESS_TOKEN", ""),
+        default_parent=asana_parents[0][0] if asana_parents else "",
+    )
     transcriber = Transcriber()
     service = InboxService(
         inbox_dir=inbox_dir,
         store=MemoStore(db_path),
         transcriber=transcriber,
         bin_dir=bin_dir,
-        route=Router(notesnook=notesnook, drive=drive),
+        route=Router(notesnook=notesnook, drive=drive, asana=asana),
     )
     app = create_app(service, inbox_dir=inbox_dir, bin_dir=bin_dir,
                      launch_drive=_chrome_launcher())
