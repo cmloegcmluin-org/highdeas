@@ -7,6 +7,7 @@ from datetime import datetime
 from urllib.parse import quote
 
 from flask import Flask, redirect, render_template, request, send_from_directory
+from werkzeug.exceptions import HTTPException
 
 
 def _format_when(iso):
@@ -51,6 +52,19 @@ def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=(), no
     app.jinja_env.filters["when"] = _format_when
     # The bin's ages are read against the wall clock, so the clock is injectable.
     app.jinja_env.filters["days_in_bin"] = lambda iso: _days_since(iso, now)
+
+    @app.errorhandler(Exception)
+    def unhandled(exc):
+        """Answer a failure with the sentence that explains it, not a page of markup.
+
+        The client prints whatever the server says straight into the inbox's notice bar,
+        so Flask's default 500 — a whole HTML document — landed there as a paragraph of
+        tags with one readable sentence buried in it. Only the app's own failures are
+        flattened; a 404 is the browser's business, and keeps the page Flask raises."""
+        if isinstance(exc, HTTPException):
+            return exc
+        app.logger.exception("Unhandled error")
+        return (str(exc), 500)
 
     @app.get("/")
     def index():

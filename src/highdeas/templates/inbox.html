@@ -17,10 +17,15 @@
   </div>
 {% endblock %}
 
-{#- The notice is shown only when a submit/trash fails, so a note that didn't actually
-    send stays visible and explained instead of silently vanishing from the list. -#}
+{#- The notice is shown only when something fails, so a note that didn't actually send
+    stays visible and explained instead of silently vanishing from the list. It reports
+    what has already happened, and nothing done next need clear it, so it carries its
+    own way out rather than sitting there until the page is reloaded. -#}
 {% block banners %}
-  <div id="notice" class="notice" role="alert" hidden></div>
+  <div id="notice" class="notice" role="alert" hidden>
+    <span id="notice-text"></span>
+    <button type="button" id="notice-close" class="notice-close" title="Dismiss" aria-label="Dismiss">&times;</button>
+  </div>
 {% endblock %}
 
 {#- Bulk actions live in their own column headers so they sit directly over the

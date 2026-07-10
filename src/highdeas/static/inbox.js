@@ -22,12 +22,19 @@
   var retired = {};
   var countEl = document.getElementById('count');
   var notice = document.getElementById('notice');
+  var noticeText = document.getElementById('notice-text');
 
   // A submit/trash only leaves the list once the server confirms it; on failure the
   // row stays and we surface why here, so a note that never sent can't silently vanish.
-  function notify(msg) { if (notice) { notice.textContent = msg; notice.hidden = false; } }
-  function clearNotice() { if (notice) { notice.textContent = ''; notice.hidden = true; } }
+  // The text goes in its own element: the notice also holds the button that dismisses it.
+  function notify(msg) { if (notice) { noticeText.textContent = msg; notice.hidden = false; } }
+  function clearNotice() { if (notice) { noticeText.textContent = ''; notice.hidden = true; } }
   function describe(err) { return err && err.message ? ' (' + err.message + ')' : ''; }
+
+  // It reports what has already happened, so nothing done next need clear it. The reader
+  // who has read it says so.
+  var noticeClose = document.getElementById('notice-close');
+  if (noticeClose) noticeClose.addEventListener('click', clearNotice);
 
   function rows() { return Array.prototype.slice.call(content.querySelectorAll('.memo')); }
 

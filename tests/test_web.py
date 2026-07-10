@@ -30,6 +30,7 @@ class FakeService:
         self.group_error = None
         self.ungrouped = []
         self.ungroup_error = None
+        self.ungroup_crash = None
         self.unmerged = []
         self.unmerge_error = None
 
@@ -50,6 +51,8 @@ class FakeService:
     def ungroup(self, audio_filename):
         if self.ungroup_error:
             raise ValueError(self.ungroup_error)
+        if self.ungroup_crash:
+            raise self.ungroup_crash
         self.ungrouped.append(audio_filename)
         self._pending = [Memo(audio_filename="a.m4a", transcript="one"),
                          Memo(audio_filename="b.m4a", transcript="two")]
@@ -540,6 +543,43 @@ def test_the_app_asks_before_it_destroys_and_never_in_the_browsers_voice(tmp_pat
     assert 'data-confirm="Restore all 1 item to the inbox?"' in binned
     assert 'data-confirm="Permanently delete this recording? This cannot be undone." data-danger' in binned
     assert "window.HighdeasAsk" in asset(client, "inbox.js")
+
+
+def test_the_notice_can_be_dismissed_by_the_reader_who_has_read_it(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data.decode()
+    js = asset(client, "inbox.js")
+
+    # It reports something that has already happened, and no later action need clear it,
+    # so the only way out of it was to reload the page. Now it carries its own way out.
+    assert 'id="notice-text"' in body
+    assert 'id="notice-close"' in body
+    assert "getElementById('notice-close')" in js
+    assert "clearNotice" in js.split("getElementById('notice-close')")[1][:120]
+
+
+def test_a_failing_route_answers_with_a_sentence_and_never_a_page_of_html(tmp_path):
+    # The page prints whatever the server says into its notice bar, so Flask's default
+    # 500 — a whole HTML document — arrived there as a paragraph of markup, out of which
+    # the reader had to pick the one sentence that meant anything. It says the sentence.
+    service = FakeService(pending=[Memo(audio_filename="g.m4a", kind="group")])
+    service.ungroup_crash = RuntimeError("the disc is on fire")
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    resp = client.post("/ungroup/g.m4a")
+
+    assert resp.status_code == 500
+    assert resp.data.decode() == "the disc is on fire"
+    assert "<!doctype" not in resp.data.decode().lower()
+
+
+def test_a_request_for_a_page_that_is_not_there_still_answers_as_a_404(tmp_path):
+    # Only the app's own failures are flattened to a sentence. The browser's own errors
+    # keep the status and the page Flask raises for them.
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    assert client.get("/no-such-page").status_code == 404
 
 
 def test_the_inbox_offers_undo_and_redo_buttons_that_start_with_nowhere_to_go(tmp_path):
