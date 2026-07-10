@@ -104,6 +104,57 @@ def test_index_renders_inbox_controls(tmp_path):
     assert b'class="btn move"' in body
 
 
+def test_index_offers_three_destination_icons_with_the_route_checked(tmp_path):
+    # The two-way Notesnook⇄Drive toggle can't say "Asana": each row now carries
+    # three radio-backed icons and the checked (lit) one is the memo's route.
+    service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hi", route="asana")])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data.decode()
+
+    assert 'class="toggle"' not in body and 'name="route" value="drive"' not in body
+    for route in ("notesnook", "drive", "asana"):
+        assert f'type="radio" class="route" name="route-a.m4a" value="{route}"' in body
+    assert 'value="asana" checked' in body
+    assert 'value="notesnook" checked' not in body
+    assert "Send to Asana" in body  # each icon labels itself
+
+
+def test_asana_rows_offer_the_parent_task_dropdown_others_keep_it_hidden(tmp_path):
+    # Asana needs one extra decision the other destinations don't: which task the
+    # note becomes a subtask of. The dropdown lists the configured parents, keeps
+    # the memo's saved choice selected, and hides unless the Asana icon is lit.
+    service = FakeService(pending=[
+        Memo(audio_filename="a.m4a", transcript="hi", route="asana", asana_parent="222"),
+        Memo(audio_filename="b.m4a", transcript="yo", route="notesnook"),
+    ])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin"),
+                        asana_parents=[("111", "Song ideas"), ("222", "App ideas")]).test_client()
+
+    body = client.get("/").data.decode()
+
+    assert body.count('<option value="111" >Song ideas</option>') == 2
+    assert '<option value="222" selected>App ideas</option>' in body
+    # a.m4a (asana) shows its dropdown; b.m4a (notesnook) keeps it hidden until picked.
+    assert body.count('class="asana-parent"') == 2
+    assert body.count('subtask of" hidden>') == 1
+
+    # The polled fragment renders the same rows, so spliced-in memos get it too.
+    assert "Song ideas" in client.get("/pending").data.decode()
+
+
+def test_inbox_js_sends_the_picker_fields_and_toggles_the_dropdown(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    js = asset(client, "inbox.js")
+
+    # Saves and submits carry the lit icon's route and the chosen parent task…
+    assert "input.route:checked" in js
+    assert "asana_parent" in js
+    # …and the dropdown follows the Asana icon: shown when lit, hidden otherwise.
+    assert "radio.value !== 'asana'" in js
+
+
 def test_inbox_transcript_has_a_copy_to_clipboard_button(tmp_path):
     service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hi", name="Idea")])
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
@@ -519,12 +570,13 @@ def test_submit_saves_edits_then_submits_and_returns_204(tmp_path):
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     resp = client.post("/submit/a.m4a", data={
-        "name": "My idea", "transcript": "edited text", "route": "drive",
+        "name": "My idea", "transcript": "edited text", "route": "asana", "asana_parent": "222",
     })
 
     # Submit flushes the row's current field values before submitting.
     assert service.edits == [
-        ("a.m4a", {"name": "My idea", "transcript": "edited text", "route": "drive"})
+        ("a.m4a", {"name": "My idea", "transcript": "edited text",
+                   "route": "asana", "asana_parent": "222"})
     ]
     assert service.submitted == ["a.m4a"]
     # 204 (no redirect): the client removes the row optimistically, no page reload.
@@ -559,14 +611,15 @@ def test_group_route_reports_a_selection_it_cannot_group(tmp_path):
     assert b"Two groups have no obvious survivor" in resp.data
 
 
-def test_submit_defaults_route_to_notesnook_when_toggle_off(tmp_path):
+def test_submit_defaults_route_to_notesnook_when_fields_are_missing(tmp_path):
     service = FakeService()
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
-    # An unchecked checkbox toggle submits no "route" field.
+    # A post without the picker fields still routes somewhere sane.
     client.post("/submit/a.m4a", data={"name": "X", "transcript": "Y"})
 
-    assert service.edits == [("a.m4a", {"name": "X", "transcript": "Y", "route": "notesnook"})]
+    assert service.edits == [("a.m4a", {"name": "X", "transcript": "Y",
+                                        "route": "notesnook", "asana_parent": ""})]
 
 
 def test_submit_that_fails_to_route_keeps_the_memo_and_signals_the_client(tmp_path):
@@ -649,12 +702,13 @@ def test_edit_route_saves_fields_and_returns_204(tmp_path):
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     resp = client.post("/edit/a.m4a", data={
-        "name": "New name", "transcript": "New body", "route": "drive",
+        "name": "New name", "transcript": "New body", "route": "drive", "asana_parent": "111",
     })
 
     # Auto-save persists the fields without submitting/routing the memo.
     assert service.edits == [
-        ("a.m4a", {"name": "New name", "transcript": "New body", "route": "drive"})
+        ("a.m4a", {"name": "New name", "transcript": "New body",
+                   "route": "drive", "asana_parent": "111"})
     ]
     assert service.submitted == []
     assert resp.status_code == 204

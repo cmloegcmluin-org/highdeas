@@ -29,10 +29,11 @@ def _submitted_fields():
         "name": request.form["name"],
         "transcript": request.form["transcript"],
         "route": request.form.get("route", "notesnook"),
+        "asana_parent": request.form.get("asana_parent", ""),
     }
 
 
-def create_app(service, inbox_dir, bin_dir, launch_drive=None):
+def create_app(service, inbox_dir, bin_dir, launch_drive=None, asana_parents=()):
     app = Flask(__name__)
     app.jinja_env.filters["when"] = _format_when
 
@@ -42,7 +43,8 @@ def create_app(service, inbox_dir, bin_dir, launch_drive=None):
         # The background catch-up transcribes waiting recordings and the /pending
         # poll streams them in, so the first frame never waits on the model.
         return render_template(
-            "inbox.html", memos=service.pending(), incoming=service.has_incoming()
+            "inbox.html", memos=service.pending(), incoming=service.has_incoming(),
+            asana_parents=asana_parents,
         )
 
     @app.get("/pending")
@@ -50,7 +52,8 @@ def create_app(service, inbox_dir, bin_dir, launch_drive=None):
         """The inbox rows alone — polled by the open page to pick up recordings
         that arrive after load, so the app stays current without a manual reload."""
         service.refresh()
-        return render_template("rows.html", memos=service.pending())
+        return render_template("rows.html", memos=service.pending(),
+                               asana_parents=asana_parents)
 
     @app.get("/audio/<path:filename>")
     def audio(filename):

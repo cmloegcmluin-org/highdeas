@@ -57,10 +57,12 @@
   function transcriptOf(memo) { return memo.querySelector('.transcript').textContent; }
 
   function fields(memo) {
+    var parent = memo.querySelector('select.asana-parent');
     return new URLSearchParams({
       name: memo.querySelector('input[name=name]').value,
       transcript: transcriptOf(memo),
-      route: memo.querySelector('input[name=route]').checked ? 'drive' : 'notesnook',
+      route: memo.querySelector('input.route:checked').value,
+      asana_parent: parent ? parent.value : '',
     });
   }
 
@@ -341,7 +343,7 @@
   function wire(memo) {
     var preview = memo.querySelector('.transcript');
     var name = memo.querySelector('input[name=name]');
-    var route = memo.querySelector('input[name=route]');
+    var parent = memo.querySelector('select.asana-parent');
     var handle = memo.querySelector('.num');
     memo.querySelector('.pick').addEventListener('change', syncSelection);
     preview.addEventListener('click', function () { openEditor(memo); });
@@ -352,7 +354,15 @@
     });
     name.addEventListener('input', function () { scheduleSave(memo); });
     name.addEventListener('blur', function () { flush(memo); });
-    route.addEventListener('change', function () { flush(memo); });
+    // Lighting a destination icon saves it; the parent-task dropdown only matters
+    // (and only shows) while the lit icon is Asana's.
+    memo.querySelectorAll('input.route').forEach(function (radio) {
+      radio.addEventListener('change', function () {
+        if (parent) parent.hidden = radio.value !== 'asana';
+        flush(memo);
+      });
+    });
+    if (parent) parent.addEventListener('change', function () { flush(memo); });
     handle.addEventListener('dragstart', function (event) {
       dragged = memo;
       memo.classList.add('dragging');

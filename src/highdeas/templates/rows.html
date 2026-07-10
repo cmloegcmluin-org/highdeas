@@ -5,7 +5,7 @@
     dialog, where the whole note — waveform, spoken-word highlighting, title,
     lists — has room to be worked on. The row carries the memo's word timings so
     the editor can highlight along with the audio without a second request. -#}
-{% from "icons.html" import notesnook, drive, trash, clipboard, check, kind_cell %}
+{% from "icons.html" import notesnook, drive, asana, trash, clipboard, check, kind_cell %}
 
 {#- A copy-to-clipboard button, pinned inside its cell. It carries both the clipboard
     and the check icon; the client swaps them with a `.copied` class, so confirming a
@@ -39,12 +39,20 @@
       <input type="text" name="name" value="{{ m.name }}" placeholder="Name…" autocomplete="off" aria-label="Name">
       {{ clip('name') }}
     </div>
-    <label class="toggle" title="Left = Notesnook, right = Google Drive">
-      <input type="checkbox" name="route" value="drive" {{ 'checked' if m.route == 'drive' }}>
-      <span class="ic ns" aria-label="Notesnook">{{ notesnook() }}</span>
-      <span class="track"></span>
-      <span class="ic dr" aria-label="Google Drive">{{ drive() }}</span>
-    </label>
+    {#- Three radio-backed destination icons — the checked one is lit. Lighting Asana
+        reveals the one extra decision that route needs: which configured task the
+        note becomes a subtask of. -#}
+    <div class="route-cell">
+      <div class="route-pick" role="radiogroup" aria-label="Destination">
+        <label title="Send to Notesnook"><input type="radio" class="route" name="route-{{ m.audio_filename }}" value="notesnook" {{ 'checked' if m.route not in ('drive', 'asana') }}><span class="ic">{{ notesnook() }}</span></label>
+        <label title="Send to Google Drive"><input type="radio" class="route" name="route-{{ m.audio_filename }}" value="drive" {{ 'checked' if m.route == 'drive' }}><span class="ic">{{ drive() }}</span></label>
+        <label title="Send to Asana"><input type="radio" class="route" name="route-{{ m.audio_filename }}" value="asana" {{ 'checked' if m.route == 'asana' }}><span class="ic">{{ asana() }}</span></label>
+      </div>
+      <select class="asana-parent" aria-label="Task the note becomes a subtask of" {{ '' if m.route == 'asana' else 'hidden' }}>
+        {% for gid, label in asana_parents %}<option value="{{ gid }}" {{ 'selected' if m.asana_parent == gid }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
     <div class="when">{{ m.recorded_at | when }}</div>
     <button type="button" class="go">Submit</button>
     <button type="button" class="btn del danger" title="Delete" aria-label="Delete">{{ trash() }}</button>
