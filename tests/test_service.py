@@ -1,14 +1,16 @@
+import json
 import threading
 from pathlib import Path
 
 from highdeas.ingest import NewRecording, recording_key
 from highdeas.service import InboxService
 from highdeas.store import Memo, MemoStore
+from highdeas.transcribe import TimedWord, Transcript
 
 
 class FakeTranscriber:
     def transcribe(self, path):
-        return f"text for {Path(path).name}"
+        return Transcript(f"text for {Path(path).name}")
 
 
 def test_refresh_adopts_new_recordings_into_pending_under_their_content_key(tmp_path):
@@ -48,6 +50,35 @@ def test_refresh_adopts_new_recordings_into_pending_under_their_content_key(tmp_
     assert memo.created_at == "2026-07-07T00:00"
 
 
+def test_refresh_stores_when_each_word_was_spoken_alongside_the_transcript(tmp_path):
+    # The editor highlights each word as the recording plays it, so ingest keeps the
+    # transcriber's word timings with the memo — as JSON, ready for the page to read.
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    (inbox / "voice.m4a").write_bytes(b"A")
+    store = MemoStore(tmp_path / "memos.db")
+
+    class TimingTranscriber:
+        def transcribe(self, path):
+            return Transcript("I need a dusting.", (
+                TimedWord(0.96, "I"), TimedWord(1.52, "need"),
+                TimedWord(2.08, "a"), TimedWord(2.32, "dusting."),
+            ))
+
+    service = InboxService(
+        inbox_dir=inbox, store=store, transcriber=TimingTranscriber(),
+        bin_dir=tmp_path / "bin",
+        find_new=lambda inbox_dir, known: [NewRecording(inbox / "voice.m4a", "voice-aaaaaaaaaaaa.m4a")],
+        clock=lambda: "2026-07-09T00:00", recorded_time=lambda path: "2026-07-09T00:00",
+    )
+
+    service.refresh()
+
+    memo = store.get("voice-aaaaaaaaaaaa.m4a")
+    assert memo.transcript == "I need a dusting."
+    assert json.loads(memo.word_times) == [[0.96, "I"], [1.52, "need"], [2.08, "a"], [2.32, "dusting."]]
+
+
 def test_refresh_isolates_a_failing_recording_so_the_rest_still_ingest(tmp_path):
     # One unreadable/half-synced recording must not abort the whole scan and hide every
     # recording sorted after it — the batch keeps going and the bad one is retried later.
@@ -67,7 +98,7 @@ def test_refresh_isolates_a_failing_recording_so_the_rest_still_ingest(tmp_path)
         def transcribe(self, path):
             if Path(path).name.startswith("bad"):
                 raise RuntimeError("cannot decode a half-downloaded file")
-            return "a good idea"
+            return Transcript("a good idea")
 
     service = InboxService(
         inbox_dir=inbox, store=store, transcriber=PickyTranscriber(),
@@ -512,7 +543,7 @@ def test_concurrent_refreshes_transcribe_each_recording_once(tmp_path):
             self.calls += 1
             inside.set()
             release.wait(timeout=2)
-            return "text"
+            return Transcript("text")
 
     transcriber = GatedTranscriber()
     service = InboxService(

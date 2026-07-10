@@ -2,6 +2,7 @@
 
 The inbox is the app's main view — the list of pending memos awaiting a Notesnook
 or Drive decision; the bin holds what's been retired."""
+import json
 import shutil
 import threading
 from datetime import datetime, timedelta
@@ -17,6 +18,11 @@ def _no_router(memo):
 
 def _now():
     return datetime.now().isoformat(timespec="seconds")
+
+
+def _word_times(words):
+    """The wire format the editor reads to highlight along with the audio."""
+    return json.dumps([[word.start, word.text] for word in words], separators=(",", ":"))
 
 
 class InboxService:
@@ -62,9 +68,11 @@ class InboxService:
                 continue
             try:
                 adopted = self._adopt(recording)
+                spoken = self._transcriber.transcribe(adopted)
                 self._store.upsert(Memo(
                     audio_filename=recording.name,
-                    transcript=self._transcriber.transcribe(adopted),
+                    transcript=spoken.text,
+                    word_times=_word_times(spoken.words),
                     status="pending",
                     created_at=self._clock(),
                     recorded_at=self._recorded_time(adopted),

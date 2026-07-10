@@ -1,4 +1,5 @@
 from highdeas.store import Memo
+from highdeas.transcribe import Transcript
 from highdeas.web import create_app
 
 
@@ -263,7 +264,7 @@ def test_pending_surfaces_a_recording_that_arrives_after_the_page_loads(tmp_path
 
     class StubTranscriber:
         def transcribe(self, path):
-            return "fresh idea"
+            return Transcript("fresh idea")
 
     service = InboxService(
         inbox_dir=inbox, store=MemoStore(tmp_path / "memos.db"),
@@ -328,7 +329,7 @@ def test_submit_that_fails_to_route_keeps_the_memo_and_signals_the_client(tmp_pa
 
     class StubTranscriber:
         def transcribe(self, path):
-            return ""
+            return Transcript("")
 
     def failing_route(memo):
         raise RuntimeError("HTTP 401 Unauthorized")

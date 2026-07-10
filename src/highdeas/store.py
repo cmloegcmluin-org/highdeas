@@ -18,6 +18,9 @@ class Memo:
     # again once a memo re-enters the inbox, so unplaced memos fall back to
     # recorded order (see list_by_status).
     position: int = None
+    # When each transcribed word was spoken, as the JSON the editor reads back:
+    # [[startSeconds, word], …]. Empty for memos transcribed before timings existed.
+    word_times: str = ""
 
 
 _COLUMNS = [f.name for f in fields(Memo)]
