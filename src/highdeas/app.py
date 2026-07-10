@@ -70,10 +70,10 @@ _SPLASH_HTML = """<!doctype html>
 
 def build_app():
     load_dotenv(PROJECT_ROOT / ".env")
-    inbox_dir = os.environ.get("VOICE_INBOX_DIR", DEFAULT_INBOX)
-    db_path = os.environ.get("VOICE_DB", str(PROJECT_ROOT / "memos.db"))
-    bin_dir = os.environ.get("VOICE_BIN_DIR", default_bin_dir(inbox_dir))
-    drive_base = os.environ.get("VOICE_DRIVE_BASE", DEFAULT_DRIVE_BASE)
+    inbox_dir = os.environ.get("HIGHDEAS_INBOX_DIR", DEFAULT_INBOX)
+    db_path = os.environ.get("HIGHDEAS_DB", str(PROJECT_ROOT / "memos.db"))
+    bin_dir = os.environ.get("HIGHDEAS_BIN_DIR", default_bin_dir(inbox_dir))
+    drive_base = os.environ.get("HIGHDEAS_DRIVE_BASE", DEFAULT_DRIVE_BASE)
     notesnook = NotesnookRouter(os.environ.get("NOTESNOOK_INBOX_API_KEY", ""))
     drive = DriveMusicRouter(inbox_dir, drive_base)
     transcriber = Transcriber()
@@ -93,8 +93,8 @@ def _chrome_launcher():
     """Return a callable that opens a URL in a specific Chrome profile. Drive is
     signed into the wanted Google account only in that profile, and a link can't
     choose one, so launch Chrome directly with --profile-directory."""
-    chrome = os.environ.get("VOICE_CHROME_EXE", DEFAULT_CHROME)
-    profile = os.environ.get("VOICE_CHROME_PROFILE", "Default")
+    chrome = os.environ.get("HIGHDEAS_CHROME_EXE", DEFAULT_CHROME)
+    profile = os.environ.get("HIGHDEAS_CHROME_PROFILE", "Default")
 
     def launch(url):
         subprocess.Popen([chrome, f"--profile-directory={profile}", url])
@@ -106,7 +106,7 @@ def main():
     _set_windows_app_id()
     app, service = build_app()
     _transcribe_in_background(service)
-    if os.environ.get("VOICE_DESKTOP", "1") == "1" and _run_desktop(app):
+    if os.environ.get("HIGHDEAS_DESKTOP", "1") == "1" and _run_desktop(app):
         return
     _run_browser(app)
 
@@ -176,8 +176,8 @@ def _open_when_ready(window, url, wait_until_ready):
 
 
 def _run_browser(app):
-    port = int(os.environ.get("VOICE_PORT", "5000"))
-    if os.environ.get("VOICE_OPEN_BROWSER", "1") == "1":
+    port = int(os.environ.get("HIGHDEAS_PORT", "5000"))
+    if os.environ.get("HIGHDEAS_OPEN_BROWSER", "1") == "1":
         threading.Timer(1.5, lambda: webbrowser.open(f"http://127.0.0.1:{port}/")).start()
     app.run(port=port)
 

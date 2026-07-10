@@ -60,7 +60,7 @@ pin `Highdeas.lnk` instead.
 **Or just run it.** Double-click **`Run Highdeas.bat`**, or run
 `.venv/Scripts/python -m highdeas.app`. It opens in its own window; the first memo takes
 ~15s while the transcription model loads — in the background, so the window still opens
-right away. Set `VOICE_DESKTOP=0` to force plain-browser mode.
+right away. Set `HIGHDEAS_DESKTOP=0` to force plain-browser mode.
 
 ## Setup
 
@@ -75,7 +75,7 @@ right away. Set `VOICE_DESKTOP=0` to force plain-browser mode.
    (Notesnook → Settings → Inbox → Enable Inbox API → create a key), or copy
    `.env.example` to `.env` and fill it in. Needed only to submit memos to Notesnook.
 3. **Paths** — if your inbox or Drive folders differ from the defaults, set
-   `VOICE_INBOX_DIR` and `VOICE_DRIVE_BASE` in `.env`.
+   `HIGHDEAS_INBOX_DIR` and `HIGHDEAS_DRIVE_BASE` in `.env`.
 
 ## Configuration
 
@@ -84,13 +84,13 @@ Everything but the Notesnook key is optional. Set these in `.env`.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `NOTESNOOK_INBOX_API_KEY` | — | Auth for posting notes to Notesnook. |
-| `VOICE_INBOX_DIR` | iCloud `Shortcuts/Highdeas` | Folder the iOS Shortcut drops recordings into. |
-| `VOICE_DRIVE_BASE` | `G:\My Drive\voice memos (top level)` | Where music-routed audio is filed. |
-| `VOICE_BIN_DIR` | `Highdeas Bin` beside the inbox | Where retired recordings wait (recoverable for 90 days). |
-| `VOICE_DB` | `memos.db` in this folder | SQLite store of memo state. |
-| `VOICE_CHROME_EXE` / `VOICE_CHROME_PROFILE` | system Chrome / `Default` | Chrome + profile used to open Drive links. |
-| `VOICE_DESKTOP` | `1` | `1` = native window, `0` = plain browser. |
-| `VOICE_PORT` | `5000` | Local port in browser mode. |
+| `HIGHDEAS_INBOX_DIR` | iCloud `Shortcuts/Highdeas` | Folder the iOS Shortcut drops recordings into. |
+| `HIGHDEAS_DRIVE_BASE` | `G:\My Drive\voice memos (top level)` | Where music-routed audio is filed. |
+| `HIGHDEAS_BIN_DIR` | `Highdeas Bin` beside the inbox | Where retired recordings wait (recoverable for 90 days). |
+| `HIGHDEAS_DB` | `memos.db` in this folder | SQLite store of memo state. |
+| `HIGHDEAS_CHROME_EXE` / `HIGHDEAS_CHROME_PROFILE` | system Chrome / `Default` | Chrome + profile used to open Drive links. |
+| `HIGHDEAS_DESKTOP` | `1` | `1` = native window, `0` = plain browser. |
+| `HIGHDEAS_PORT` | `5000` | Local port in browser mode. |
 
 ## Tests
 

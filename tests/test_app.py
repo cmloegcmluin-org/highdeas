@@ -1,13 +1,17 @@
 import threading
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
 from highdeas.app import (
     _open_when_ready,
     _open_window,
+    _run_browser,
     _transcribe_in_background,
+    build_app,
     default_bin_dir,
 )
+from highdeas.store import Memo, MemoStore
 from highdeas.window_state import WindowGeometry, load_geometry, save_geometry
 
 
@@ -118,8 +122,8 @@ def test_chrome_launcher_opens_the_url_in_the_configured_profile(monkeypatch):
     import highdeas.app as app_mod
     calls = []
     monkeypatch.setattr(app_mod.subprocess, "Popen", lambda args: calls.append(args))
-    monkeypatch.setenv("VOICE_CHROME_EXE", r"C:\chrome.exe")
-    monkeypatch.setenv("VOICE_CHROME_PROFILE", "Default")
+    monkeypatch.setenv("HIGHDEAS_CHROME_EXE", r"C:\chrome.exe")
+    monkeypatch.setenv("HIGHDEAS_CHROME_PROFILE", "Default")
 
     app_mod._chrome_launcher()("https://drive.google.com/x")
 
@@ -138,6 +142,65 @@ def test_default_bin_dir_sits_beside_the_inbox(tmp_path):
 
     assert result == tmp_path / "Highdeas Bin"
     assert result.parent == inbox.parent
+
+
+def test_build_app_reads_every_folder_from_the_environment(tmp_path, monkeypatch):
+    inbox, bin_dir, drive = tmp_path / "inbox", tmp_path / "bin", tmp_path / "drive"
+    inbox.mkdir()
+    db_path = tmp_path / "memos.db"
+    monkeypatch.setenv("HIGHDEAS_INBOX_DIR", str(inbox))
+    monkeypatch.setenv("HIGHDEAS_BIN_DIR", str(bin_dir))
+    monkeypatch.setenv("HIGHDEAS_DB", str(db_path))
+    monkeypatch.setenv("HIGHDEAS_DRIVE_BASE", str(drive))
+    (inbox / "voice-3.m4a").write_bytes(b"AUDIO")
+
+    app, _ = build_app()
+    MemoStore(db_path).upsert(Memo(audio_filename="voice-3.m4a", route="drive"))
+    response = app.test_client().post(
+        "/submit/voice-3.m4a", data={"name": "Korok", "transcript": "", "route": "drive"}
+    )
+
+    # Submitting a Drive memo walks all four configured folders at once: it reads the
+    # audio from the inbox, files a copy under the Drive base, retires the original to
+    # the bin, and marks the row processed in the database the test seeded.
+    assert response.status_code == 204
+    today = datetime.now().strftime("%Y_%m_%d")
+    assert (drive / f"_{today}_NOT_YET_PROCESSED_MUSIC" / "Korok.m4a").read_bytes() == b"AUDIO"
+    assert (bin_dir / "voice-3.m4a").read_bytes() == b"AUDIO"
+    assert not (inbox / "voice-3.m4a").exists()
+    assert MemoStore(db_path).get("voice-3.m4a").status == "processed"
+
+
+def test_run_browser_serves_on_the_configured_port_without_opening_a_browser(monkeypatch):
+    monkeypatch.setenv("HIGHDEAS_PORT", "5123")
+    monkeypatch.setenv("HIGHDEAS_OPEN_BROWSER", "0")
+    served = []
+
+    class FakeApp:
+        def run(self, port):
+            served.append(port)
+
+    _run_browser(FakeApp())
+
+    # Browser-mode fallback: the port is honoured, and nothing pops a tab open.
+    assert served == [5123]
+
+
+def test_main_falls_back_to_the_browser_when_the_desktop_window_is_switched_off(monkeypatch):
+    import highdeas.app as app_mod
+    opened = []
+    monkeypatch.setenv("HIGHDEAS_DESKTOP", "0")
+    monkeypatch.setattr(app_mod, "_set_windows_app_id", lambda: None)
+    monkeypatch.setattr(app_mod, "build_app", lambda: ("APP", "SERVICE"))
+    monkeypatch.setattr(app_mod, "_transcribe_in_background", lambda service: None)
+    monkeypatch.setattr(app_mod, "_run_desktop", lambda app: opened.append(("desktop", app)) or True)
+    monkeypatch.setattr(app_mod, "_run_browser", lambda app: opened.append(("browser", app)))
+
+    app_mod.main()
+
+    # The documented escape hatch: HIGHDEAS_DESKTOP=0 must never reach the native window,
+    # even though _run_desktop would have succeeded had it been asked.
+    assert opened == [("browser", "APP")]
 
 
 def test_set_windows_app_id_uses_the_app_id_the_shortcut_carries(monkeypatch):
