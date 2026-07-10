@@ -101,8 +101,8 @@ h1 { font-size: 1.35rem; margin: 0; }
    rather than underlining a word that isn't there. */
 .grid .head:empty { border-bottom: none; }
 .grid .sep { grid-column: 1 / -1; border-top: 1px solid rgba(128,128,128,.18); }
-/* The recording's time on the inbox, the retiring time in the bin. */
-.when { font-size: .8rem; opacity: .6; white-space: nowrap; }
+/* The recording's time on the inbox; in the bin, the days a memo has sat there. */
+.when, .age { font-size: .8rem; opacity: .6; white-space: nowrap; }
 /* The one cell of an inbox row you can pick up. Dotted, so the row says where to take
    hold of it, and faint until you go for it. */
 .grip { display: flex; align-items: flex-start; justify-content: center;

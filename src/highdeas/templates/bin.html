@@ -19,7 +19,7 @@
   {% from "icons.html" import restore, trash %}
   <div class="grid bin headrow">
     <div class="head"></div>
-    <div class="head">When</div>
+    <div class="head" title="The bin forgets what it has held for 90 days">Days in bin</div>
     <div class="head">Audio</div>
     <div class="head">Transcript</div>
     <div class="head">Name</div>
@@ -39,7 +39,9 @@
     {% if not loop.first %}<div class="sep"></div>{% endif %}
     <div class="row" data-kind="{{ 'group' if m.kind == 'group' else 'note' }}">
       {{ kind_cell() }}
-      <div class="when">{{ m.processed_at | when }}</div>
+      {#- Not the hour the memo was retired, which says nothing anyone needs, but how long
+          it has sat here — so a row the 90-day purge is about to take says so. -#}
+      <div class="age">{{ m.processed_at | days_in_bin }}</div>
       <audio controls src="/bin-audio/{{ m.audio_filename }}"></audio>
       <div class="text">{{ m.transcript }}</div>
       <div class="name">{{ m.name or m.audio_filename }}</div>

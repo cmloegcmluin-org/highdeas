@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from highdeas.store import Memo
 from highdeas.transcribe import Transcript
 from highdeas.web import create_app
@@ -1371,18 +1373,30 @@ def test_bin_lists_binned_items(tmp_path):
     assert b"b.m4a" in resp.data
 
 
-def test_bin_shows_its_timestamp_in_the_same_readable_form_as_the_inbox(tmp_path):
+def test_a_binned_memo_counts_the_days_it_has_left_rather_than_naming_its_hour(tmp_path):
     service = FakeService(binned=[
-        Memo(audio_filename="b.m4a", status="deleted", processed_at="2026-07-07T03:00"),
+        Memo(audio_filename="old.m4a", status="deleted", processed_at="2026-04-08T03:00"),
+        Memo(audio_filename="new.m4a", status="deleted", processed_at="2026-07-07T03:00"),
     ])
-    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin"),
+                        now=lambda: datetime(2026, 7, 10, 9, 0)).test_client()
 
     body = client.get("/bin").data.decode()
 
-    # The two pages read their timestamps alike, so flipping between them doesn't mean
-    # re-parsing a raw ISO string on one of them.
-    assert "Jul 7, 3:00 AM" in body
-    assert "2026-07-07T03:00" not in body
+    # The hour a memo was retired says nothing anyone needs; how long it has been in the
+    # bin says whether the 90-day sweep is about to take it. The column counts the days.
+    assert ">Days in bin</div>" in body
+    assert '<div class="age">93</div>' in body
+    assert '<div class="age">3</div>' in body
+    assert "Jul 7" not in body and "2026-07-07T03:00" not in body
+
+
+def test_a_binned_memo_with_no_timestamp_counts_no_days(tmp_path):
+    # Memos retired before processed_at was captured carry none; the row still renders.
+    service = FakeService(binned=[Memo(audio_filename="b.m4a", status="deleted", processed_at="")])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    assert '<div class="age"></div>' in client.get("/bin").data.decode()
 
 
 def test_both_pages_call_the_destination_column_by_the_same_name(tmp_path):
@@ -1534,7 +1548,7 @@ def test_bin_rows_carry_no_number_and_no_placeholder_columns(tmp_path):
     # Eight columns now, and the badge leads them.
     assert body.count('<div class="head"') == 8
     row = body.index('class="row"')
-    assert body.index('class="kind"', row) < body.index('class="when"', row)
+    assert body.index('class="kind"', row) < body.index('class="age"', row)
 
 
 def test_purge_route_permanently_deletes_and_redirects(tmp_path):

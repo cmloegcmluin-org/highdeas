@@ -12,15 +12,28 @@ from flask import Flask, redirect, render_template, request, send_from_directory
 def _format_when(iso):
     """A stored ISO timestamp as a scannable "Jul 7, 2:23 PM".
 
-    Both pages show a moment in time — when a memo was recorded, and when it was
-    sent or trashed — and both are read by eye against a list of recordings on the
-    phone, so neither wants a raw `2026-07-07T14:23:05`. Empty when the timestamp is
-    missing, as it is on memos stored before recording times were captured."""
+    The inbox reconciles a row against the recordings on the phone, so it wants the
+    moment the memo was recorded and not a raw `2026-07-07T14:23:05`. Empty when the
+    timestamp is missing, as on memos stored before recording times were captured."""
     try:
         when = datetime.fromisoformat(iso)
     except ValueError:
         return ""
     return f"{when:%b} {when.day}, {when.hour % 12 or 12}:{when:%M} {when:%p}"
+
+
+def _days_since(iso, now):
+    """Whole days from a stored ISO timestamp to now, as a bare number.
+
+    The hour a memo was retired says nothing anyone needs. How long it has sat in the
+    bin says whether the retention sweep (InboxService.purge_expired, 90 days) is about
+    to take it, and that is the one thing a binned row wants of its timestamp. Empty
+    when there is none, as on memos retired before processed_at was captured."""
+    try:
+        since = datetime.fromisoformat(iso)
+    except ValueError:
+        return ""
+    return str(max(0, (now() - since).days))
 
 
 def _submitted_fields():
@@ -33,9 +46,11 @@ def _submitted_fields():
     }
 
 
-def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=()):
+def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=(), now=datetime.now):
     app = Flask(__name__)
     app.jinja_env.filters["when"] = _format_when
+    # The bin's ages are read against the wall clock, so the clock is injectable.
+    app.jinja_env.filters["days_in_bin"] = lambda iso: _days_since(iso, now)
 
     @app.get("/")
     def index():
