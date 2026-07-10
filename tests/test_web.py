@@ -367,6 +367,21 @@ def test_the_header_rule_runs_on_one_line_under_every_named_column(tmp_path):
     assert "align-items: stretch" in css.split(".grid.headrow {")[1].split("}")[0]
 
 
+def test_the_waveform_already_played_is_the_colour_of_the_word_being_spoken(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    css = asset(client, "app.css")
+    js = asset(client, "editor.js")
+
+    # The stretch of waveform behind the playhead and the word lit up in the text are the
+    # same sound, so they are the same yellow — and the same declaration, read out of the
+    # stylesheet, so the two can never drift apart.
+    assert "--spoken: #facc15" in css.split(":root {")[1].split("}")[0]
+    assert "var(--spoken)" in css.split("::highlight(spoken) {")[1].split("}")[0]
+    assert "getPropertyValue('--spoken')" in js
+    assert "#3b82f6" not in js
+
+
 def test_a_head_that_holds_a_control_is_as_bright_as_the_column_under_it(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 

@@ -28,6 +28,9 @@
   var SAVE_MS = 400;      // debounce before an edit is reported to the caller
   var ALIGN_MS = 150;     // debounce before edited text is re-matched to the audio
   var PEAK_BINS = 2048;   // amplitude bins kept per recording, resampled when drawn
+  // The colour of the sound being heard. The same declaration lights the word being
+  // spoken (::highlight(spoken) in app.css), so the bars and the text can't drift apart.
+  var SPOKEN = getComputedStyle(document.documentElement).getPropertyValue('--spoken').trim();
   // How far past the last matched word we'll hunt for the next one. Edits shift the
   // text away from what was spoken; this is how much drift the highlight survives.
   var LOOKAHEAD = 20;
@@ -257,7 +260,7 @@
       // A flat placeholder line when the audio wouldn't decode: still scrubbable.
       var level = peaks ? peaks[Math.floor(bar * peaks.length / bars)] : 0.1;
       var tall = Math.max(2 * ratio, level * (height - 6 * ratio));
-      pen.fillStyle = bar / bars < played ? '#3b82f6' : 'rgba(128,128,128,.45)';
+      pen.fillStyle = bar / bars < played ? SPOKEN : 'rgba(128,128,128,.45)';
       pen.fillRect(bar * (barWidth + gap), middle - tall / 2, barWidth, tall);
     }
   }

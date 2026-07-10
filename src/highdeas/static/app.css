@@ -16,8 +16,12 @@
 
 /* Reserve the scrollbar gutter on every page so a page with a scrollbar and one
    without stay the same width — otherwise margin:auto re-centers and the layout
-   shifts sideways when you flip between the inbox and bin views. */
-:root { color-scheme: light dark; scrollbar-gutter: stable; }
+   shifts sideways when you flip between the inbox and bin views.
+
+   --spoken is the colour of the recording as it is heard: the word lit up in the text
+   and the stretch of waveform already played are the same sound, so they are the same
+   yellow. editor.js reads it from here rather than keeping a second copy of it. */
+:root { color-scheme: light dark; scrollbar-gutter: stable; --spoken: #facc15; }
 body { font-family: -apple-system, "Segoe UI", system-ui, sans-serif; max-width: 1300px;
        margin: 0 auto; padding: 0 24px 24px; line-height: 1.45; }
 h1 { font-size: 1.35rem; margin: 0; }
@@ -291,8 +295,9 @@ h1 { font-size: 1.35rem; margin: 0; }
 .editor-body li { margin: 0 0 .2em; }
 /* The word being spoken right now. The CSS Custom Highlight API paints it without
    touching the DOM or the selection, so it lights up without ever being selected —
-   the caret and any real selection stay exactly where the user left them. */
-::highlight(spoken) { background-color: rgba(250, 204, 21, .45); }
+   the caret and any real selection stay exactly where the user left them. A wash of
+   --spoken rather than the colour itself: it sits behind text that has to stay read. */
+::highlight(spoken) { background-color: color-mix(in srgb, var(--spoken) 45%, transparent); }
 
 .editor-foot { display: flex; justify-content: flex-end; }
 /* The one filled button left in the app. A dialog has a single way out of it, said once
