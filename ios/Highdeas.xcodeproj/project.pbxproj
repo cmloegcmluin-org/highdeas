@@ -115,6 +115,7 @@
 			packageReferences = (
 				AB0000000000000000000060 /* XCLocalSwiftPackageReference "HighdeasKit" */,
 			);
+			preferredProjectObjectVersion = 77;
 			productRefGroup = AB0000000000000000000011 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -199,6 +200,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = YSEQS7P6GP;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Highdeas/Info.plist;
@@ -219,6 +221,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = YSEQS7P6GP;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Highdeas/Info.plist;
