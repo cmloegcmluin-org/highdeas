@@ -634,7 +634,7 @@ def test_index_shows_the_live_item_count(tmp_path):
     assert b"2 items" in body
 
 
-def test_inbox_rows_are_numbered(tmp_path):
+def test_each_inbox_row_is_dragged_by_a_grip_not_by_a_number(tmp_path):
     service = FakeService(pending=[
         Memo(audio_filename="a.m4a", transcript="one"),
         Memo(audio_filename="b.m4a", transcript="two"),
@@ -642,32 +642,40 @@ def test_inbox_rows_are_numbered(tmp_path):
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     body = client.get("/").data.decode()
-    assert ">1</div>" in body
-    assert ">2</div>" in body
 
-
-def test_each_inbox_row_has_a_drag_handle(tmp_path):
-    service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="one")])
-    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
-
-    body = client.get("/").data.decode()
-
-    # Spreadsheet-style: the row number is the handle you grab to move the row.
-    assert 'class="num" draggable="true"' in body
+    # A grip is what a draggable row wears. A row number was a poor stand-in: nothing
+    # about a number says "pick me up", and numbering a list you reorder by hand only
+    # ever names where a row is sitting this second.
+    assert 'class="grip" draggable="true"' in body
+    assert 'class="num"' not in body
     # A drop posts the whole on-screen order back.
     assert "/reorder" in asset(client, "inbox.js")
 
 
-def test_inbox_row_shows_when_the_recording_was_made(tmp_path):
+def test_dragging_a_row_carries_a_picture_of_the_whole_row(tmp_path):
+    service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="one")])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    # A .memo is display:contents and has no box, so the browser would photograph the
+    # grip alone. The client paints the row into an off-screen clone and hands that over
+    # as the drag image, so what you're moving is visible while you move it.
+    assert "setDragImage" in asset(client, "inbox.js")
+    assert ".drag-ghost" in asset(client, "app.css")
+
+
+def test_inbox_row_shows_when_the_recording_was_made_in_its_leading_column(tmp_path):
     # Reconciling a row against the recordings on the phone means knowing when it was
-    # recorded, so each row carries its recording time under a "Recorded" header.
+    # recorded, so each row leads with its recording time under a "Recorded" header —
+    # the row's anchor now that it carries no number.
     service = FakeService(pending=[Memo(audio_filename="a.m4a", recorded_at="2026-07-07T14:23:05")])
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     body = client.get("/").data.decode()
 
-    assert "Recorded" in body
     assert "Jul 7, 2:23 PM" in body
+    # Ahead of the select checkbox, in the header row and in the memo row alike.
+    assert body.index("Recorded") < body.index('id="select-all"')
+    assert body.index('class="when"') < body.index('class="pick"')
 
 
 def test_inbox_row_leaves_the_timestamp_blank_when_the_recording_time_is_unknown(tmp_path):
@@ -1001,6 +1009,10 @@ def test_bin_shows_its_timestamp_in_the_same_readable_form_as_the_inbox(tmp_path
     # them doesn't mean re-parsing a raw ISO string on one of them.
     assert "Jul 7, 3:00 AM" in body
     assert "2026-07-07T03:00" not in body
+    # Both timestamps lead their row: the inbox's "Recorded" moved to the front when the
+    # row number went, and the bin's "When" follows it there or the pages stop aligning.
+    assert body.index("When") < body.index("Audio")
+    assert body.index('class="when"') < body.index('class="num"')
 
 
 def test_bin_shows_destination_icon_instead_of_status_word(tmp_path):

@@ -42,17 +42,13 @@
     return el;
   }
 
-  // Separators and row numbers both describe the current order — numbers are a
-  // spreadsheet-style anchor, not IDs, so they always run 1..N down the page. Rebuild
-  // both from the DOM after anything is added, removed, or dragged into a new place.
+  // Separators sit between rows, so they describe the current order: rebuild them from
+  // the DOM after anything is added, removed, or dragged into a new place.
   function resync() {
     var grid = content.querySelector('.grid');
     if (grid) {
       grid.querySelectorAll('.sep').forEach(function (el) { el.remove(); });
-      rows().forEach(function (memo, i) {
-        if (i) grid.insertBefore(sep(), memo);
-        memo.querySelector('.num').textContent = i + 1;
-      });
+      rows().forEach(function (memo, i) { if (i) grid.insertBefore(sep(), memo); });
     }
     updateCount();
     syncSelection();
@@ -290,9 +286,10 @@
     groupFiles(files);
   });
 
-  // A .memo is display:contents, so it has no box of its own to grab or hit-test. Its
-  // number cell is the handle, and the row under the pointer is reached through
-  // whichever of its cells the pointer happens to be over.
+  // A .memo is display:contents, so it has no box of its own to grab, hit-test, or
+  // photograph. Its grip cell is the handle; the row under the pointer is reached
+  // through whichever of its cells the pointer happens to be over; and the picture the
+  // cursor carries has to be painted by hand (dragImage).
   var dragged = null;
   // Set when a drag ended on a group rather than between rows: the dragged note is
   // about to leave the list, so dragend must not save an order that still contains it.
@@ -326,7 +323,7 @@
 
   // A row occupies one grid line across several cells of differing height; the line's
   // extent is their union, so a drop reads the same wherever the pointer crosses it.
-  function midpoint(memo) {
+  function rowBox(memo) {
     var top = Infinity;
     var bottom = -Infinity;
     Array.prototype.forEach.call(memo.children, function (cell) {
@@ -334,7 +331,46 @@
       top = Math.min(top, box.top);
       bottom = Math.max(bottom, box.bottom);
     });
-    return (top + bottom) / 2;
+    return { top: top, bottom: bottom };
+  }
+
+  function midpoint(memo) {
+    var box = rowBox(memo);
+    return (box.top + box.bottom) / 2;
+  }
+
+  // What the cursor carries while a row is in the air. The browser photographs the
+  // dragged element's box, and a display:contents row has none — so without this the
+  // pointer would drag the grip alone, and there'd be no seeing what you were moving.
+  // Clone the row's cells into a grid of the same shape, off-screen (it must be
+  // rendered to be photographed), and hand it over. The browser rasterizes it during
+  // dragstart, so it can be dropped as soon as the call stack unwinds.
+  //
+  // It wears `memo` and the row's data-kind, because a row's cells are styled through
+  // those (`.memo audio`, `[data-kind=note] .group-badge`) and a clone outside them
+  // renders as something else entirely — an audio element at its intrinsic width,
+  // overflowing its column. `.drag-ghost` re-boxes what `.memo` un-boxes. It lives
+  // outside #content, so it never answers to rows().
+  var GHOST_PAD = 8;
+
+  function dragImage(memo, event) {
+    var grid = memo.closest('.grid');
+    var gridBox = grid.getBoundingClientRect();
+    var ghost = document.createElement('div');
+    ghost.className = 'grid inbox memo drag-ghost';
+    ghost.dataset.kind = memo.dataset.kind;
+    ghost.style.width = gridBox.width + 'px';
+    Array.prototype.forEach.call(memo.children, function (cell) {
+      ghost.appendChild(cell.cloneNode(true));
+    });
+    document.body.appendChild(ghost);
+    // Hold the picture where the cursor took hold of the row, so it doesn't jump.
+    event.dataTransfer.setDragImage(
+      ghost,
+      event.clientX - gridBox.left + GHOST_PAD,
+      event.clientY - rowBox(memo).top + GHOST_PAD,
+    );
+    setTimeout(function () { ghost.remove(); }, 0);
   }
 
   function orderOf() { return rows().map(function (memo) { return memo.dataset.file; }); }
@@ -443,7 +479,7 @@
     var preview = previewOf(memo);
     var name = nameField(memo);
     var parent = parentField(memo);
-    var handle = memo.querySelector('.num');
+    var handle = memo.querySelector('.grip');
     syncMove(memo);
     memo.querySelector('.pick').addEventListener('change', syncSelection);
     preview.addEventListener('click', function () { openEditor(memo); });
@@ -475,9 +511,10 @@
     handle.addEventListener('dragstart', function (event) {
       dragged = memo;
       orderBefore = orderOf();
-      memo.classList.add('dragging');
       event.dataTransfer.effectAllowed = 'move';
       event.dataTransfer.setData('text/plain', memo.dataset.file);
+      dragImage(memo, event);
+      memo.classList.add('dragging');
     });
     handle.addEventListener('dragend', function () {
       memo.classList.remove('dragging');

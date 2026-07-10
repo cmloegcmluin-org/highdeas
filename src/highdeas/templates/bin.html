@@ -3,10 +3,13 @@
 
 {% block links %}<a class="btn topbtn" href="/">&larr; Back to inbox</a>{% endblock %}
 
-{#- The bin has nothing to select, but it keeps the inbox's two extra leading columns
-    so the audio column and everything after it land at the same x on both pages. -#}
+{#- The bin has nothing to select and nothing to drag, but it keeps the inbox's leading
+    columns — the timestamp, then two thin empties — so the audio column and everything
+    after it land at the same x on both pages. Its timestamp leads for the same reason
+    the inbox's "Recorded" does, and would strand the two pages apart if it didn't. -#}
 {% block headrow %}
   <div class="grid bin headrow">
+    <div class="head">When</div>
     <div class="head"></div>
     <div class="head"></div>
     <div class="head"></div>
@@ -14,7 +17,6 @@
     <div class="head">Transcript</div>
     <div class="head">Name</div>
     <div class="head">Where</div>
-    <div class="head">When</div>
     <div class="head"><form method="post" action="/restore-all" onsubmit="return confirm('Restore all {{ memos|length }} item{{ 's' if memos|length != 1 else '' }} to the inbox?');"><button class="btn head-btn" type="submit">Restore all</button></form></div>
     <div class="head"><form method="post" action="/empty-bin" onsubmit="return confirm('Permanently delete all {{ memos|length }} item{{ 's' if memos|length != 1 else '' }}? This cannot be undone.');"><button class="btn head-btn danger" type="submit">Empty bin</button></form></div>
   </div>
@@ -29,6 +31,7 @@
     {% for m in memos %}
     {% if not loop.first %}<div class="sep"></div>{% endif %}
     <div class="row" data-kind="{{ 'group' if m.kind == 'group' else 'note' }}">
+      <div class="when">{{ m.processed_at | when }}</div>
       <div></div>
       <div class="num">{{ loop.index }}</div>
       {{ kind_cell() }}
@@ -45,7 +48,6 @@
         {%- elif m.route == 'asana' %}<span title="Sent to Asana" aria-label="Sent to Asana">{{ asana() }}</span>
         {%- else %}<span title="Sent to Notesnook" aria-label="Sent to Notesnook">{{ notesnook() }}</span>
         {%- endif %}</div>
-      <div class="when">{{ m.processed_at | when }}</div>
       <div><form method="post" action="/restore/{{ m.audio_filename }}"><button class="btn binbtn" type="submit">Restore</button></form></div>
       <div><form method="post" action="/purge/{{ m.audio_filename }}" onsubmit="return confirm('Permanently delete this recording? This cannot be undone.');"><button class="btn binbtn danger" type="submit">Delete</button></form></div>
     </div>

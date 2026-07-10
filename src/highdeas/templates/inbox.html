@@ -26,10 +26,13 @@
 {#- Bulk actions live in their own column headers so they sit directly over the
     column they act on, instead of being pushed around by the topbar buttons. Group is
     one of them: it folds the ticked notes together, so it heads the badge column right
-    beside their checkboxes. -#}
+    beside their checkboxes.
+
+    Recorded leads: it is the row's anchor, standing where the row number used to. -#}
 {% block headrow %}
   {% from "icons.html" import group, send, trash %}
   <div class="grid inbox headrow">
+    <div class="head">Recorded</div>
     <div class="head"><input type="checkbox" id="select-all" title="Select every note" aria-label="Select every note"></div>
     <div class="head"></div>
     <div class="head"><button type="button" id="group-picked" class="kind-btn" disabled title="Group the selected notes" aria-label="Group the selected notes">{{ group() }}</button></div>
@@ -38,7 +41,6 @@
     <div class="head"></div>
     <div class="head">Name</div>
     <div class="head">Route</div>
-    <div class="head">Recorded</div>
     <div class="head"><button type="button" id="submit-all" class="btn head-btn" title="Submit all" aria-label="Submit all">{{ send() }}</button></div>
     <div class="head"><button type="button" id="trash-all" class="btn head-btn danger" title="Trash all" aria-label="Trash all">{{ trash() }}</button></div>
   </div>

@@ -1,11 +1,11 @@
 /* One stylesheet for the inbox, the bin, and the note editor, so their chrome is
    identical — same title bar, top-right buttons, and header row — and nothing jumps
-   when you flip between them. The two grids share widths too: three thin leading
-   columns (a select checkbox — empty in the bin, which has nothing to select; the
-   row-number handle; the group badge), then 236 | flex | a middle band | two 94px
-   action columns, so only the middle band's contents differ per page. The bin's band
-   spans one column fewer, so it is a gap wider. Each band ends with a 106px timestamp
-   column, so the inbox's "Recorded" and the bin's "When" sit in the same place. */
+   when you flip between them. The two grids share widths too: a 106px timestamp column
+   leading (the inbox's "Recorded", the bin's "When"), then three thin columns (a select
+   checkbox — empty in the bin, which has nothing to select; the drag grip — the bin's
+   row number, which has nothing to drag; the group badge), then 236 | flex | a middle
+   band | two 94px action columns, so only the middle band's contents differ per page.
+   The bin's band spans one column fewer, so it is a gap wider. */
 
 /* Reserve the scrollbar gutter on every page so a page with a scrollbar and one
    without stay the same width — otherwise margin:auto re-centers and the layout
@@ -61,16 +61,25 @@ h1 { font-size: 1.35rem; margin: 0; }
    grows, so the Asana dropdown appearing shoved the destination icons (and every
    neighbour) upward. Anchored to the top, a growing cell only extends downward. */
 .grid { display: grid; gap: 14px 18px; align-items: start; }
-.grid.inbox  { grid-template-columns: 22px 26px 30px 236px minmax(220px, 1fr) 30px 132px 110px 106px 94px 94px; }
-.grid.bin    { grid-template-columns: 22px 26px 30px 236px minmax(220px, 1fr) 234px 56px 106px 94px 94px; }
+.grid.inbox  { grid-template-columns: 106px 22px 26px 30px 236px minmax(220px, 1fr) 30px 132px 110px 94px 94px; }
+.grid.bin    { grid-template-columns: 106px 22px 26px 30px 236px minmax(220px, 1fr) 234px 56px 94px 94px; }
 .grid.body { margin-top: 12px; }
 .grid .head { font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; opacity: .55;
               display: flex; align-items: flex-end; min-height: 32px;
               padding-bottom: 4px; border-bottom: 1px solid rgba(128,128,128,.25); }
 .grid .sep { grid-column: 1 / -1; border-top: 1px solid rgba(128,128,128,.18); }
+/* The bin's rows are numbered; the inbox's are not, because you reorder them by hand
+   and a number would only ever name where a row is sitting this second. */
 .num { font-size: .8rem; opacity: .4; text-align: right; font-variant-numeric: tabular-nums; }
-/* Timestamps on both pages: the inbox's recording time and the bin's processed time. */
+/* Timestamps lead both pages: the inbox's recording time and the bin's processed time. */
 .when { font-size: .8rem; opacity: .6; white-space: nowrap; }
+/* The one cell of an inbox row you can pick up. Dotted, so the row says where to take
+   hold of it, and faint until you go for it. */
+.grip { display: flex; align-items: flex-start; justify-content: center;
+        cursor: grab; opacity: .3; transition: opacity .15s; }
+.grip:hover { opacity: .75; }
+.grip:active { cursor: grabbing; }
+.grip svg { width: 16px; height: 16px; display: block; pointer-events: none; }
 /* The selection column: tick rows, then act on them as a set (grouping). */
 .pick, #select-all { width: 15px; height: 15px; margin: 0; cursor: pointer; accent-color: #3b82f6; }
 /* The group column. Every row carries the badge and only a group shows it, so the client
@@ -141,10 +150,21 @@ h1 { font-size: 1.35rem; margin: 0; }
    list, and so a row can't be double-submitted. A display:contents row generates no
    box of its own, so dimming has to reach its cells — set on the row it does nothing. */
 .memo.sending > * { opacity: .5; transition: opacity .15s; }
-.memo.dragging > * { opacity: .35; }
-/* Spreadsheet-style row handle: grab the number to drag the row somewhere else. */
-.memo .num { cursor: grab; }
-.memo .num:active { cursor: grabbing; }
+/* The row you have hold of, faded in place — its picture is the thing under the cursor
+   (.drag-ghost), and the gap it leaves behind is where letting go would put it. */
+.memo.dragging > * { opacity: .25; }
+/* That picture. The browser paints a drag image from the dragged element's box, and a
+   display:contents row has none, so the pointer would carry the bare grip. inbox.js
+   clones the row's cells into this — a grid of the same shape and width — and hands it
+   over as the drag image. Parked off-screen: it has to be rendered to be photographed,
+   and must never be seen or hit-tested where it sits. Its width is set to the grid's
+   and left content-box, so its columns land exactly under the real ones.
+
+   It is a .memo too, since that is what a row's cells are styled through, so `display`
+   has to be given back what .memo takes away. Declared after .memo, so it wins. */
+.drag-ghost { display: grid; position: fixed; top: 0; left: -10000px; pointer-events: none;
+              padding: 8px; border-radius: 10px; background: Canvas;
+              border: 1px solid #3b82f6; box-shadow: 0 12px 28px rgba(0,0,0,.35); }
 .memo button:disabled { cursor: default; }
 /* The row's two icon buttons stay dimmed until hovered, so they sit quietly beside
    the filled Submit rather than competing with it. */

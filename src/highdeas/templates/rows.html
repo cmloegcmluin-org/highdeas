@@ -5,7 +5,7 @@
     dialog, where the whole note — waveform, spoken-word highlighting, title,
     lists — has room to be worked on. The row carries the memo's word timings so
     the editor can highlight along with the audio without a second request. -#}
-{% from "icons.html" import notesnook, drive, asana, trash, send, chevron, clipboard, check, kind_cell %}
+{% from "icons.html" import notesnook, drive, asana, trash, send, chevron, clipboard, check, grip, kind_cell %}
 
 {#- A copy-to-clipboard button, pinned inside its cell. It carries both the clipboard
     and the check icon; the client swaps them with a `.copied` class, so confirming a
@@ -26,8 +26,11 @@
   {% if not loop.first %}<div class="sep"></div>{% endif %}
   <div class="memo" data-file="{{ m.audio_filename }}" data-words="{{ m.word_times }}"
        data-kind="{{ 'group' if m.kind == 'group' else 'note' }}">
+    {#- The recording's time leads the row: it is the one thing about a row that never
+        changes, so it anchors the row the way a number can't once you reorder by hand. -#}
+    <div class="when">{{ m.recorded_at | when }}</div>
     <input type="checkbox" class="pick" aria-label="Select this note">
-    <div class="num" draggable="true" title="Drag to move this note">{{ loop.index }}</div>
+    <div class="grip" draggable="true" title="Drag to move this note" aria-label="Drag to move this note">{{ grip() }}</div>
     {{ kind_cell() }}
     <audio controls src="/audio/{{ m.audio_filename }}"></audio>
     <div class="cell">
@@ -56,7 +59,6 @@
         {% endfor %}
       </select>
     </div>
-    <div class="when">{{ m.recorded_at | when }}</div>
     <button type="button" class="go" title="Submit" aria-label="Submit">{{ send() }}</button>
     <button type="button" class="btn del danger" title="Delete" aria-label="Delete">{{ trash() }}</button>
   </div>
