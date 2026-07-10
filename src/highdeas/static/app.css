@@ -43,14 +43,6 @@ h1 { font-size: 1.35rem; margin: 0; }
    row, in a column head, in the topbar — is at full strength, so the same glyph never
    reads at two brightnesses depending on where it sits. */
 .btn:disabled { opacity: .4; cursor: default; }
-/* Most of them say their action with a glyph rather than a word. One rule draws every
-   glyph, at one size, centred in whatever button wears it. */
-.btn svg { width: 16px; height: 16px; display: block; margin: 0 auto; }
-/* A button that is only a glyph has no label to shape it, so it takes a square target
-   instead — the same square wherever it is: the topbar's three, every column head, the
-   row's chevron, Submit and bin, and the bin page's Restore and Delete. */
-.btn.icon { display: flex; align-items: center; justify-content: center;
-            width: 34px; height: 34px; padding: 0; }
 
 /* The title bar and the column headers stay pinned while the rows scroll, so the
    item count and the bulk (Submit/Trash/Restore/Empty) buttons are always in reach. */
@@ -62,6 +54,15 @@ h1 { font-size: 1.35rem; margin: 0; }
 .topbar .links { display: flex; align-items: center; gap: 10px; }
 .topbtn { display: inline-flex; align-items: center; justify-content: center;
           font-size: .85rem; padding: 6px 12px; text-decoration: none; }
+/* A glyph and nothing else takes the same square, whether it is pressed or only read:
+   the topbar's three, every column head, the row's chevron, Submit and bin, the bin
+   page's Restore and Delete, and the destination each of its rows reports. Nothing has
+   a label to shape it, so a square target is what they all get, and one rule draws every
+   glyph in them. Declared after .topbtn, whose inline-flex and label-shaped padding it
+   overrides at equal specificity. */
+.icon { display: flex; align-items: center; justify-content: center;
+        width: 34px; height: 34px; padding: 0; }
+.icon svg { width: 16px; height: 16px; display: block; }
 /* A check is otherwise instant: spin the arrows for a beat so the press visibly lands.
    A word swapped in for a beat was the old way, and a picture has no word to swap. */
 #refresh.spinning svg { animation: spin .7s linear infinite; }
@@ -81,7 +82,7 @@ h1 { font-size: 1.35rem; margin: 0; }
    neighbour) upward. Anchored to the top, a growing cell only extends downward. */
 .grid { display: grid; gap: 14px 18px; align-items: start; }
 .grid.inbox  { grid-template-columns: 26px 15px 34px 106px 348px minmax(220px, 1fr) 34px 132px 110px 34px 34px; }
-.grid.bin    { grid-template-columns: 34px 106px 348px minmax(220px, 1fr) 234px 56px 34px 34px; }
+.grid.bin    { grid-template-columns: 34px 106px 348px minmax(220px, 1fr) 234px 90px 34px 34px; }
 .grid.body { margin-top: 12px; }
 /* Each head draws its own rule at its own bottom edge, so heads of different heights
    would step the underline up and down the row — a head holding a 34px button is taller
@@ -117,8 +118,8 @@ h1 { font-size: 1.35rem; margin: 0; }
    promotes a row by flipping data-kind. The cell stretches to the row's full height, to
    be a big enough target for a note dragged onto a group. */
 .kind { align-self: stretch; display: flex; align-items: flex-start; justify-content: center; }
-/* The bin's badge only reports, so it is a bare glyph and asks for its own size. The
-   inbox's is a button and takes it from .btn svg. */
+/* The bin's badge only reports, so it is a bare glyph outside any square and asks for
+   its own size. The inbox's is a button, and .icon draws it. */
 .kind svg { width: 16px; height: 16px; display: block; }
 [data-kind="note"] .group-badge { display: none; }
 /* A group's badge while a dragged note hovers it: let go here and the note joins it. */
@@ -242,11 +243,13 @@ h1 { font-size: 1.35rem; margin: 0; }
 .row audio { width: 100%; }
 .row .text { font-size: .9rem; white-space: pre-wrap; max-height: 5.5em; overflow: auto; opacity: .85; }
 .row .name { font-weight: 600; }
-.row .dest { display: flex; align-items: center; }
-.row .dest svg { width: 20px; height: 20px; display: block; }
-.row .destlink { display: flex; align-items: center; text-decoration: none;
-                 background: transparent; border: none; padding: 0; cursor: pointer; }
+/* Where the memo went. It reports rather than acts, so it wears the row's square (.icon)
+   without its border — and its glyph lands on the line Restore and Delete draw theirs on,
+   instead of floating above it. When the destination can be opened, the square is the
+   button that opens it. */
+.row .dest { display: flex; }
 .row .dest form { display: contents; }
+.destlink { background: transparent; border: none; color: inherit; cursor: pointer; }
 /* The bin's two actions are glyphs, like the inbox row's: the same arrow doubling back
    and the same bin their column heads wear. Their names live in a title and an
    aria-label, and the words they dropped are spoken in full by the confirm they raise. */

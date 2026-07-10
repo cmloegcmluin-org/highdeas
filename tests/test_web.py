@@ -588,7 +588,7 @@ def test_every_button_that_is_only_a_glyph_is_the_same_square(tmp_path):
     # The topbar's three, the column heads, the row's chevron, its Submit and its bin, and
     # the bin page's Restore and Delete are all a picture and nothing else, so they are all
     # one square — the eye learns the target once and finds it everywhere.
-    square = css.split(".btn.icon {")[1].split("}")[0]
+    square = css.split(".icon {")[1].split("}")[0]
     assert "width: 34px" in square and "height: 34px" in square
     for control in ("undo", "redo", "refresh"):
         assert f'id="{control}" class="btn topbtn icon"' in inbox
@@ -602,7 +602,7 @@ def test_every_button_that_is_only_a_glyph_is_the_same_square(tmp_path):
     assert 'class="btn icon danger" title="Empty bin"' in binned
     assert 'class="btn icon" title="Restore"' in binned
     assert 'class="btn icon danger" title="Delete"' in binned
-    # No glyph asks for a size of its own any more: .btn svg draws every one of them, and
+    # No glyph asks for a size of its own any more: .icon svg draws every one of them, and
     # a head no longer needs a chrome of its own to sit in.
     assert ".topbtn svg" not in css and ".head-btn" not in css
 
@@ -756,8 +756,8 @@ def test_a_column_of_submits_and_its_bulk_head_wear_the_same_glyph(tmp_path):
     assert 'class="btn icon go" title="Submit" aria-label="Submit"><svg' in body
     assert ">Submit all<" not in body and ">Trash all<" not in body
     assert ">Submit</button>" not in body
-    # One rule draws every glyph a button wears, so a head and its column can't drift.
-    assert ".btn svg {" in css
+    # One rule draws every glyph in the app, so a head and its column can't drift.
+    assert ".icon svg {" in css
     # The editor's button still speaks: it is the only one left with a word to say.
     assert ">Done</button>" in body
 
@@ -1385,6 +1385,40 @@ def test_bin_shows_its_timestamp_in_the_same_readable_form_as_the_inbox(tmp_path
     assert "2026-07-07T03:00" not in body
 
 
+def test_both_pages_call_the_destination_column_by_the_same_name(tmp_path):
+    service = FakeService(pending=[Memo(audio_filename="a.m4a")],
+                          binned=[Memo(audio_filename="b.m4a", status="deleted", processed_at="2026-07-07T03:00")])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    index = client.get("/").data.decode()
+    binned = client.get("/bin").data.decode()
+
+    # The inbox picked a "Route" and the bin reported "Where" it went — two names for the
+    # one thing the column holds, and neither of them the word the icons themselves use.
+    assert ">Destination</div>" in index and ">Destination</div>" in binned
+    assert ">Route<" not in index and ">Where<" not in binned
+
+
+def test_a_bin_rows_destination_stands_in_the_same_square_as_its_buttons(tmp_path):
+    service = FakeService(binned=[
+        Memo(audio_filename="n.m4a", status="processed", route="notesnook", processed_at="2026-07-07T02:00"),
+        Memo(audio_filename="d.m4a", status="processed", route="drive", processed_at="2026-07-07T01:00"),
+    ])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/bin").data.decode()
+    css = asset(client, "app.css")
+
+    # A 20px glyph in a cell of its own height sat above the line Restore and Delete draw
+    # their glyphs on. The same square holds it — borderless, since it reports rather than
+    # acts — so the three of them read straight across the row.
+    assert 'class="icon" title="Sent to Notesnook"' in body
+    assert 'class="destlink icon"' in body
+    square = css.split(".icon {")[1].split("}")[0]
+    assert "width: 34px" in square and "height: 34px" in square
+    assert "border: none" in css.split(".destlink {")[1].split("}")[0]
+
+
 def test_bin_shows_destination_icon_instead_of_status_word(tmp_path):
     service = FakeService(binned=[
         Memo(audio_filename="n.m4a", status="processed", route="notesnook", processed_at="2026-07-07T02:00"),
@@ -1400,8 +1434,8 @@ def test_bin_shows_destination_icon_instead_of_status_word(tmp_path):
     assert b"Sent to Google Drive" in body
 
 
-def test_bin_says_nothing_about_where_a_memo_that_was_never_sent_went(tmp_path):
-    # "Where" answers one question: which of the three destinations took this memo. A
+def test_bin_names_no_destination_for_a_memo_that_was_never_sent(tmp_path):
+    # The column answers one question: which of the three destinations took this memo. A
     # trashed note and one merged into a group were never sent anywhere, so the column
     # has nothing to say — an icon there is a destination that doesn't exist. Both keep
     # the route they were bound for, so the status has to be read before the route, or
