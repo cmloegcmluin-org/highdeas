@@ -6,9 +6,13 @@
    that act on it — grip, select, group badge — and then a 106px timestamp. The bin
    reorders nothing and selects nothing, so it leads with the badge and the timestamp
    alone, rather than holding two columns open for controls it hasn't got. Both then run
-   236 | flex | a band | two 94px action columns, so the pages are the same width and
+   348 | flex | a band | two 34px action columns, so the pages are the same width and
    their bulk buttons sit over the same two columns. The flex transcript column absorbs
-   the difference, and the bin's is wider for it. */
+   the difference, and the bin's is wider for it.
+
+   An action column is exactly as wide as the square button in it. They were 94px each
+   once, when the buttons wore words; the 120px that left with the words went to the
+   audio column, where the scrubber had barely enough of a bar to take hold of. */
 
 /* Reserve the scrollbar gutter on every page so a page with a scrollbar and one
    without stay the same width — otherwise margin:auto re-centers and the layout
@@ -22,7 +26,7 @@ h1 { font-size: 1.35rem; margin: 0; }
 /* One outline chrome for every button in the app: transparent fill and a hairline
    border that takes on the action's color on hover. Only size and hue vary — .danger
    for the ones that discard something. Must stay above the variants that resize it
-   (.topbtn, .head-btn, .binbtn, .play, .tool): the `font: inherit` shorthand resets
+   (.topbtn, .head-btn, .play, .tool): the `font: inherit` shorthand resets
    font-size, so at equal specificity a later .btn would undo their smaller type. */
 .btn { font: inherit; background: transparent; color: inherit; cursor: pointer;
        border: 1px solid rgba(128,128,128,.4); border-radius: 8px;
@@ -32,10 +36,15 @@ h1 { font-size: 1.35rem; margin: 0; }
 /* A check already in flight, an undo with nothing left to walk back, a Group with
    nothing ticked to fold: faded, and no longer offering itself to the pointer. */
 .btn:disabled { opacity: .4; cursor: default; }
-/* Most of them say their action with a glyph rather than a word, and every glyph is
-   drawn at one size and centred in its button. The two that want their own size —
-   the topbar's and the row's chevron — ask for it below, so this must stay above them. */
+/* Most of them say their action with a glyph rather than a word. One rule draws every
+   glyph, at one size, centred in whatever button wears it. */
 .btn svg { width: 16px; height: 16px; display: block; margin: 0 auto; }
+/* A button that is only a glyph has no label to shape it, so it takes a square target
+   instead — the same square wherever it is: the topbar's three, the row's chevron,
+   Submit and bin, and the bin page's Restore and Delete. Only the column heads sit
+   shallower, being a band above the columns rather than a control inside one. */
+.btn.icon { display: flex; align-items: center; justify-content: center;
+            width: 34px; height: 34px; padding: 0; }
 
 /* The title bar and the column headers stay pinned while the rows scroll, so the
    item count and the bulk (Submit/Trash/Restore/Empty) buttons are always in reach. */
@@ -47,10 +56,6 @@ h1 { font-size: 1.35rem; margin: 0; }
 .topbar .links { display: flex; align-items: center; gap: 10px; }
 .topbtn { display: inline-flex; align-items: center; justify-content: center;
           font-size: .85rem; padding: 6px 12px; text-decoration: none; }
-/* The three that act on the list are glyphs, so they get a square target rather than a
-   label-shaped one. Their names live in a title and an aria-label. */
-.topbtn.icon { padding: 7px; }
-.topbtn svg { width: 17px; height: 17px; }
 /* A check is otherwise instant: spin the arrows for a beat so the press visibly lands.
    A word swapped in for a beat was the old way, and a picture has no word to swap. */
 #refresh.spinning svg { animation: spin .7s linear infinite; }
@@ -69,8 +74,8 @@ h1 { font-size: 1.35rem; margin: 0; }
    grows, so the Asana dropdown appearing shoved the destination icons (and every
    neighbour) upward. Anchored to the top, a growing cell only extends downward. */
 .grid { display: grid; gap: 14px 18px; align-items: start; }
-.grid.inbox  { grid-template-columns: 26px 22px 30px 106px 236px minmax(220px, 1fr) 30px 132px 110px 94px 94px; }
-.grid.bin    { grid-template-columns: 30px 106px 236px minmax(220px, 1fr) 234px 56px 94px 94px; }
+.grid.inbox  { grid-template-columns: 26px 22px 34px 106px 348px minmax(220px, 1fr) 34px 132px 110px 34px 34px; }
+.grid.bin    { grid-template-columns: 34px 106px 348px minmax(220px, 1fr) 234px 56px 34px 34px; }
 .grid.body { margin-top: 12px; }
 .grid .head { font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; opacity: .55;
               display: flex; align-items: flex-end; min-height: 32px;
@@ -176,20 +181,16 @@ h1 { font-size: 1.35rem; margin: 0; }
 /* The row's three buttons — chevron, Submit, bin — wear the app's one outline chrome.
    Submit keeps its full weight, being what the row is for; the two either side of it
    sit dimmed until reached for, so a list of rows reads as text and not as buttons. */
-.memo .go, .memo .move, .memo .del { width: 100%;
+.memo .go, .memo .move, .memo .del {
                           transition: opacity .15s, color .15s, border-color .15s; }
 .memo .move, .memo .del { opacity: .45; }
 .memo .move:not(:disabled):hover, .memo .del:not(:disabled):hover { opacity: 1; }
 /* One chevron, turned around once the transcript is empty so it points the way the name
    is about to travel back; with both cells empty it has no move to offer and fades out
    of the row. */
-.memo .move { padding: 0; height: 40px;
-              display: flex; align-items: center; justify-content: center; }
-.memo .move svg { width: 20px; height: 20px; transition: transform .15s; }
+.memo .move svg { transition: transform .15s; }
 .memo .move.back svg { transform: rotate(180deg); }
 .memo .move:disabled { opacity: .15; }
-/* The paper plane and the bin, each matching the head that presses its whole column. */
-.memo .go, .memo .del { padding: 9px 0; }
 /* The destination picker: three radio-backed brand icons; the checked one is lit,
    the rest sit dimmed (half-lit on hover). */
 .route-cell { display: flex; flex-direction: column; gap: 6px; }
@@ -241,7 +242,6 @@ h1 { font-size: 1.35rem; margin: 0; }
 /* The bin's two actions are glyphs, like the inbox row's: the same arrow doubling back
    and the same bin their column heads wear. Their names live in a title and an
    aria-label, and the words they dropped are spoken in full by the confirm they raise. */
-.binbtn { width: 100%; padding: 9px 0; }
 .row form { width: 100%; margin: 0; }
 
 /* ---- The note editor -------------------------------------------------------

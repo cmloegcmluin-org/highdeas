@@ -129,7 +129,7 @@ def test_index_renders_inbox_controls(tmp_path):
     # Each row carries its filename so JS can target /edit, /submit, /delete.
     assert b'data-file="a.m4a"' in body
     # The "move transcript into name" control between Transcript and Name.
-    assert b'class="btn move"' in body
+    assert b'class="btn icon move"' in body
 
 
 def test_index_offers_three_destination_icons_with_the_route_checked(tmp_path):
@@ -269,7 +269,7 @@ def test_the_move_button_points_the_way_the_text_will_travel(tmp_path):
     # the row ships one unturned chevron and inbox.js aims it: right while the transcript
     # has something to give, left once it's empty and the name is holding it. Baking a
     # direction into the HTML would let it disagree with the cells after a move.
-    assert 'class="btn move"' in body
+    assert 'class="btn icon move"' in body
     assert "Move transcript into Name" not in body
     assert "classList.toggle('back', back)" in js
     assert "'Move transcript into Name'" in js and "'Move name into Transcript'" in js
@@ -482,6 +482,33 @@ def test_the_topbar_acts_through_icons_and_names_them_for_a_screen_reader(tmp_pa
     assert body.count('aria-label="Refresh"') == 1
     assert body.count("<svg") >= 3
 
+
+def test_every_button_that_is_only_a_glyph_is_the_same_square(tmp_path):
+    service = FakeService(
+        pending=[Memo(audio_filename="a.m4a", transcript="hi")],
+        binned=[Memo(audio_filename="b.m4a", status="deleted", processed_at="2026-07-07T03:00")],
+    )
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    inbox = client.get("/").data.decode()
+    binned = client.get("/bin").data.decode()
+    css = asset(client, "app.css")
+
+    # Undo, Redo, Refresh, the row's chevron, its Submit and its bin, and the bin page's
+    # Restore and Delete are all a picture and nothing else, so they are all one square —
+    # the eye learns the target once and finds it everywhere.
+    square = css.split(".btn.icon {")[1].split("}")[0]
+    assert "width: 34px" in square and "height: 34px" in square
+    for control in ("undo", "redo", "refresh"):
+        assert f'id="{control}" class="btn topbtn icon"' in inbox
+    assert 'class="btn icon move"' in inbox
+    assert 'class="btn icon go"' in inbox
+    assert 'class="btn icon del danger"' in inbox
+    assert 'class="btn icon" title="Restore"' in binned
+    assert 'class="btn icon danger" title="Delete"' in binned
+    # No glyph asks for a size of its own any more: .btn svg draws every one of them.
+    assert ".topbtn svg" not in css
+
     # A label swap is no way to say "checking" once the label is a picture: spin it.
     js = asset(client, "inbox.js")
     css = asset(client, "app.css")
@@ -629,7 +656,7 @@ def test_a_column_of_submits_and_its_bulk_head_wear_the_same_glyph(tmp_path):
     # same way — one paper plane over a column of them, one bin over a column of bins.
     assert 'id="submit-all" class="btn head-btn" title="Submit all" aria-label="Submit all"' in body
     assert 'id="trash-all" class="btn head-btn danger" title="Trash all" aria-label="Trash all"' in body
-    assert 'class="btn go" title="Submit" aria-label="Submit"><svg' in body
+    assert 'class="btn icon go" title="Submit" aria-label="Submit"><svg' in body
     assert ">Submit all<" not in body and ">Trash all<" not in body
     assert ">Submit</button>" not in body
     # One rule draws every glyph a button wears, so a head and its column can't drift.
@@ -647,10 +674,27 @@ def test_a_rows_submit_wears_the_outline_chrome_its_bulk_head_wears(tmp_path):
 
     # A solid blue Submit on every row shouted the same thing down the whole list. It
     # takes the app's one outline chrome, and colors on hover like the head above it.
-    assert 'class="btn go" title="Submit" aria-label="Submit"' in body
+    assert 'class="btn icon go" title="Submit" aria-label="Submit"' in body
     # One filled button is left in the app: the dialog's single way out.
     filled = [rule for rule in css.split("}") if "background: #3b82f6" in rule]
     assert len(filled) == 1 and ".editor-done" in filled[0], filled
+
+
+def test_the_action_columns_hand_their_spare_width_to_the_scrubber(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    css = asset(client, "app.css")
+    inbox_cols = css.split(".grid.inbox")[1].split(";")[0]
+    bin_cols = css.split(".grid.bin")[1].split(";")[0]
+
+    # A 94px column around a 34px glyph starved the audio player beside it — the scrubber
+    # was a hairline you could barely take hold of. Each page's two action columns narrow
+    # to the buttons they hold, and the width they give up goes to the audio.
+    assert "94px" not in inbox_cols and "94px" not in bin_cols
+    assert inbox_cols.rstrip().endswith("34px 34px")
+    assert bin_cols.rstrip().endswith("34px 34px")
+    # The same scrubber on both pages, as wide as the two grids can both afford.
+    assert "348px" in inbox_cols and "348px" in bin_cols
 
 
 def test_every_inbox_row_is_the_same_height_whether_or_not_it_has_a_transcript(tmp_path):
@@ -925,11 +969,8 @@ def test_topbar_controls_are_buttons_not_text_links(tmp_path):
     # The shared base must precede every variant that resizes it: .btn's `font: inherit`
     # shorthand resets font-size, so at equal specificity a later .btn silently undoes
     # .topbtn's smaller type — the topbar buttons render at 16px instead of 13.6px.
-    for variant in (".topbtn {", ".head-btn {", ".binbtn {", ".play {", ".tool {"):
+    for variant in (".topbtn {", ".head-btn {", ".play {", ".tool {"):
         assert css.index(".btn {") < css.index(variant), variant
-    # Same hazard one level down: .btn svg sizes every glyph, and .topbtn svg only wins
-    # its 17px by coming later — reordered, the topbar's icons silently shrink to 16px.
-    assert css.index(".btn svg {") < css.index(".topbtn svg {")
 
 
 def test_refresh_button_spins_and_locks_for_a_held_beat_while_it_checks(tmp_path):
@@ -1323,8 +1364,8 @@ def test_the_bins_columns_of_buttons_and_their_bulk_heads_wear_the_same_glyphs(t
     # glyph. Restore's arrow doubles back, Delete's is the bin the inbox trashes into.
     assert 'class="btn head-btn" title="Restore all" aria-label="Restore all"><svg' in body
     assert 'class="btn head-btn danger" title="Empty bin" aria-label="Empty bin"><svg' in body
-    assert 'class="btn binbtn" title="Restore" aria-label="Restore"><svg' in body
-    assert 'class="btn binbtn danger" title="Delete" aria-label="Delete"><svg' in body
+    assert 'class="btn icon" title="Restore" aria-label="Restore"><svg' in body
+    assert 'class="btn icon danger" title="Delete" aria-label="Delete"><svg' in body
     for word in (">Restore all<", ">Empty bin<", ">Restore<", ">Delete<"):
         assert word not in body, word
     # The words are gone from the buttons, not from the page: each confirm still says them.

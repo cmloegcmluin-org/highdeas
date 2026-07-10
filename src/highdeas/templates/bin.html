@@ -53,8 +53,8 @@
         {%- else %}<span title="Sent to Notesnook" aria-label="Sent to Notesnook">{{ notesnook() }}</span>
         {%- endif %}
         {%- endif %}</div>
-      <div><form method="post" action="/restore/{{ m.audio_filename }}"><button type="submit" class="btn binbtn" title="Restore" aria-label="Restore">{{ restore() }}</button></form></div>
-      <div><form method="post" action="/purge/{{ m.audio_filename }}" onsubmit="return confirm('Permanently delete this recording? This cannot be undone.');"><button type="submit" class="btn binbtn danger" title="Delete" aria-label="Delete">{{ trash() }}</button></form></div>
+      <div><form method="post" action="/restore/{{ m.audio_filename }}"><button type="submit" class="btn icon" title="Restore" aria-label="Restore">{{ restore() }}</button></form></div>
+      <div><form method="post" action="/purge/{{ m.audio_filename }}" onsubmit="return confirm('Permanently delete this recording? This cannot be undone.');"><button type="submit" class="btn icon danger" title="Delete" aria-label="Delete">{{ trash() }}</button></form></div>
     </div>
     {% endfor %}
   </div>

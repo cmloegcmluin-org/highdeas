@@ -41,7 +41,7 @@
     {#- Unlabelled on purpose: which way this chevron points depends on which of the two
         cells it sits between currently holds the text, and that changes as the note is
         edited. inbox.js turns it around and names it, and keeps the two honest. -#}
-    <button type="button" class="btn move">{{ chevron() }}</button>
+    <button type="button" class="btn icon move">{{ chevron() }}</button>
     <div class="cell oneline">
       <input type="text" name="name" value="{{ m.name }}" placeholder="Name…" autocomplete="off" aria-label="Name">
       {{ clip('name') }}
@@ -62,8 +62,8 @@
         {% endfor %}
       </select>
     </div>
-    <button type="button" class="btn go" title="Submit" aria-label="Submit">{{ send() }}</button>
-    <button type="button" class="btn del danger" title="Delete" aria-label="Delete">{{ trash() }}</button>
+    <button type="button" class="btn icon go" title="Submit" aria-label="Submit">{{ send() }}</button>
+    <button type="button" class="btn icon del danger" title="Delete" aria-label="Delete">{{ trash() }}</button>
   </div>
   {% endfor %}
 </div>
