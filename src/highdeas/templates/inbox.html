@@ -28,7 +28,7 @@
     one of them: it folds the ticked notes together, so it heads the badge column right
     beside their checkboxes. -#}
 {% block headrow %}
-  {% from "icons.html" import group %}
+  {% from "icons.html" import group, send, trash %}
   <div class="grid inbox headrow">
     <div class="head"><input type="checkbox" id="select-all" title="Select every note" aria-label="Select every note"></div>
     <div class="head"></div>
@@ -39,8 +39,8 @@
     <div class="head">Name</div>
     <div class="head">Route</div>
     <div class="head">Recorded</div>
-    <div class="head"><button type="button" id="submit-all" class="btn head-btn">Submit all</button></div>
-    <div class="head"><button type="button" id="trash-all" class="btn head-btn danger">Trash all</button></div>
+    <div class="head"><button type="button" id="submit-all" class="btn head-btn" title="Submit all" aria-label="Submit all">{{ send() }}</button></div>
+    <div class="head"><button type="button" id="trash-all" class="btn head-btn danger" title="Trash all" aria-label="Trash all">{{ trash() }}</button></div>
   </div>
 {% endblock %}
 

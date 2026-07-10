@@ -111,20 +111,25 @@
 
   function flush(memo) { clearTimeout(memo._timer); return save(memo); }
 
+  // A button whose face is a glyph has no text to name it, so its name lives where the
+  // pointer and the screen reader will each find it.
+  function label(button, name) {
+    button.title = name;
+    button.setAttribute('aria-label', name);
+  }
+
   // ---- The button between Transcript and Name --------------------------------
   // It always points the way the text is about to travel: right while the transcript
   // has something to give, left once it's empty and the name is the one holding it.
   // Deriving that from the two cells rather than remembering which way it was last
-  // clicked is what stops the arrow from ever offering a move that isn't there.
+  // clicked is what stops the chevron from ever offering a move that isn't there.
   function movesBack(memo) { return !transcriptOf(memo).trim(); }
 
   function syncMove(memo) {
     var btn = memo.querySelector('.move');
     var back = movesBack(memo);
-    var label = back ? 'Move name into Transcript' : 'Move transcript into Name';
-    btn.textContent = back ? '‹' : '›';
-    btn.title = label;
-    btn.setAttribute('aria-label', label);
+    btn.classList.toggle('back', back);
+    label(btn, back ? 'Move name into Transcript' : 'Move transcript into Name');
     btn.disabled = back && !nameOf(memo).trim();
   }
 
@@ -203,9 +208,9 @@
   function submitRow(memo) {
     clearTimeout(memo._timer);
     var go = memo.querySelector('.go');
-    if (go) go.textContent = 'Sending…';
+    label(go, 'Sending…');
     return retireOnOk(memo, post(urlFor('/submit/', memo), fields(memo)))
-      .catch(function (err) { if (go) go.textContent = 'Submit'; throw err; });
+      .catch(function (err) { label(go, 'Submit'); throw err; });
   }
 
   function trashRow(memo) {

@@ -207,18 +207,21 @@ def test_the_move_button_points_the_way_the_text_will_travel(tmp_path):
     body = client.get("/").data.decode()
     js = asset(client, "inbox.js")
 
-    # Which way the arrow points is a fact about what's in the two cells right now, so
-    # the row ships the button bare and inbox.js gives it its arrow: right while the
-    # transcript has something to give, left once it's empty and the name is holding it.
-    # Baking a direction into the HTML would let it disagree with the cells after a move.
+    css = asset(client, "app.css")
+
+    # Which way the chevron points is a fact about what's in the two cells right now, so
+    # the row ships one unturned chevron and inbox.js aims it: right while the transcript
+    # has something to give, left once it's empty and the name is holding it. Baking a
+    # direction into the HTML would let it disagree with the cells after a move.
     assert 'class="btn move"' in body
     assert "Move transcript into Name" not in body
-    assert "'›'" in js and "'Move transcript into Name'" in js
-    assert "'‹'" in js and "'Move name into Transcript'" in js
-    # And with both cells empty there is no move to make, either way — a disabled arrow
+    assert "classList.toggle('back', back)" in js
+    assert "'Move transcript into Name'" in js and "'Move name into Transcript'" in js
+    assert ".memo .move.back svg" in css  # the same chevron, turned around
+    # And with both cells empty there is no move to make, either way — a disabled chevron
     # has to fade past the resting dim the row's icon buttons already sit at.
     assert "btn.disabled" in js
-    assert ".memo .move:disabled" in asset(client, "app.css")
+    assert ".memo .move:disabled" in css
 
 
 def test_inbox_transcript_has_a_copy_to_clipboard_button(tmp_path):
@@ -469,6 +472,25 @@ def test_a_rows_transcript_is_a_preview_that_opens_the_editor(tmp_path):
     assert "<textarea" not in body
     assert 'class="transcript"' in body
     assert ">hello there</div>" in body
+
+
+def test_a_column_of_submits_and_its_bulk_head_wear_the_same_glyph(tmp_path):
+    service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hi")])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data.decode()
+    css = asset(client, "app.css")
+
+    # A bulk button and the row buttons beneath it do the same thing, so they say it the
+    # same way — one paper plane over a column of them, one bin over a column of bins.
+    assert 'id="submit-all" class="btn head-btn" title="Submit all" aria-label="Submit all"' in body
+    assert 'id="trash-all" class="btn head-btn danger" title="Trash all" aria-label="Trash all"' in body
+    assert 'class="go" title="Submit" aria-label="Submit"' in body
+    assert ">Submit all<" not in body and ">Trash all<" not in body
+    assert ">Submit</button>" not in body
+    assert ".head-btn svg" in css and ".go svg" in css
+    # The editor's primary button shares .go and still speaks: it is the only one left.
+    assert ">Done</button>" in body
 
 
 def test_every_inbox_row_is_the_same_height_whether_or_not_it_has_a_transcript(tmp_path):
@@ -872,9 +894,10 @@ def test_submit_js_removes_a_row_only_after_the_server_confirms(tmp_path):
 def test_index_shows_a_per_row_sending_state_while_a_submit_is_in_flight(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
-    # A row dims/locks and its button reads "Sending…" while its request is in flight,
-    # so Submit all visibly works through the list instead of rows silently vanishing.
-    assert "Sending" in asset(client, "inbox.js")       # the in-flight button label
+    # A row dims/locks and its button answers to "Sending…" while its request is in
+    # flight, so Submit all visibly works through the list instead of rows silently
+    # vanishing. The button's face is a glyph, so that name lives in its label.
+    assert "label(go, 'Sending…')" in asset(client, "inbox.js")
     assert ".memo.sending" in asset(client, "app.css")  # the dim-and-lock style the JS toggles
 
 

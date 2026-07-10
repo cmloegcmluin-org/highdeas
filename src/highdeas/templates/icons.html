@@ -12,6 +12,18 @@
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="#f06a6a" aria-label="Asana"><circle cx="12" cy="6.5" r="4.4"/><circle cx="4.9" cy="17.4" r="4.4"/><circle cx="19.1" cy="17.4" r="4.4"/></svg>
 {%- endmacro %}
 
+{#- A paper plane: send this note wherever its destination icon points. Worn by every
+    row's Submit and by the column head that presses them all. -#}
+{% macro send() -%}
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+{%- endmacro %}
+
+{#- The row's arrow between Transcript and Name. One chevron: CSS turns it around when
+    the text is due to travel the other way. -#}
+{% macro chevron() -%}
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+{%- endmacro %}
+
 {% macro trash() -%}
 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>
 {%- endmacro %}

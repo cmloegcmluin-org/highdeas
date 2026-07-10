@@ -94,6 +94,9 @@ h1 { font-size: 1.35rem; margin: 0; }
 .head form { width: 100%; margin: 0; }
 .head-btn { width: 100%; padding: 4px 9px; font-size: .72rem;
             text-transform: none; letter-spacing: normal; }
+/* The inbox's two heads wear the glyph of the column they press — a paper plane over
+   the Submits, a bin over the bins. The bin page's heads still speak. */
+.head-btn svg { width: 16px; height: 16px; display: block; margin: 0 auto; }
 
 /* Inbox rows */
 .memo { display: contents; }
@@ -148,16 +151,23 @@ h1 { font-size: 1.35rem; margin: 0; }
 .memo .move, .memo .del { width: 100%; opacity: .45;
                           transition: opacity .15s, color .15s, border-color .15s; }
 .memo .move:not(:disabled):hover, .memo .del:not(:disabled):hover { opacity: 1; }
-/* The arrow turns around once the transcript is empty, sending the name back the other
-   way; with both cells empty it has no move to offer and fades out of the row. */
-.memo .move { font-size: 1.4rem; line-height: 1; padding: 0; height: 40px;
+/* One chevron, turned around once the transcript is empty so it points the way the name
+   is about to travel back; with both cells empty it has no move to offer and fades out
+   of the row. */
+.memo .move { padding: 0; height: 40px;
               display: flex; align-items: center; justify-content: center; }
+.memo .move svg { width: 20px; height: 20px; display: block; transition: transform .15s; }
+.memo .move.back svg { transform: rotate(180deg); }
 .memo .move:disabled { opacity: .15; }
 .memo .del { padding: 9px 0; }
 .memo .del svg { width: 16px; height: 16px; display: block; margin: 0 auto; }
-/* The one filled button in the app — the primary action of a row and of the editor. */
+/* The one filled button in the app — the primary action of a row and of the editor. The
+   row's is a paper plane, matching the head that presses every one of them; the editor's
+   is the only .go still wearing a word. */
 .go { font: inherit; padding: 9px 0; width: 100%; border-radius: 8px; border: none;
-      background: #3b82f6; color: #fff; cursor: pointer; }
+      background: #3b82f6; color: #fff; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; }
+.go svg { width: 17px; height: 17px; display: block; }
 /* The destination picker: three radio-backed brand icons; the checked one is lit,
    the rest sit dimmed (half-lit on hover). */
 .route-cell { display: flex; flex-direction: column; gap: 6px; }
