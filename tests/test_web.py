@@ -174,6 +174,18 @@ def test_unlit_destination_icons_go_greyscale_so_the_lit_one_reads_at_a_glance(t
     assert "filter: none" in css
 
 
+def test_rows_top_align_so_the_asana_dropdown_grows_downward(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    css = asset(client, "app.css")
+
+    # Centered rows re-center when a cell grows: lighting Asana made its dropdown
+    # appear and shoved the icon row (and every neighbour) upward. Top-justified
+    # cells keep everything planted; the dropdown just extends the cell downward.
+    assert "align-items: start" in css
+    assert "align-items: center" not in css.split(".grid {")[1].split("}")[0]
+
+
 def test_asana_dropdown_list_paints_the_system_palette_not_white(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 

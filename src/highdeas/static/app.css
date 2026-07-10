@@ -47,7 +47,10 @@ h1 { font-size: 1.35rem; margin: 0; }
           color: #e5484d; background: rgba(229,72,77,.12); border: 1px solid rgba(229,72,77,.4); }
 .notice[hidden] { display: none; }
 .empty { opacity: .7; padding: 48px 0; text-align: center; }
-.grid { display: grid; gap: 14px 18px; align-items: center; }
+/* Rows top-justify rather than center: a centered row re-centers whenever one cell
+   grows, so the Asana dropdown appearing shoved the destination icons (and every
+   neighbour) upward. Anchored to the top, a growing cell only extends downward. */
+.grid { display: grid; gap: 14px 18px; align-items: start; }
 .grid.inbox  { grid-template-columns: 22px 26px 30px 236px minmax(220px, 1fr) 30px 132px 110px 106px 94px 94px; }
 .grid.bin    { grid-template-columns: 22px 26px 30px 236px minmax(220px, 1fr) 234px 56px 106px 94px 94px; }
 .grid.body { margin-top: 12px; }
@@ -63,7 +66,7 @@ h1 { font-size: 1.35rem; margin: 0; }
 /* The group column. Every row carries the badge and only a group shows it, so the client
    promotes a row by flipping data-kind. The cell stretches to the row's full height, to
    be a big enough target for a note dragged onto a group. */
-.kind { align-self: stretch; display: flex; align-items: center; justify-content: center; }
+.kind { align-self: stretch; display: flex; align-items: flex-start; justify-content: center; }
 .kind svg { width: 18px; height: 18px; display: block; opacity: .55; }
 [data-kind="note"] .group-badge { display: none; }
 /* A group's badge while a dragged note hovers it: let go here and the note joins it. */
