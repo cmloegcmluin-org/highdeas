@@ -36,8 +36,9 @@
 
   // A step walked back leaves no mark on the page — the row it touched may well be
   // scrolled out of sight. Blink the button the step belongs to, so a shortcut and a
-  // click read as the same action. Restarting the animation costs a reflow, which is
-  // what makes a held Ctrl+Z blink once per step instead of sticking lit.
+  // click read as the same action. The class stays on afterwards, which costs nothing
+  // (the animation fills neither end); dropping and re-adding it around a forced reflow
+  // is what restarts the blink, so a held Ctrl+Z blinks once per step.
   function flash(button) {
     button.classList.remove('flash');
     void button.offsetWidth;
@@ -78,9 +79,6 @@
 
   undoBtn.addEventListener('click', undo);
   redoBtn.addEventListener('click', redo);
-  [undoBtn, redoBtn].forEach(function (button) {
-    button.addEventListener('animationend', function () { button.classList.remove('flash'); });
-  });
 
   window.HighdeasHistory = { did: did, clear: clear };
 })();
