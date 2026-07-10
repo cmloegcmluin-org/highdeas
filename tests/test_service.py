@@ -1,11 +1,12 @@
 import json
 import threading
 from pathlib import Path
+from unittest import mock
 
 import pytest
 
 from highdeas.ingest import NewRecording, recording_key
-from highdeas.service import InboxService
+from highdeas.service import InboxService, RecordingBusy
 from highdeas.store import Memo, MemoStore
 from highdeas.transcribe import TimedWord, Transcript
 
@@ -755,6 +756,49 @@ def test_unmerge_of_the_merge_that_made_the_group_takes_the_group_with_it(tmp_pa
     assert [m.audio_filename for m in service.pending()] == ["a.m4a", "b.m4a"]
     assert (inbox / "a.m4a").read_bytes() == b"AAA"
     assert service.binned() == []
+
+
+def test_unmerge_leaves_the_merge_whole_when_the_pc_will_not_let_go_of_the_recording(tmp_path):
+    # The group's recording is a file the app made, and something else on the PC — iCloud
+    # uploading it, the page that was just streaming it — can hold it shut for a moment.
+    # Deleting it came last, so the notes were already back in the inbox when it failed:
+    # the group survived in the store with its members already out of it, and the page,
+    # told the merge was untouched, was lied to. Nothing moves until the recording does.
+    inbox, store = _two_notes(tmp_path)
+    service = grouping_service(inbox, store, tmp_path / "bin", clock=lambda: "T",
+                               sleep=lambda seconds: None)
+    group = service.group(["a.m4a", "b.m4a"])
+
+    with mock.patch.object(Path, "unlink", side_effect=PermissionError("[WinError 32] in use")):
+        with pytest.raises(RecordingBusy):
+            service.unmerge(group.audio_filename)
+
+    assert store.get(group.audio_filename).kind == "group"
+    assert [m.audio_filename for m in service.pending()] == [group.audio_filename]
+    assert sorted(m.audio_filename for m in service.binned()) == ["a.m4a", "b.m4a"]
+    assert (inbox / group.audio_filename).exists()
+
+
+def test_unmerge_waits_out_a_recording_that_is_only_briefly_held(tmp_path):
+    # A sync engine's grip on a file it has just been handed lasts a moment, not forever.
+    waits = []
+    inbox, store = _two_notes(tmp_path)
+    service = grouping_service(inbox, store, tmp_path / "bin", clock=lambda: "T",
+                               sleep=waits.append)
+    group = service.group(["a.m4a", "b.m4a"])
+    real_unlink, refusals = Path.unlink, [PermissionError("[WinError 32] in use")] * 2
+
+    def grudging(self, **kwargs):
+        if refusals:
+            raise refusals.pop()
+        return real_unlink(self, **kwargs)
+
+    with mock.patch.object(Path, "unlink", grudging):
+        assert service.unmerge(group.audio_filename) == ""
+
+    assert waits and not refusals  # it waited, and then the file let go
+    assert store.get(group.audio_filename) is None
+    assert [m.audio_filename for m in service.pending()] == ["a.m4a", "b.m4a"]
 
 
 def test_unmerge_refuses_a_memo_that_is_not_a_group(tmp_path):

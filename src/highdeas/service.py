@@ -5,6 +5,7 @@ or Drive decision; the bin holds what's been retired."""
 import json
 import shutil
 import threading
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -15,6 +16,16 @@ from highdeas.store import Memo
 # The joined recording is written here before it is named by its content, in the bin
 # rather than the inbox: a half-written file in the inbox would be ingested as a memo.
 _JOINING = "group"
+
+# How long to wait out another process's grip on a recording the app has to put down.
+# iCloud starts uploading a file the moment it is written, and the page has just been
+# streaming it; both let go within a moment, and neither can be hurried.
+_LETGO_TRIES = 6
+_LETGO_WAIT = 0.15
+
+
+class RecordingBusy(Exception):
+    """A recording the app must put down is still held open by something else on the PC."""
 
 
 def _no_router(memo):
@@ -66,7 +77,7 @@ class InboxService:
     def __init__(self, *, inbox_dir, store, transcriber, bin_dir,
                  find_new=find_new_recordings, route=_no_router, clock=_now,
                  recorded_time=recording_time, join_audio=audio.join,
-                 audio_length=audio.duration):
+                 audio_length=audio.duration, sleep=time.sleep):
         self._inbox_dir = inbox_dir
         self._store = store
         self._transcriber = transcriber
@@ -77,6 +88,7 @@ class InboxService:
         self._recorded_time = recorded_time
         self._join_audio = join_audio
         self._audio_length = audio_length
+        self._sleep = sleep
         self._refresh_lock = threading.Lock()
 
     def refresh(self):
@@ -224,10 +236,16 @@ class InboxService:
             self._store.update(audio_filename, kind="note")
             return audio_filename
         step = trail.pop()
+        # The group's own recording goes first when this merge is what made it, because
+        # putting it down is the one step the PC can refuse: something else may still be
+        # holding it open. Refused after the notes were handed back, the group would sit
+        # in the store with none of its members left in it, and the page would be told
+        # its merge was untouched. Refused here, the merge really is untouched.
+        if not trail:
+            self._discard_recording(audio_filename)
         for filename in step["files"]:
             self._unretire(filename)
         if not trail:
-            self._discard_recording(audio_filename)
             self._store.remove(audio_filename)
             return ""
         return self._rejoin(group, trail, name=step["name"],
@@ -296,10 +314,25 @@ class InboxService:
         return json.dumps(spoken, separators=(",", ":"))
 
     def _discard_recording(self, audio_filename):
-        """Drop a recording the app made and no memo plays any more."""
+        """Drop a recording the app made and no memo plays any more.
+
+        Windows refuses to delete a file another process has open, and this one has just
+        been handed to two of them: iCloud, which starts uploading it the moment it is
+        written, and the page, which has been streaming it into an <audio> element. Both
+        let go within a moment and neither can be hurried, so wait them out. If the grip
+        outlasts that, say so — the caller has not moved anything yet, and must not."""
         made = Path(self._inbox_dir) / audio_filename
-        if made.exists():
-            made.unlink()
+        for attempt in range(_LETGO_TRIES):
+            try:
+                made.unlink(missing_ok=True)
+                return
+            except PermissionError:
+                if attempt == _LETGO_TRIES - 1:
+                    raise RecordingBusy(
+                        "Something else on this PC still has that recording open. "
+                        "Try again in a moment."
+                    ) from None
+                self._sleep(_LETGO_WAIT)
 
     def submit(self, audio_filename):
         outcome = self._route(self._store.get(audio_filename)) or {}
