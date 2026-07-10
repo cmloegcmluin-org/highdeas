@@ -138,3 +138,28 @@ def test_transcriber_reports_no_words_when_the_model_gives_no_timings(tmp_path):
 
     assert spoken.text == "hello world"
     assert spoken.words == ()
+
+
+def test_load_parakeet_pins_the_cpu_provider(monkeypatch):
+    # Left to choose, onnxruntime picks CoreML on macOS, which fails to
+    # initialize this external-data model ("model_path must not be empty").
+    # Transcription is CPU-by-design on every platform, so say so.
+    import sys
+    from types import SimpleNamespace
+
+    from highdeas.transcribe import _load_parakeet
+
+    calls = []
+
+    class FakeAdapter:
+        def with_timestamps(self):
+            return "TIMESTAMPED"
+
+    def load_model(name, **kwargs):
+        calls.append((name, kwargs))
+        return FakeAdapter()
+
+    monkeypatch.setitem(sys.modules, "onnx_asr", SimpleNamespace(load_model=load_model))
+
+    assert _load_parakeet("the-model") == "TIMESTAMPED"
+    assert calls == [("the-model", {"providers": ["CPUExecutionProvider"]})]

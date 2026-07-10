@@ -48,8 +48,10 @@ def _load_parakeet(name):
 
     # The timestamped adapter reports the sub-word tokens and their emission times
     # alongside the text, which is what lets the editor light up each word as the
-    # recording plays.
-    return onnx_asr.load_model(name).with_timestamps()
+    # recording plays. Transcription is CPU-by-design on every platform: left to
+    # choose, onnxruntime picks CoreML on macOS, which fails to initialize this
+    # external-data model ("model_path must not be empty").
+    return onnx_asr.load_model(name, providers=["CPUExecutionProvider"]).with_timestamps()
 
 
 def _to_words(tokens, timestamps):
