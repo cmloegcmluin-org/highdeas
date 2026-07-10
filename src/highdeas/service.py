@@ -146,8 +146,8 @@ class InboxService:
         return self._store.get(target.audio_filename)
 
     def submit(self, audio_filename):
-        self._route(self._store.get(audio_filename))
-        self._retire(audio_filename, "processed")
+        outcome = self._route(self._store.get(audio_filename)) or {}
+        self._retire(audio_filename, "processed", **outcome)
 
     def delete(self, audio_filename):
         self._retire(audio_filename, "deleted")
@@ -215,17 +215,18 @@ class InboxService:
             source.replace(target)
         return target
 
-    def _retire(self, audio_filename, status):
+    def _retire(self, audio_filename, status, **fields):
         """Take a memo out of the inbox: its recording moves to the bin and it stops
         being pending. Submitting, trashing, and grouping differ only in the status
-        they leave behind, which the bin reads back as where the memo went.
+        they leave behind, which the bin reads back as where the memo went. Extra
+        fields about how it left (e.g. Asana's task link) ride the same update.
 
-        Both routes leave the recording in the inbox for this step (Notesnook never
-        touches the file, Drive copies it), so it lands in the bin either way; guard in
+        No route touches the recording in the inbox (Notesnook and Asana never see
+        the file, Drive copies it), so it lands in the bin either way; guard in
         case it's somehow already gone."""
         source = Path(self._inbox_dir) / audio_filename
         if source.exists():
             bin_dir = Path(self._bin_dir)
             bin_dir.mkdir(parents=True, exist_ok=True)
             shutil.move(str(source), str(bin_dir / audio_filename))
-        self._store.update(audio_filename, status=status, processed_at=self._clock())
+        self._store.update(audio_filename, status=status, processed_at=self._clock(), **fields)

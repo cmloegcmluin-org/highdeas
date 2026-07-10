@@ -164,6 +164,22 @@ def test_router_skips_drive_when_not_configured():
     assert notesnook.routed == []
 
 
+def test_router_dispatches_to_asana_and_returns_its_outcome():
+    # A router may report fields for the store to persist (Asana reports the created
+    # task's permalink); the dispatcher must pass that outcome through to the service.
+    notesnook = RecordingRouter()
+
+    class LinkingRouter:
+        def route(self, memo):
+            return {"asana_url": "https://app.asana.com/0/0/9/f"}
+
+    outcome = Router(notesnook=notesnook, asana=LinkingRouter())(
+        Memo(audio_filename="a.m4a", route="asana"))
+
+    assert outcome == {"asana_url": "https://app.asana.com/0/0/9/f"}
+    assert notesnook.routed == []
+
+
 def test_drive_router_copies_audio_into_dated_folder_and_writes_doc(tmp_path):
     inbox = tmp_path / "inbox"
     inbox.mkdir()

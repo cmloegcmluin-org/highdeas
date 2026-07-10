@@ -179,6 +179,26 @@ def test_submit_routes_then_marks_processed(tmp_path):
     assert memo.processed_at == "2026-07-07T05:00"
 
 
+def test_submit_persists_fields_the_router_reports(tmp_path):
+    # A route can hand back fields for the memo's record — Asana reports the created
+    # task's permalink — and submit stores them with the processed update, so the bin
+    # can link to where the memo went.
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="a.m4a", route="asana", status="pending"))
+
+    service = InboxService(
+        inbox_dir="/inbox", store=store, transcriber=FakeTranscriber(),
+        bin_dir=tmp_path / "bin",
+        route=lambda memo: {"asana_url": "https://app.asana.com/0/0/9/f"},
+        clock=lambda: "2026-07-09T05:00",
+    )
+    service.submit("a.m4a")
+
+    memo = store.get("a.m4a")
+    assert memo.status == "processed"
+    assert memo.asana_url == "https://app.asana.com/0/0/9/f"
+
+
 def test_delete_marks_memo_deleted(tmp_path):
     store = MemoStore(tmp_path / "memos.db")
     store.upsert(Memo(audio_filename="a.m4a", status="pending"))

@@ -90,18 +90,18 @@ class NotesnookRouter:
 
 
 class Router:
-    """Dispatch a memo to the Notesnook or Drive router based on its chosen route."""
+    """Dispatch a memo to the router for its chosen route (Notesnook by default),
+    passing through whatever fields that router reports for the store to persist
+    (e.g. Asana's link to the created task)."""
 
-    def __init__(self, notesnook, drive=None):
-        self._notesnook = notesnook
-        self._drive = drive
+    def __init__(self, notesnook, drive=None, asana=None):
+        self._routers = {"notesnook": notesnook, "drive": drive, "asana": asana}
 
     def __call__(self, memo):
-        if memo.route == "drive":
-            if self._drive is not None:
-                self._drive.route(memo)
-        else:
-            self._notesnook.route(memo)
+        router = self._routers.get(memo.route, self._routers["notesnook"])
+        if router is not None:
+            return router.route(memo)
+        return None
 
 
 def _today():

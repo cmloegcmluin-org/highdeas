@@ -10,6 +10,9 @@ class Memo:
     transcript: str = ""
     name: str = ""
     route: str = "notesnook"
+    # The link Asana returned for the task this memo became, so the bin can open it.
+    # Empty for other routes and for memos sent before permalinks were stored.
+    asana_url: str = ""
     status: str = "pending"
     created_at: str = ""
     recorded_at: str = ""
