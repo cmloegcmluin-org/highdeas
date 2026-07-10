@@ -16,20 +16,22 @@ v1 features, agreed with Douglas:
 
 - **Record**, continuing while the screen is locked (`UIBackgroundModes: audio`).
 - **A list of recordings still on the phone**, each playable with a **scrub** slider.
-- **Append** more audio to the end of an existing recording — the Voice Memos feature he
-  still uses from time to time; the Shortcut can't do it.
 - **Push** to the server with a retry queue. A recording is cleared from the phone only
   after the server confirms receipt — same principle as the inbox's "keep notes in the
   inbox unless the server confirms the submit."
+- ~~**Append** more audio to an existing recording~~ — **cut at kickoff** (see the
+  settled question below); a later addition is just a new memo, grouped in the inbox.
 
 Out of scope for v1: on-phone transcription, routing to Notesnook/Drive from the phone,
 transcript editing, anything multi-user, App Store / TestFlight distribution.
 
-## Open question — settle with Douglas before coding
+## Open question — SETTLED with Douglas, 2026-07-10
 
-Auto-push vs. append: if every recording pushes the moment it stops, there is never
-anything left on the phone to append to. Manual push (per-row plus Push All)? Auto-push
-after a grace window? Auto-push, with append only for the not-yet-pushed? Ask him.
+Auto-push vs. append: **auto-push immediately, and append is eliminated from v1.**
+Every recording pushes the moment it stops; the on-phone list is effectively the retry
+queue (recordings linger only while unsent). A thought that arrives later becomes its
+own memo and is grouped in the PC inbox. This drops the `AVMutableComposition` stitch
+work — and with it the post-export creation-time concern — from the app entirely.
 
 ## Decisions already made
 
@@ -64,8 +66,9 @@ Facts the upload work must honor (`src/highdeas/ingest.py`):
   already harmless, and recycled filenames can't collide. Don't invent a parallel
   dedupe scheme.
 - `recording_time` prefers the `moov/mvhd` creation time inside the m4a; iOS stamps it
-  when recording. After an append/stitch, verify the exported file still carries a sane
-  creation time — `AVMutableComposition` exports write a fresh container.
+  when recording. (The append-era caveat about `AVMutableComposition` exports writing a
+  fresh container is moot now that append is cut — plain `AVAudioRecorder` output
+  carries the real recording time.)
 - While the inbox page is open it polls `GET /pending`, which calls `service.refresh()`,
   so a file dropped into the inbox dir is adopted within a poll. The upload endpoint may
   also trigger a refresh itself so adoption doesn't wait for a page to be open.
@@ -94,24 +97,24 @@ loopback-only port** behind the native window; browser mode on `127.0.0.1:HIGHDE
 
 ## Workstream 2 — the app (`ios/`)
 
-- SwiftUI. Target the iOS version his iPhone actually runs — ask at kickoff.
+- SwiftUI. His iPhone runs iOS 26.x (answered at kickoff, 2026-07-10) — set the
+  deployment target comfortably below (iOS 17+) so a replacement phone could run it.
 - Record: `AVAudioSession` (`.playAndRecord`), `AVAudioRecorder` → AAC `.m4a` in the
   app's Documents; `UIBackgroundModes: audio` so recording survives the screen locking.
 - List: local recordings with their state — recording / local / queued / sent. Play
   with a scrub slider (`AVAudioPlayer` + `Slider`).
-- Append: record a new segment, stitch with `AVMutableComposition` +
-  `AVAssetExportSession` (mind the creation-time fact above).
 - Push: multipart POST with the token header; a `URLSession` background session with
-  retry/backoff; mark sent and clear only on 2xx.
+  retry/backoff; mark sent and clear only on 2xx. Auto-push fires when recording stops.
 - Settings: server URL + token, plain editable fields.
-- Tests: XCTest the pure logic (queue state machine, stitch bookkeeping, request
-  building). The audio/hardware layer is verified on the device — don't fake-TDD it.
+- Tests: XCTest the pure logic (queue state machine, request building). The
+  audio/hardware layer is verified on the device — don't fake-TDD it.
 
 ## Dev loop on the Mac
 
-- Python baseline first: `python3 -m venv .venv`,
-  `.venv/bin/python -m pip install -e ".[dev]"`, then `.venv/bin/python -m pytest` —
-  green before touching anything. The code is cross-platform; the Windows-only bits
+- Python baseline first: `/opt/homebrew/bin/python3.14 -m venv .venv` (the Mac's bare
+  `python3` is the ancient system 3.9, whose pip can't even do a pyproject editable
+  install), `.venv/bin/python -m pip install -e ".[dev]"`, then
+  `.venv/bin/python -m pytest` — green before touching anything. The code is cross-platform; the Windows-only bits
   (WebView2 window, taskbar identity) are guarded and fall back cleanly.
 - Run the server in browser mode with temp dirs (the defaults are Windows paths):
   `HIGHDEAS_DESKTOP=0` plus `HIGHDEAS_INBOX_DIR`, `HIGHDEAS_BIN_DIR`, and `HIGHDEAS_DB` pointed at
@@ -140,5 +143,5 @@ loopback-only port** behind the native window; browser mode on `127.0.0.1:HIGHDE
 4. Xcode skeleton in `ios/` running on his iPhone under free signing — prove the 7-day
    re-sign loop early; it's the only genuinely unfamiliar mechanic.
 5. Record → push, end to end against the Mac-hosted server.
-6. Scrub, then append.
+6. Scrub playback.
 7. README: the Windows-side setup notes and a short section on the iOS app.
