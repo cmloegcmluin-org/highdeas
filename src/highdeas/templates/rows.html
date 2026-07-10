@@ -28,6 +28,7 @@
       <span class="track"></span>
       <span class="ic dr" aria-label="Google Drive">{{ drive() }}</span>
     </label>
+    <div class="when">{{ m.recorded_at | when }}</div>
     <button type="button" class="go">Submit</button>
     <button type="button" class="del" title="Delete" aria-label="Delete">{{ trash() }}</button>
   </div>

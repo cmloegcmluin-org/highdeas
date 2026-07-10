@@ -258,6 +258,29 @@ def test_each_inbox_row_has_a_drag_handle(tmp_path):
     assert "/reorder" in asset(client, "inbox.js")
 
 
+def test_inbox_row_shows_when_the_recording_was_made(tmp_path):
+    # Reconciling a row against the recordings on the phone means knowing when it was
+    # recorded, so each row carries its recording time under a "Recorded" header.
+    service = FakeService(pending=[Memo(audio_filename="a.m4a", recorded_at="2026-07-07T14:23:05")])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data.decode()
+
+    assert "Recorded" in body
+    assert "Jul 7, 2:23 PM" in body
+
+
+def test_inbox_row_leaves_the_timestamp_blank_when_the_recording_time_is_unknown(tmp_path):
+    # Memos stored before recording times were captured carry no recorded_at; the row
+    # still renders, with an empty cell rather than a crash or a bogus date.
+    service = FakeService(pending=[Memo(audio_filename="a.m4a", recorded_at="")])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data.decode()
+
+    assert '<div class="when"></div>' in body
+
+
 def test_index_shows_a_transcribing_hint_while_recordings_await(tmp_path):
     # Opened with an empty store but recordings still waiting in the inbox, the page
     # says they're being transcribed rather than the misleading "Your inbox is empty".
@@ -510,6 +533,20 @@ def test_bin_lists_binned_items(tmp_path):
     assert b"Old note" in resp.data
     assert b"bin body" in resp.data
     assert b"b.m4a" in resp.data
+
+
+def test_bin_shows_its_timestamp_in_the_same_readable_form_as_the_inbox(tmp_path):
+    service = FakeService(binned=[
+        Memo(audio_filename="b.m4a", status="deleted", processed_at="2026-07-07T03:00"),
+    ])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/bin").data.decode()
+
+    # The two pages' timestamp columns line up and read alike, so flipping between
+    # them doesn't mean re-parsing a raw ISO string on one of them.
+    assert "Jul 7, 3:00 AM" in body
+    assert "2026-07-07T03:00" not in body
 
 
 def test_bin_shows_destination_icon_instead_of_status_word(tmp_path):

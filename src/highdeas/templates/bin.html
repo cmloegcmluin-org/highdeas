@@ -30,7 +30,7 @@
       <div class="text">{{ m.transcript }}</div>
       <div class="name">{{ m.name or m.audio_filename }}</div>
       <div class="dest">{% if m.status == 'deleted' %}<span title="Trashed" aria-label="Trashed">{{ trash() }}</span>{% elif m.route == 'drive' %}<form method="post" action="/open-drive"><input type="hidden" name="q" value="{{ m.name or m.audio_filename.rsplit('.', 1)[0] }}"><button class="destlink" type="submit" title="Sent to Google Drive — open in Drive" aria-label="Sent to Google Drive — open in Drive">{{ drive() }}</button></form>{% else %}<span title="Sent to Notesnook" aria-label="Sent to Notesnook">{{ notesnook() }}</span>{% endif %}</div>
-      <div class="when">{{ m.processed_at }}</div>
+      <div class="when">{{ m.processed_at | when }}</div>
       <div><form method="post" action="/restore/{{ m.audio_filename }}"><button class="binbtn restore" type="submit">Restore</button></form></div>
       <div><form method="post" action="/purge/{{ m.audio_filename }}" onsubmit="return confirm('Permanently delete this recording? This cannot be undone.');"><button class="binbtn purge" type="submit">Delete</button></form></div>
     </div>

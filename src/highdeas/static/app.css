@@ -1,8 +1,9 @@
 /* One stylesheet for the inbox, the bin, and the note editor, so their chrome is
    identical — same title bar, top-right link, and header row — and nothing jumps
-   when you flip between them. The two grids share widths too: a 44px row-handle
-   column, then 282 | flex | a 334px middle band | two 104px action columns, so only
-   the middle band's contents differ per page. */
+   when you flip between them. The two grids share widths too: a 26px row-handle
+   column, then 260 | flex | a 474px middle band | two 104px action columns, so only
+   the middle band's contents differ per page. Each band ends with a 120px timestamp
+   column, so the inbox's "Recorded" and the bin's "When" sit in the same place. */
 
 /* Reserve the scrollbar gutter on every page so a page with a scrollbar and one
    without stay the same width — otherwise margin:auto re-centers and the layout
@@ -30,14 +31,16 @@ h1 { font-size: 1.35rem; margin: 0; }
 .notice[hidden] { display: none; }
 .empty { opacity: .7; padding: 48px 0; text-align: center; }
 .grid { display: grid; gap: 14px 18px; align-items: center; }
-.grid.inbox  { grid-template-columns: 26px 300px minmax(220px, 1fr) 34px 200px 100px 104px 104px; }
-.grid.bin    { grid-template-columns: 26px 300px minmax(220px, 1fr) 170px 56px 108px 104px 104px; }
+.grid.inbox  { grid-template-columns: 26px 260px minmax(220px, 1fr) 34px 170px 96px 120px 104px 104px; }
+.grid.bin    { grid-template-columns: 26px 260px minmax(220px, 1fr) 262px 56px 120px 104px 104px; }
 .grid.body { margin-top: 12px; }
 .grid .head { font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; opacity: .55;
               display: flex; align-items: flex-end; min-height: 32px;
               padding-bottom: 4px; border-bottom: 1px solid rgba(128,128,128,.25); }
 .grid .sep { grid-column: 1 / -1; border-top: 1px solid rgba(128,128,128,.18); }
 .num { font-size: .8rem; opacity: .4; text-align: right; font-variant-numeric: tabular-nums; }
+/* Timestamps on both pages: the inbox's recording time and the bin's processed time. */
+.when { font-size: .8rem; opacity: .6; white-space: nowrap; }
 /* Bulk actions live in their own column headers so they sit directly over the
    column they act on, instead of being pushed around by the topbar link. */
 .head form { width: 100%; margin: 0; }
@@ -113,7 +116,6 @@ h1 { font-size: 1.35rem; margin: 0; }
 .row .destlink { display: flex; align-items: center; text-decoration: none;
                  background: transparent; border: none; padding: 0; cursor: pointer; }
 .row .dest form { display: contents; }
-.row .when { font-size: .8rem; opacity: .6; }
 .binbtn { font: inherit; padding: 8px 0; width: 100%; border-radius: 8px; cursor: pointer;
           background: transparent; color: inherit; border: 1px solid rgba(128,128,128,.4);
           transition: color .15s, border-color .15s; }
