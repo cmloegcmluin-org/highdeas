@@ -12,7 +12,9 @@
 
     As on the inbox, each bulk head wears the glyph of the column it presses. A glyph has
     no text to name it, so both carry their name in a title and an aria-label; the words
-    the buttons dropped are still spoken in full by the confirm they raise. -#}
+    the buttons dropped are still spoken in full by the question they raise. A form that
+    must ask first carries it in data-confirm, and says in data-danger when what it does
+    cannot be undone. -#}
 {% block headrow %}
   {% from "icons.html" import restore, trash %}
   <div class="grid bin headrow">
@@ -22,8 +24,8 @@
     <div class="head">Transcript</div>
     <div class="head">Name</div>
     <div class="head">Where</div>
-    <div class="head"><form method="post" action="/restore-all" onsubmit="return confirm('Restore all {{ memos|length }} item{{ 's' if memos|length != 1 else '' }} to the inbox?');"><button type="submit" class="btn icon" title="Restore all" aria-label="Restore all">{{ restore() }}</button></form></div>
-    <div class="head"><form method="post" action="/empty-bin" onsubmit="return confirm('Permanently delete all {{ memos|length }} item{{ 's' if memos|length != 1 else '' }}? This cannot be undone.');"><button type="submit" class="btn icon danger" title="Empty bin" aria-label="Empty bin">{{ trash() }}</button></form></div>
+    <div class="head"><form method="post" action="/restore-all" data-confirm="Restore all {{ memos|length }} item{{ 's' if memos|length != 1 else '' }} to the inbox?"><button type="submit" class="btn icon" title="Restore all" aria-label="Restore all">{{ restore() }}</button></form></div>
+    <div class="head"><form method="post" action="/empty-bin" data-confirm="Permanently delete all {{ memos|length }} item{{ 's' if memos|length != 1 else '' }}? This cannot be undone." data-danger><button type="submit" class="btn icon danger" title="Empty bin" aria-label="Empty bin">{{ trash() }}</button></form></div>
   </div>
 {% endblock %}
 
@@ -54,7 +56,7 @@
         {%- endif %}
         {%- endif %}</div>
       <div><form method="post" action="/restore/{{ m.audio_filename }}"><button type="submit" class="btn icon" title="Restore" aria-label="Restore">{{ restore() }}</button></form></div>
-      <div><form method="post" action="/purge/{{ m.audio_filename }}" onsubmit="return confirm('Permanently delete this recording? This cannot be undone.');"><button type="submit" class="btn icon danger" title="Delete" aria-label="Delete">{{ trash() }}</button></form></div>
+      <div><form method="post" action="/purge/{{ m.audio_filename }}" data-confirm="Permanently delete this recording? This cannot be undone." data-danger><button type="submit" class="btn icon danger" title="Delete" aria-label="Delete">{{ trash() }}</button></form></div>
     </div>
     {% endfor %}
   </div>

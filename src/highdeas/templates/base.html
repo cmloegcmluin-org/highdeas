@@ -18,7 +18,10 @@
     {% if memos %}{% block headrow %}{% endblock %}{% endif %}
   </div>
   <main id="content">{% block content %}{% endblock %}</main>
+  {#- Both pages destroy things, so both ask first, and both ask in their own voice. -#}
+  {% include "ask.html" %}
   {% block dialogs %}{% endblock %}
+  <script src="{{ url_for('static', filename='ask.js') }}"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

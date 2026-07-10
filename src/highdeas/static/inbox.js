@@ -695,11 +695,14 @@
   if (trashAll) trashAll.addEventListener('click', function () {
     var memos = rows();
     if (!memos.length) return;
-    if (!confirm('Trash all ' + memos.length + ' memo' + (memos.length === 1 ? '' : 's') + '? They go to the bin.')) return;
-    clearNotice();
-    runEach(memos, trashRow).then(function (failures) {
-      if (failures) notify(failures + ' of ' + memos.length +
-        " couldn't be moved to the bin and are still in your inbox.");
+    var question = 'Trash all ' + memos.length + ' memo' + (memos.length === 1 ? '' : 's') + '? They go to the bin.';
+    window.HighdeasAsk(question, true).then(function (yes) {
+      if (!yes) return;
+      clearNotice();
+      runEach(memos, trashRow).then(function (failures) {
+        if (failures) notify(failures + ' of ' + memos.length +
+          " couldn't be moved to the bin and are still in your inbox.");
+      });
     });
   });
 

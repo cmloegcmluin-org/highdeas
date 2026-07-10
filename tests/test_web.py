@@ -483,8 +483,8 @@ def test_a_note_dragged_onto_a_group_joins_it_instead_of_reordering(tmp_path):
 def test_index_trash_all_asks_for_confirmation(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
-    # Trashing everything at once is bulk + easy to fat-finger, so it confirms first.
-    assert "confirm(" in asset(client, "inbox.js")
+    # Trashing everything at once is bulk + easy to fat-finger, so it asks first.
+    assert "window.HighdeasAsk(" in asset(client, "inbox.js")
 
 
 def test_pages_load_the_shared_stylesheet_and_the_inbox_loads_its_scripts(tmp_path):
@@ -499,6 +499,29 @@ def test_pages_load_the_shared_stylesheet_and_the_inbox_loads_its_scripts(tmp_pa
     assert "/static/inbox.js" in index
     assert "/static/editor.js" in index
     assert "/static/app.css" in client.get("/bin").data.decode()
+
+
+def test_the_app_asks_before_it_destroys_and_never_in_the_browsers_voice(tmp_path):
+    service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hi")],
+                          binned=[Memo(audio_filename="b.m4a", status="deleted", processed_at="2026-07-07T03:00")])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    index = client.get("/").data.decode()
+    binned = client.get("/bin").data.decode()
+
+    # window.confirm() stamps "127.0.0.1:<port> says" over the top of whatever it is asked
+    # to ask, and nothing the page writes can take that line off — so its own question
+    # arrives in a stranger's voice. Every page carries our dialog and asks through it.
+    assert "confirm(" not in index and "confirm(" not in binned
+    assert "confirm(" not in asset(client, "inbox.js")
+    assert 'id="ask"' in index and 'id="ask"' in binned
+    assert "/static/ask.js" in index and "/static/ask.js" in binned
+    assert "showModal()" in asset(client, "ask.js")
+
+    # A form that must ask first carries the question, and says when it cannot be undone.
+    assert 'data-confirm="Restore all 1 item to the inbox?"' in binned
+    assert 'data-confirm="Permanently delete this recording? This cannot be undone." data-danger' in binned
+    assert "window.HighdeasAsk" in asset(client, "inbox.js")
 
 
 def test_the_inbox_offers_undo_and_redo_buttons_that_start_with_nowhere_to_go(tmp_path):
@@ -1390,7 +1413,7 @@ def test_bin_row_offers_restore_and_confirmed_permanent_delete(tmp_path):
 
     assert b'action="/restore/b.m4a"' in body
     assert b'action="/purge/b.m4a"' in body
-    assert b"confirm(" in body  # permanent deletion asks first
+    assert b"data-confirm=" in body  # permanent deletion asks first
 
 
 def test_bin_bulk_controls_sit_in_the_column_headers_and_confirm(tmp_path):
@@ -1406,8 +1429,8 @@ def test_bin_bulk_controls_sit_in_the_column_headers_and_confirm(tmp_path):
     assert 'action="/restore-all"' in body
     assert 'action="/empty-bin"' in body
     assert body.index('grid bin headrow') < body.index('action="/restore-all"')
-    # Both bulk actions confirm first (restore-all is disruptive, empty-bin destroys).
-    assert body.count("confirm(") >= 2
+    # Both bulk actions ask first (restore-all is disruptive, empty-bin destroys).
+    assert body.count("data-confirm=") >= 2
 
 
 def test_the_bins_columns_of_buttons_and_their_bulk_heads_wear_the_same_glyphs(tmp_path):

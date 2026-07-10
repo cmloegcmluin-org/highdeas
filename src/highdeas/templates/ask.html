@@ -1,0 +1,14 @@
+{#- The app's own confirm, on every page. window.confirm() paints the browser's dialog,
+    which stamps "127.0.0.1:<port> says" across the top of whatever it was asked to ask —
+    nothing the page writes can take that line off, so its own question comes back to it
+    in a stranger's voice, quoting a port number the user never chose.
+
+    Cancel leads, and is what Esc and the backdrop both mean: the answer to a question
+    about destroying something is no until it is yes. -#}
+<dialog id="ask" class="ask" aria-labelledby="ask-text">
+  <p id="ask-text" class="ask-text"></p>
+  <div class="ask-foot">
+    <button type="button" id="ask-cancel" class="btn ask-btn">Cancel</button>
+    <button type="button" id="ask-ok" class="btn ask-btn">OK</button>
+  </div>
+</dialog>
