@@ -242,38 +242,20 @@ def test_inbox_rows_are_numbered(tmp_path):
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     body = client.get("/").data.decode()
-    assert ">1</span>" in body
-    assert ">2</span>" in body
+    assert ">1</div>" in body
+    assert ">2</div>" in body
 
 
-def test_each_inbox_row_has_a_drag_handle_and_a_selection_checkbox(tmp_path):
+def test_each_inbox_row_has_a_drag_handle(tmp_path):
     service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="one")])
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     body = client.get("/").data.decode()
 
-    # Spreadsheet-style: the row number is the handle you grab to move the row, and
-    # the box beside it picks the row out for consolidating.
+    # Spreadsheet-style: the row number is the handle you grab to move the row.
     assert 'class="num" draggable="true"' in body
-    assert 'class="pick"' in body
     # A drop posts the whole on-screen order back.
     assert "/reorder" in asset(client, "inbox.js")
-
-
-def test_index_offers_a_selection_bar_that_consolidates_the_checked_rows(tmp_path):
-    service = FakeService(pending=[
-        Memo(audio_filename="a.m4a", transcript="one"),
-        Memo(audio_filename="b.m4a", transcript="two"),
-    ])
-    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
-
-    body = client.get("/").data.decode()
-
-    # Consolidating acts on a selection, so its button lives with the selection rather
-    # than in a column header — hidden until rows are ticked, disabled below two.
-    assert 'id="selection"' in body
-    assert 'id="consolidate"' in body
-    assert "/consolidate" in asset(client, "inbox.js")
 
 
 def test_index_shows_a_transcribing_hint_while_recordings_await(tmp_path):
@@ -476,34 +458,6 @@ def test_reorder_route_persists_the_dropped_order_and_returns_204(tmp_path):
     # The client posts every row in its on-screen order after a drop.
     assert service.reordered == [["c.m4a", "a.m4a", "b.m4a"]]
     assert resp.status_code == 204
-
-
-def test_consolidate_route_merges_the_chosen_memos_and_returns_the_merged_fields(tmp_path):
-    from highdeas.service import InboxService
-    from highdeas.store import MemoStore
-
-    inbox = tmp_path / "inbox"
-    inbox.mkdir()
-    (inbox / "a.m4a").write_bytes(b"A")
-    (inbox / "b.m4a").write_bytes(b"B")
-    store = MemoStore(tmp_path / "memos.db")
-    store.upsert(Memo(audio_filename="a.m4a", status="pending", transcript="one"))
-    store.upsert(Memo(audio_filename="b.m4a", status="pending", transcript="two", name="Idea"))
-
-    class StubTranscriber:
-        def transcribe(self, path):
-            return ""
-
-    service = InboxService(inbox_dir=inbox, store=store, transcriber=StubTranscriber(),
-                            bin_dir=tmp_path / "bin", clock=lambda: "T")
-    client = create_app(service, inbox_dir=str(inbox), bin_dir=str(tmp_path / "bin")).test_client()
-
-    resp = client.post("/consolidate", data={"memo": ["a.m4a", "b.m4a"]})
-
-    # The merged fields come back so the client can update the row it kept in place.
-    assert resp.status_code == 200
-    assert resp.get_json() == {"name": "Idea", "transcript": "one\n\ntwo"}
-    assert [m.audio_filename for m in service.pending()] == ["a.m4a"]
 
 
 def test_edit_route_saves_fields_and_returns_204(tmp_path):

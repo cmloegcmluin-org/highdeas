@@ -1,7 +1,7 @@
-/* The inbox list: auto-save, submit, trash, bulk actions, drag-to-reorder,
-   consolidating the ticked rows, and the poll that streams in recordings arriving
-   while the app is open. A row's transcript is a preview — clicking it hands the note
-   to the editor dialog (editor.js), which reports edits back here to be saved. */
+/* The inbox list: auto-save, submit, trash, bulk actions, drag-to-reorder, and the
+   poll that streams in recordings arriving while the app is open. A row's transcript
+   is a preview — clicking it hands the note to the editor dialog (editor.js), which
+   reports edits back here to be saved. */
 (function () {
   'use strict';
 
@@ -15,10 +15,6 @@
   var retired = {};
   var countEl = document.getElementById('count');
   var notice = document.getElementById('notice');
-  var selbar = document.getElementById('selection');
-  var selcount = document.getElementById('selcount');
-  var consolidateBtn = document.getElementById('consolidate');
-  var clearPicks = document.getElementById('clear-picks');
 
   // A submit/trash only leaves the list once the server confirms it; on failure the
   // row stays and we surface why here, so a note that never sent can't silently vanish.
@@ -27,25 +23,11 @@
   function describe(err) { return err && err.message ? ' (' + err.message + ')' : ''; }
 
   function rows() { return Array.prototype.slice.call(content.querySelectorAll('.memo')); }
-  function picked() { return rows().filter(function (m) { return m.querySelector('.pick').checked; }); }
 
   function updateCount() {
     if (!countEl) return;
     var n = rows().length;
     countEl.textContent = '— ' + n + ' item' + (n === 1 ? '' : 's');
-  }
-
-  // Ticking rows arms the selection bar. Consolidating needs two of them: one note
-  // folded into itself is nothing.
-  function syncPicks() {
-    var chosen = picked();
-    rows().forEach(function (memo) {
-      memo.classList.toggle('picked', memo.querySelector('.pick').checked);
-    });
-    if (!selbar) return;
-    selbar.hidden = chosen.length === 0;
-    selcount.textContent = chosen.length + ' selected';
-    consolidateBtn.disabled = chosen.length < 2;
   }
 
   function sep() {
@@ -67,7 +49,6 @@
       });
     }
     updateCount();
-    syncPicks();
   }
 
   function urlFor(prefix, memo) { return prefix + encodeURIComponent(memo.dataset.file); }
@@ -237,7 +218,6 @@
     name.addEventListener('input', function () { scheduleSave(memo); });
     name.addEventListener('blur', function () { flush(memo); });
     route.addEventListener('change', function () { flush(memo); });
-    memo.querySelector('.pick').addEventListener('change', syncPicks);
     handle.addEventListener('dragstart', function (event) {
       dragged = memo;
       memo.classList.add('dragging');
@@ -270,43 +250,6 @@
 
   rows().forEach(wire);
   resync();
-
-  // Consolidating folds the ticked notes into the topmost of them, so the transcripts
-  // arrive in the order they read on screen — which is what dragging rows together is
-  // for. The server merges and returns the result, and the rows it absorbed leave.
-  if (consolidateBtn) consolidateBtn.addEventListener('click', function () {
-    var chosen = picked();
-    if (chosen.length < 2) return;
-    clearNotice();
-    var keeper = chosen[0];
-    chosen.forEach(function (memo) { setBusy(memo, true); });
-    Promise.all(chosen.map(function (memo) { return flush(memo); })).then(function () {
-      var data = new URLSearchParams();
-      chosen.forEach(function (memo) { data.append('memo', memo.dataset.file); });
-      return post('/consolidate', data);
-    }).then(function (response) {
-      if (!response.ok) throw new Error('Failed');
-      return response.json();
-    }).then(function (merged) {
-      keeper.querySelector('.transcript').textContent = merged.transcript;
-      keeper.querySelector('input[name=name]').value = merged.name;
-      keeper.querySelector('.pick').checked = false;
-      setBusy(keeper, false);
-      chosen.slice(1).forEach(function (memo) {
-        retired[memo.dataset.file] = true;  // a poll snapshot must not re-add a folded row
-        memo.remove();
-      });
-      resync();
-    }).catch(function () {
-      chosen.forEach(function (memo) { setBusy(memo, false); });
-      notify("Couldn't consolidate those notes — they're all still in your inbox.");
-    });
-  });
-
-  if (clearPicks) clearPicks.addEventListener('click', function () {
-    rows().forEach(function (memo) { memo.querySelector('.pick').checked = false; });
-    syncPicks();
-  });
 
   // Run an action over the rows one at a time — not a 20-wide burst at the local
   // server and Notesnook — tallying failures so the outcome is reported once at the end.

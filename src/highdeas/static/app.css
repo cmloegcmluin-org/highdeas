@@ -28,33 +28,16 @@ h1 { font-size: 1.35rem; margin: 0; }
 .notice { margin: 12px 0 0; padding: 10px 12px; border-radius: 8px; font-size: .9rem;
           color: #e5484d; background: rgba(229,72,77,.12); border: 1px solid rgba(229,72,77,.4); }
 .notice[hidden] { display: none; }
-/* Consolidating acts on whichever rows are ticked, so its button belongs with the
-   selection rather than in a column header. The bar is absent until something is
-   picked, which keeps the page as quiet as it was before. */
-.selbar { display: flex; align-items: center; gap: 12px; margin: 12px 0 0; padding: 8px 12px;
-          border-radius: 8px; font-size: .9rem;
-          background: rgba(59,130,246,.1); border: 1px solid rgba(59,130,246,.4); }
-.selbar[hidden] { display: none; }
-#selcount { margin-right: auto; opacity: .75; }
-.selbtn { font: inherit; font-size: .8rem; padding: 5px 11px; border-radius: 7px; cursor: pointer;
-          background: transparent; color: inherit; border: 1px solid rgba(128,128,128,.4);
-          transition: color .15s, border-color .15s; }
-.selbtn:hover:not(:disabled) { border-color: #3b82f6; color: #3b82f6; }
-.selbtn:disabled { opacity: .45; cursor: default; }
 .empty { opacity: .7; padding: 48px 0; text-align: center; }
 .grid { display: grid; gap: 14px 18px; align-items: center; }
-.grid.inbox  { grid-template-columns: 44px 282px minmax(220px, 1fr) 34px 200px 100px 104px 104px; }
-.grid.bin    { grid-template-columns: 44px 282px minmax(220px, 1fr) 170px 56px 108px 104px 104px; }
+.grid.inbox  { grid-template-columns: 26px 300px minmax(220px, 1fr) 34px 200px 100px 104px 104px; }
+.grid.bin    { grid-template-columns: 26px 300px minmax(220px, 1fr) 170px 56px 108px 104px 104px; }
 .grid.body { margin-top: 12px; }
 .grid .head { font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; opacity: .55;
               display: flex; align-items: flex-end; min-height: 32px;
               padding-bottom: 4px; border-bottom: 1px solid rgba(128,128,128,.25); }
 .grid .sep { grid-column: 1 / -1; border-top: 1px solid rgba(128,128,128,.18); }
 .num { font-size: .8rem; opacity: .4; text-align: right; font-variant-numeric: tabular-nums; }
-/* Spreadsheet-style row header: grab the number to drag the row somewhere else,
-   tick the box beside it to fold the row into another. */
-.rowhead { display: flex; align-items: center; justify-content: flex-end; gap: 5px; }
-.rowhead .pick { margin: 0; cursor: pointer; }
 /* Bulk actions live in their own column headers so they sit directly over the
    column they act on, instead of being pushed around by the topbar link. */
 .head form { width: 100%; margin: 0; }
@@ -88,9 +71,9 @@ h1 { font-size: 1.35rem; margin: 0; }
    box of its own, so dimming has to reach its cells — set on the row it does nothing. */
 .memo.sending > * { opacity: .5; transition: opacity .15s; }
 .memo.dragging > * { opacity: .35; }
+/* Spreadsheet-style row handle: grab the number to drag the row somewhere else. */
 .memo .num { cursor: grab; }
 .memo .num:active { cursor: grabbing; }
-.memo.picked .num { opacity: 1; color: #3b82f6; }
 .memo button:disabled { cursor: default; }
 .memo .copy { font: inherit; font-size: 1.4rem; line-height: 1; padding: 0; height: 40px; width: 100%;
               display: flex; align-items: center; justify-content: center; cursor: pointer;

@@ -17,10 +17,7 @@
   {% for m in memos %}
   {% if not loop.first %}<div class="sep"></div>{% endif %}
   <div class="memo" data-file="{{ m.audio_filename }}" data-words="{{ m.word_times }}">
-    <div class="rowhead">
-      <input type="checkbox" class="pick" aria-label="Pick this note for consolidating">
-      <span class="num" draggable="true" title="Drag to move this note">{{ loop.index }}</span>
-    </div>
+    <div class="num" draggable="true" title="Drag to move this note">{{ loop.index }}</div>
     <audio controls src="/audio/{{ m.audio_filename }}"></audio>
     <div class="transcript" role="button" tabindex="0" title="Open the editor" aria-label="Edit transcript">{{ m.transcript }}</div>
     <button type="button" class="copy" title="Move transcript into Name" aria-label="Move transcript into Name">&rsaquo;</button>

@@ -19,9 +19,9 @@ recording.
    size, monitor, and maximized state it was last closed at — maximized until you say
    otherwise. Each memo row has its audio, a transcript preview, a chevron that moves the
    transcript into the Name field, a Name box, a Notesnook⇄Drive toggle, and Submit /
-   Delete. Drag a row by its number to reorder the list, or tick a few and **Consolidate**
-   them into one. Row numbers, a live item count, and a frozen title bar + column headers
-   (carrying **Submit all** / **Trash all**) stay in reach as the list scrolls. Recordings
+   Delete. Drag a row by its number to reorder the list. Row numbers, a live item count,
+   and a frozen title bar + column headers (carrying **Submit all** / **Trash all**) stay
+   in reach as the list scrolls. Recordings
    that arrive while the page is open are polled in automatically.
 5. **Edit** — clicking a transcript opens the note in a near-fullscreen editor, so a rough
    transcription gets fixed here rather than shipped out half-finished. The recording sits

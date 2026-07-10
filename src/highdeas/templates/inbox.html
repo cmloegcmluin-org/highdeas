@@ -9,19 +9,9 @@
 {% endblock %}
 
 {#- The notice is shown only when a submit/trash fails, so a note that didn't actually
-    send stays visible and explained instead of silently vanishing from the list.
-
-    Consolidating acts on whichever rows are ticked, so its button belongs with the
-    selection rather than in a column header. The bar is absent until something is
-    picked, which keeps the page as quiet as it was before. -#}
+    send stays visible and explained instead of silently vanishing from the list. -#}
 {% block banners %}
   <div id="notice" class="notice" role="alert" hidden></div>
-  <div id="selection" class="selbar" hidden>
-    <span id="selcount"></span>
-    <button type="button" id="consolidate" class="selbtn" disabled
-            title="Fold the ticked notes into the topmost one">Consolidate</button>
-    <button type="button" id="clear-picks" class="selbtn">Clear</button>
-  </div>
 {% endblock %}
 
 {#- Bulk actions live in their own column headers so they sit directly over the
