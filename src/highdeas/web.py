@@ -100,12 +100,12 @@ _STYLE = """<style>
      list, and so a row can't be double-submitted. */
   .memo.sending { opacity: .5; transition: opacity .15s; }
   .memo button:disabled { cursor: default; }
-  .memo .copy { font: inherit; font-size: 1.4rem; line-height: 1; padding: 0; height: 40px; width: 100%;
+  .memo .move { font: inherit; font-size: 1.4rem; line-height: 1; padding: 0; height: 40px; width: 100%;
                 display: flex; align-items: center; justify-content: center; cursor: pointer;
                 background: transparent; color: inherit; opacity: .45; border-radius: 8px;
                 border: 1px solid rgba(128,128,128,.35);
                 transition: opacity .15s, color .15s, border-color .15s; }
-  .memo .copy:hover { opacity: 1; color: #3b82f6; border-color: #3b82f6; }
+  .memo .move:hover { opacity: 1; color: #3b82f6; border-color: #3b82f6; }
   .memo .go { font: inherit; padding: 9px 0; width: 100%; border-radius: 8px; border: none;
               background: #3b82f6; color: #fff; cursor: pointer; }
   .memo .del { padding: 9px 0; width: 100%; border-radius: 8px; cursor: pointer;
@@ -201,7 +201,7 @@ CONTENT_HTML = """{% if not memos %}
       <div class="num">{{ loop.index }}</div>
       <audio controls src="/audio/{{ m.audio_filename }}"></audio>
       <textarea name="transcript" aria-label="Transcript">{{ m.transcript }}</textarea>
-      <button type="button" class="copy" title="Move transcript into Name" aria-label="Move transcript into Name">&rsaquo;</button>
+      <button type="button" class="move" title="Move transcript into Name" aria-label="Move transcript into Name">&rsaquo;</button>
       <input type="text" name="name" value="{{ m.name }}" placeholder="Name…" autocomplete="off" aria-label="Name">
       <label class="toggle" title="Left = Notesnook, right = Google Drive">
         <input type="checkbox" name="route" value="drive" {{ 'checked' if m.route == 'drive' }}>
@@ -345,7 +345,7 @@ _PAGE_TAIL = """  </main>
       el.addEventListener('blur', function () { flush(memo); });
     });
     route.addEventListener('change', function () { flush(memo); });
-    memo.querySelector('.copy').addEventListener('click', function () {
+    memo.querySelector('.move').addEventListener('click', function () {
       name.value = transcript.value;
       transcript.value = '';
       flush(memo);
