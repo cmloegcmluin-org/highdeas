@@ -28,6 +28,8 @@ class FakeService:
         self.group_error = None
         self.ungrouped = []
         self.ungroup_error = None
+        self.unmerged = []
+        self.unmerge_error = None
 
     def refresh(self):
         self.refreshed += 1
@@ -45,6 +47,13 @@ class FakeService:
         if self.ungroup_error:
             raise ValueError(self.ungroup_error)
         self.ungrouped.append(audio_filename)
+        self._pending = [Memo(audio_filename="a.m4a", transcript="one"),
+                         Memo(audio_filename="b.m4a", transcript="two")]
+
+    def unmerge(self, audio_filename):
+        if self.unmerge_error:
+            raise ValueError(self.unmerge_error)
+        self.unmerged.append(audio_filename)
         self._pending = [Memo(audio_filename="a.m4a", transcript="one"),
                          Memo(audio_filename="b.m4a", transcript="two")]
 
@@ -396,7 +405,7 @@ def test_grouping_hands_over_every_unsaved_edit_before_the_merge(tmp_path):
     # The server folds the notes as it holds them. A name typed a moment before the click
     # is still behind the auto-save's timer, and the bullet it belongs to came out bare —
     # "learn to play it" rather than "Theremin lessons: learn to play it".
-    body = js.split("function groupFiles")[1].split("\n  function ")[0]
+    body = js.split("function mergeFiles")[1].split("\n  function ")[0]
     assert body.index("flushEdits(picks)") < body.index("post('/group'")
 
 
@@ -517,34 +526,62 @@ def test_a_walked_back_step_blinks_the_button_it_belongs_to(tmp_path):
     assert ".topbtn.flash" in css and "@keyframes press" in css
 
 
-def test_the_inbox_records_the_three_actions_that_can_be_walked_back(tmp_path):
+def test_the_inbox_records_the_four_actions_that_can_be_walked_back(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     js = asset(client, "inbox.js")
 
-    # Sending text across the arrow, rebinding a note to a destination, and dropping a
-    # row somewhere new are the three things that change the list without the user
-    # typing into it — the three, therefore, that have nothing else to walk them back.
-    assert js.count("undoStack.did(") == 3
+    # Sending text across the arrow, rebinding a note to a destination, dropping a row
+    # somewhere new, and folding notes into a group are the four things that change the
+    # list without the user typing into it — the four, therefore, that have nothing else
+    # to walk them back.
+    assert js.count("undoStack.did(") == 4
     # Undoing has to persist, or the row reads back the way it was before the undo.
     assert "flush(memo)" in js.split("\n  function apply(")[1].split("\n  function ")[0]
     assert "saveOrder()" in js.split("\n  function applyOrder(")[1].split("\n  function ")[0]
 
 
-def test_an_action_that_remakes_the_list_empties_the_stack(tmp_path):
+def test_a_step_names_the_row_it_touched_rather_than_holding_it(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     js = asset(client, "inbox.js")
 
-    # A submitted note is in Notesnook, a trashed one is in the bin, a group has swallowed
-    # its neighbours' text, and breaking that group up hands the notes back as rows built
-    # afresh from the server. Every step on the stack closes over the row it touched, so
-    # after any of these it holds rows that are gone — and a stack that stepped over them
-    # to walk back some older, unrelated action would be worse than one that admits it has
-    # nothing left to offer. Grouping is undone by its own badge, not by Ctrl+Z.
-    assert js.count("undoStack.clear()") == 3
+    # Grouping and its undo take the whole list back from the server, so the row elements a
+    # step was recorded against are gone by the time it is walked back. A step holding one
+    # would write into a row the page has thrown away; naming it and looking it up when the
+    # step runs is what lets grouping join the stack at all.
+    assert "function rowFor(file)" in js
+    for step in ("function applyTo(file", "function bindTo(file"):
+        assert step in js
+    assert "undoStack.did({\n      undo: function () { applyTo(file, was); }" in js
+
+
+def test_grouping_is_walked_back_one_merge_at_a_time(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    js = asset(client, "inbox.js")
+
+    # Undo posts the last merge back out of the surviving row and redo folds the same notes
+    # in again. It walks back one merge, not the whole group: a note dragged into a group
+    # that already existed must come back out without dissolving what it joined.
+    step = js.split("function groupFiles")[1].split("\n  function ")[0]
+    assert "undoStack.did(" in step
+    assert "unmergeRow(target)" in step and "mergeFiles(files)" in step
+    assert "post('/unmerge/'" in js
+
+
+def test_an_action_that_takes_a_row_out_for_good_empties_the_stack(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    js = asset(client, "inbox.js")
+
+    # A submitted note is in Notesnook and a trashed one is in the bin; neither comes back
+    # on Ctrl+Z, and a stack that stepped over them to walk back some older, unrelated
+    # action would be worse than one that admits it has nothing left to offer. Breaking a
+    # group all the way up is a walk back of its own, past however many steps the stack
+    # still holds for it. Grouping no longer empties the stack — it joins it.
+    assert js.count("undoStack.clear()") == 2
     assert "undoStack.clear()" in js.split("function removeRow")[1].split("\n  function ")[0]
-    assert "undoStack.clear()" in js.split("function becomeGroup")[1].split("\n  function ")[0]
     assert "undoStack.clear()" in js.split("function ungroupRow")[1].split("\n  function ")[0]
 
 
@@ -933,18 +970,47 @@ def test_submit_saves_edits_then_submits_and_returns_204(tmp_path):
 
 
 def test_group_route_consolidates_the_posted_notes_and_reports_the_survivor(tmp_path):
-    service = FakeService()
+    service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="- one\n- two", kind="group")])
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     resp = client.post("/group", data={"files": ["a.m4a", "b.m4a"]})
 
     assert service.grouped == [["a.m4a", "b.m4a"]]
-    # The client needs the surviving row and the fields it now holds to patch the page in
-    # place, rather than reloading. The name comes back too: promoting a note to a group
-    # folds its name into the first bullet and clears it, and a stale name left in the row
-    # would be auto-saved straight back.
     assert resp.status_code == 200
-    assert resp.get_json() == {"target": "a.m4a", "transcript": "- one\n- two", "name": ""}
+    body = resp.get_json()
+    # The rows come back whole — the merge changes several of them at once, and the page
+    # takes the list the server holds rather than patching its own guess at it.
+    assert 'data-file="a.m4a"' in body["rows"]
+    assert "<!doctype" not in body["rows"]
+    # The survivor is named, because only the server knows which of the picked notes it is,
+    # and undo has to know which row to walk the merge back out of.
+    assert body["target"] == "a.m4a"
+
+
+def test_unmerge_route_walks_one_merge_back_and_answers_with_the_inbox(tmp_path):
+    service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="- one\n- two", kind="group")])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    resp = client.post("/unmerge/a.m4a")
+
+    # This is what Undo posts: one merge back, not the whole group apart.
+    assert service.unmerged == ["a.m4a"]
+    assert service.ungrouped == []
+    assert resp.status_code == 200
+    body = resp.data.decode()
+    assert 'data-file="a.m4a"' in body and 'data-file="b.m4a"' in body
+    assert "<!doctype" not in body
+
+
+def test_unmerge_route_refuses_a_memo_that_is_not_a_group(tmp_path):
+    service = FakeService()
+    service.unmerge_error = "Only a group can have a merge walked back."
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    resp = client.post("/unmerge/a.m4a")
+
+    assert resp.status_code == 400
+    assert b"Only a group can have a merge walked back" in resp.data
 
 
 def test_ungroup_route_breaks_the_group_up_and_answers_with_the_inbox(tmp_path):

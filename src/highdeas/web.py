@@ -87,29 +87,42 @@ def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=()):
         service.reorder(request.form.getlist("order"))
         return ("", 204)
 
+    def _inbox_rows():
+        """The inbox as it now reads. Grouping and its undo change several rows at once —
+        some leave, some come back into the place the server sorts them — so the page takes
+        the whole list rather than patching its own guess at it."""
+        return render_template("rows.html", memos=service.pending(),
+                               asana_parents=asana_parents)
+
     @app.post("/group")
     def group():
-        """Consolidate the posted notes into one group memo, answering with the row that
-        survives and the fields it now holds, so the page can patch itself."""
+        """Consolidate the posted notes into one group memo.
+
+        The survivor is named alongside the rows: only the server knows which of the picked
+        notes it is, and Undo has to know which row to walk the merge back out of."""
         try:
             grouped = service.group(request.form.getlist("files"))
         except ValueError as exc:
             return (str(exc), 400)
-        return {"target": grouped.audio_filename, "transcript": grouped.transcript,
-                "name": grouped.name}
+        return {"target": grouped.audio_filename, "rows": _inbox_rows()}
+
+    @app.post("/unmerge/<path:filename>")
+    def unmerge(filename):
+        """Walk back the last merge a group swallowed — what Undo posts."""
+        try:
+            service.unmerge(filename)
+        except ValueError as exc:
+            return (str(exc), 400)
+        return _inbox_rows()
 
     @app.post("/ungroup/<path:filename>")
     def ungroup(filename):
-        """Break a group back into its notes, answering with the inbox as it now reads.
-
-        Several rows come back at once, each into the place the server sorts it, so the
-        page takes the whole list rather than guessing where to splice them in."""
+        """Break a group all the way back into its notes — what its badge posts."""
         try:
             service.ungroup(filename)
         except ValueError as exc:
             return (str(exc), 400)
-        return render_template("rows.html", memos=service.pending(),
-                               asana_parents=asana_parents)
+        return _inbox_rows()
 
     @app.post("/delete/<path:filename>")
     def delete(filename):

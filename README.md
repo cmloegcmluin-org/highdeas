@@ -34,9 +34,11 @@ recording, or a subtask on an Asana task.
    badge in the third of the row's leading columns marks which rows are groups. The
    folded-in recordings go to the bin, restorable if the merge was a mistake.
 
-   Grouping comes undone. Reach for a group's badge and it shows the stack coming apart;
-   click it and the group breaks back into the separate notes it was folded from, each with
-   its own name, transcript, and recording, back in the place it held.
+   Grouping comes undone two ways. Ctrl+Z (or the Undo button) walks back one merge at a
+   time, so a note dragged into a group comes back out without dissolving what it joined.
+   Or reach for the group's badge: it shows the stack coming apart, and clicking it breaks
+   the group all the way back into the separate notes it was folded from. Either way each
+   note returns with its own name, transcript, and recording, in the place it held.
 6. **Edit** — clicking a transcript opens the note in a near-fullscreen editor, so a rough
    transcription gets fixed here rather than shipped out half-finished. The recording sits
    up top as a scrubbable waveform and starts playing; each word lights up in the text as

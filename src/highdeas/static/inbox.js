@@ -5,7 +5,8 @@
 
    The actions that change a row without the user typing into it are recorded on the
    undo stack (history.js) as the pair of steps that walk them back and forward again;
-   the ones that can't be walked back empty it. */
+   the ones that take a row out for good empty it. A step names the rows it touched
+   rather than holding them, since grouping rebuilds the list from the server. */
 (function () {
   'use strict';
 
@@ -29,6 +30,13 @@
   function describe(err) { return err && err.message ? ' (' + err.message + ')' : ''; }
 
   function rows() { return Array.prototype.slice.call(content.querySelectorAll('.memo')); }
+
+  // Grouping and its undo take the whole list back from the server, so a row element is
+  // only ever on loan. A step that has to touch a row again names it and looks it up when
+  // it runs, and shrugs if the row has since left the list.
+  function rowFor(file) {
+    return rows().filter(function (memo) { return memo.dataset.file === file; })[0] || null;
+  }
 
   function updateCount() {
     if (!countEl) return;
@@ -86,6 +94,11 @@
     flush(memo);
   }
 
+  function bindTo(file, chosen) {
+    var memo = rowFor(file);
+    if (memo) setDestination(memo, chosen);
+  }
+
   function fields(memo) {
     var chosen = destinationOf(memo);
     return new URLSearchParams({
@@ -140,15 +153,21 @@
     flush(memo);
   }
 
+  function applyTo(file, text) {
+    var memo = rowFor(file);
+    if (memo) apply(memo, text);
+  }
+
   function moveText(memo) {
+    var file = memo.dataset.file;
     var was = textOf(memo);
     var now = movesBack(memo)
       ? { name: '', transcript: was.name }
       : { name: was.transcript, transcript: '' };
     apply(memo, now);
     undoStack.did({
-      undo: function () { apply(memo, was); },
-      redo: function () { apply(memo, now); },
+      undo: function () { applyTo(file, was); },
+      redo: function () { applyTo(file, now); },
     });
   }
 
@@ -163,9 +182,8 @@
     resync();
   }
 
-  // A row only ever leaves the list by being submitted, trashed, or absorbed into a
-  // group. An absorbed one comes back when the group is broken up, but as a row built
-  // afresh, so the steps recorded before it left can't be walked back onto it either way.
+  // A submitted note is in Notesnook, a trashed one is in the bin. Neither comes back, so
+  // no step recorded before it left has a row to be walked back onto.
   function removeRow(memo) {
     var grid = memo.closest('.grid');
     undoStack.clear();
@@ -239,16 +257,18 @@
     }
   }
 
-  // The row that survived. Flipping data-kind is all it takes: CSS reveals the badge
-  // the row has carried all along, and the cell becomes a drop target. Its text is now
-  // its neighbours' as well, so nothing recorded against the text it used to hold can
-  // be walked back onto it.
-  function becomeGroup(memo, result) {
-    clearTimeout(memo._timer);
-    undoStack.clear();
-    setText(memo, result);
-    memo.querySelector('.pick').checked = false;
-    memo.dataset.kind = 'group';
+  // A merge changes several rows at once — some leave, some come back — so the server
+  // answers with the inbox it now holds and the page takes the list whole. The rows are
+  // built afresh, which is why no step may hold one (see rowFor).
+  function showRows(html) {
+    content.innerHTML = html;
+    rows().forEach(wire);
+    resync();
+  }
+
+  function readRows(response) {
+    if (!response.ok) return response.text().then(function (t) { throw new Error(t || 'Failed'); });
+    return response.text().then(showRows);
   }
 
   // The server folds the notes as it holds them, not as the page shows them, so every
@@ -261,7 +281,8 @@
 
   // The merge is server-side, so the button locks until it answers: a double-click would
   // post a second selection whose absorbed rows are no longer in the inbox to group.
-  function groupFiles(files) {
+  // Answers with the row that survived, which only the server can name.
+  function mergeFiles(files) {
     if (groupBtn) groupBtn.disabled = true;
     var picks = rows().filter(function (memo) { return files.indexOf(memo.dataset.file) >= 0; });
     var data = new URLSearchParams();
@@ -272,33 +293,50 @@
       if (!r.ok) return r.text().then(function (t) { throw new Error(t || 'Failed'); });
       return r.json();
     }).then(function (result) {
-      rows().forEach(function (memo) {
-        var file = memo.dataset.file;
-        if (files.indexOf(file) < 0) return;
-        if (file === result.target) return becomeGroup(memo, result);
-        retired[file] = true;  // a poll snapshot taken before the merge must not re-add it
-        removeRow(memo);
-      });
-    }).catch(function (err) {
-      notify("Couldn't group those notes — they're unchanged." + describe(err));
-    }).then(syncSelection);
+      // A poll snapshot taken before the merge must not splice the eaten rows back in.
+      files.forEach(function (file) { if (file !== result.target) retired[file] = true; });
+      showRows(result.rows);
+      return result.target;
+    });
   }
 
-  // Breaking a group up hands several rows back at once, each into the place the server
-  // sorts it, so the list is taken whole rather than spliced. The rows the group ate are
-  // shown again, which is all a later poll needs to leave them alone.
+  // Walk the last merge back out of a group: the notes it took in return, and the group
+  // reads as it did before it — a plain note again, if that merge is what made it.
+  function unmergeRow(file) {
+    return post('/unmerge/' + encodeURIComponent(file)).then(readRows);
+  }
+
+  // Nothing has moved when a merge is refused, so the notice says so and the button goes
+  // back to reading the selection. A step that fails leaves the stack where history.js
+  // already moved it — the page and the stack disagree, and the notice is what says which.
+  function groupFailed(err) {
+    notify("Couldn't group those notes — they're unchanged." + describe(err));
+    syncSelection();
+  }
+
+  function unmergeFailed(err) {
+    notify("Couldn't walk that merge back — the group is unchanged." + describe(err));
+    syncSelection();
+  }
+
+  function groupFiles(files) {
+    return mergeFiles(files).then(function (target) {
+      undoStack.did({
+        undo: function () { return unmergeRow(target).catch(unmergeFailed); },
+        redo: function () { return mergeFiles(files).catch(groupFailed); },
+      });
+    }).catch(groupFailed);
+  }
+
+  // The badge walks every merge back at once, past however many steps the stack still
+  // holds for this group. Nothing it left behind can be walked back onto the list.
   function ungroupRow(memo) {
-    return post('/ungroup/' + encodeURIComponent(memo.dataset.file)).then(function (r) {
-      if (!r.ok) return r.text().then(function (t) { throw new Error(t || 'Failed'); });
-      return r.text();
-    }).then(function (html) {
-      undoStack.clear();  // the steps behind this one were recorded against rows that were gone
-      content.innerHTML = html;
-      rows().forEach(wire);
-      resync();
-    }).catch(function (err) {
-      notify("Couldn't break up that group — it's unchanged." + describe(err));
-    });
+    return post('/ungroup/' + encodeURIComponent(memo.dataset.file))
+      .then(readRows)
+      .then(function () { undoStack.clear(); })
+      .catch(function (err) {
+        notify("Couldn't break up that group — it's unchanged." + describe(err));
+      });
   }
 
   if (selectAll) selectAll.addEventListener('change', function () {
@@ -534,13 +572,14 @@
     // task: one recorded step either way, since only one destination has a dropdown.
     var was = destinationOf(memo);
     function rebind() {
+      var file = memo.dataset.file;
       var chosen = destinationOf(memo);
       var before = was;
       was = chosen;
       setDestination(memo, chosen);
       undoStack.did({
-        undo: function () { was = before; setDestination(memo, before); },
-        redo: function () { was = chosen; setDestination(memo, chosen); },
+        undo: function () { was = before; bindTo(file, before); },
+        redo: function () { was = chosen; bindTo(file, chosen); },
       });
     }
     memo.querySelectorAll('input.route').forEach(function (radio) {

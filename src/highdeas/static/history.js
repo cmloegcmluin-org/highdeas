@@ -2,11 +2,12 @@
    and forward again, so this file never has to know what a memo is — inbox.js hands it
    two thunks and it drives the Undo/Redo buttons and Ctrl+Z from there.
 
-   It holds only the actions whose rows survive them. Submitting, trashing, grouping and
-   breaking a group back up each remake the list, and every step is a closure over the row
-   it touched, so they empty the stack rather than leave one that would quietly reach past
-   them to undo something older and unrelated. Grouping has its own way back — the badge on
-   the group's row — and doesn't need this one. */
+   It holds the actions whose rows can be handed back. A submitted note is in Notesnook and
+   a trashed one is in the bin; breaking a group all the way up is a walk back of its own,
+   past however many steps are still recorded for it. Those three empty the stack rather
+   than leave one that would quietly reach past them to undo something older and unrelated.
+   A step names the row it touched rather than holding it, so grouping — which takes the
+   whole list back from the server — can join the stack like anything else. */
 (function () {
   'use strict';
 
