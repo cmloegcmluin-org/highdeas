@@ -220,15 +220,22 @@ h1 { font-size: 1.35rem; margin: 0; }
    Canvas, not transparent: Chromium paints the OPEN dropdown list from the select's
    computed colors, and a transparent select gets a white popup under the dark
    theme's light text — white on white. Canvas matches the page behind it anyway.
-   The 18px right padding is the caret's zone: the browser draws the arrow inside
-   the control's right edge, so the label ellipsizes before it runs underneath. */
-.memo select.asana-parent { width: 100%; box-sizing: border-box; padding: 4px 18px 4px 6px;
-                            font: inherit; font-size: .8rem; color: inherit; background: Canvas;
+   The caret is ours (appearance: none + a data-URI chevron): the native one hugs
+   the right edge about twice as tight as the text's 6px left inset and cannot be
+   moved, so we draw the chevron at `right 6px` to mirror the text inset. The 20px
+   right padding is its zone: the label ellipsizes before running into it. */
+.memo select.asana-parent { width: 100%; box-sizing: border-box; padding: 4px 20px 4px 6px;
+                            font: inherit; font-size: .8rem; color: inherit;
+                            appearance: none; background-color: Canvas;
+                            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='m1 1 4 4 4-4' fill='none' stroke='%23888' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+                            background-repeat: no-repeat; background-position: right 6px center;
+                            background-size: 10px 6px;
                             border: 1px solid rgba(128,128,128,.4); border-radius: 8px;
                             text-overflow: ellipsis; }
-/* Symmetric option padding: the open list insets its text a hair on the left but
-   nothing on the right, so the longest label sat flush against the edge. */
-.memo select.asana-parent option { background: Canvas; color: CanvasText; padding: 2px 6px; }
+/* Colors only: in the open list Chromium honors an option's colors and font but not
+   its padding — the right-side buffer is a literal no-break space in the label
+   (rows.html), the one inset the popup can't ignore. */
+.memo select.asana-parent option { background: Canvas; color: CanvasText; }
 .memo select.asana-parent[hidden] { display: none; }
 
 /* Bin rows */

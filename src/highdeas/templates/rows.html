@@ -56,7 +56,9 @@
         <label title="Send to Asana"><input type="radio" class="route" name="route-{{ m.audio_filename }}" value="asana" {{ 'checked' if m.route == 'asana' }}><span class="ic">{{ asana() }}</span></label>
       </div>
       <select class="asana-parent" aria-label="Task the note becomes a subtask of" {{ '' if m.route == 'asana' else 'hidden' }}>
-        {% for gid, label in asana_parents %}<option value="{{ gid }}" {{ 'selected' if m.asana_parent == gid }}>{{ label }}</option>
+        {#- The trailing &nbsp; is the open list's right-side buffer: Chromium ignores
+            padding on <option>, but it can't ignore a character of the label. -#}
+        {% for gid, label in asana_parents %}<option value="{{ gid }}" {{ 'selected' if m.asana_parent == gid }}>{{ label }}&nbsp;</option>
         {% endfor %}
       </select>
     </div>

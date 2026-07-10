@@ -148,8 +148,8 @@ def test_asana_rows_offer_the_parent_task_dropdown_others_keep_it_hidden(tmp_pat
 
     body = client.get("/").data.decode()
 
-    assert body.count('<option value="111" >Song ideas</option>') == 2
-    assert '<option value="222" selected>App ideas</option>' in body
+    assert body.count('<option value="111" >Song ideas&nbsp;</option>') == 2
+    assert '<option value="222" selected>App ideas&nbsp;</option>' in body
     # a.m4a (asana) shows its dropdown; b.m4a (notesnook) keeps it hidden until picked.
     assert body.count('class="asana-parent"') == 2
     assert body.count('subtask of" hidden>') == 1
@@ -183,28 +183,38 @@ def test_unlit_destination_icons_go_greyscale_so_the_lit_one_reads_at_a_glance(t
     assert "filter: none" in css
 
 
-def test_asana_dropdown_elides_its_text_before_the_caret(tmp_path):
+def test_asana_dropdown_elides_its_text_before_a_caret_inset_like_the_text(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     css = asset(client, "app.css")
     rule = css.split("select.asana-parent {")[1].split("}")[0]
 
-    # The closed control draws its caret inside the right edge, so a long task label
-    # ran underneath it. Reserve the caret's zone with right padding and ellipsize
-    # the text before it gets there.
+    # The label must ellipsize before the caret's zone rather than run underneath it…
     assert "text-overflow: ellipsis" in rule
-    assert "padding: 4px 18px 4px 6px" in rule
+    assert "padding: 4px 20px 4px 6px" in rule
+    # …and the caret is ours, not the browser's: the native one hugs the right edge
+    # about twice as tight as the text's 6px left inset, and it cannot be moved.
+    # Drawing our own chevron at `right 6px` makes the two insets match.
+    assert "appearance: none" in rule
+    assert "background-position: right 6px center" in rule
 
 
-def test_asana_dropdown_list_pads_both_sides_evenly(tmp_path):
-    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+def test_asana_dropdown_list_pads_its_right_side_with_a_literal_space(tmp_path):
+    service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hi", route="asana")])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin"),
+                        asana_parents=[("111", "Song ideas")]).test_client()
 
+    body = client.get("/").data.decode()
     css = asset(client, "app.css")
-    rule = css.split("select.asana-parent option {")[1].split("}")[0]
 
-    # Chromium's open list gave options a small left inset but none on the right, so
-    # the longest label touched the edge. Pad the options symmetrically.
-    assert "padding: 2px 6px" in rule
+    # Chromium's open list insets options a hair on the left and not at all on the
+    # right, and it IGNORES padding on <option> (styling there is limited to colors
+    # and fonts) — the first attempt proved that on screen. A trailing no-break space
+    # is literal text, so the popup cannot refuse it; it widens the list by one
+    # space's worth and buffers the longest label off the right edge.
+    assert "Song ideas&nbsp;</option>" in body
+    option_rule = css.split("select.asana-parent option {")[1].split("}")[0]
+    assert "padding" not in option_rule  # the ineffective declaration is gone, not kept for show
 
 
 def test_rows_top_align_so_the_asana_dropdown_grows_downward(tmp_path):
