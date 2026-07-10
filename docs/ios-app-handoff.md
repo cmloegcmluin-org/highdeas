@@ -49,13 +49,13 @@ after a grace window? Auto-push, with append only for the not-yet-pushed? Ask hi
 ## Orientation — what exists today
 
 Read the README first. The pipeline: iOS Shortcut records → file lands in iCloud Drive
-`VoiceInbox/` → iCloud for Windows mirrors it to the PC (the hours-late link this
+`Shortcuts/Highdeas/` → iCloud for Windows mirrors it to the PC (the hours-late link this
 project removes) → `service.refresh()` ingests and transcribes it into a local Flask
 inbox → Submit routes it to Notesnook or Google Drive and retires it to a bin.
 
 Facts the upload work must honor (`src/highdeas/ingest.py`):
 
-- Ingest adopts any file in `VOICE_INBOX_DIR` whose suffix is in `AUDIO_EXTENSIONS`
+- Ingest adopts any file in `HIGHDEAS_INBOX_DIR` whose suffix is in `AUDIO_EXTENSIONS`
   (`.m4a .mp3 .wav .aac .caf .aiff`). It can see a file the moment it exists, so an
   upload must never leave a partial file under an audio extension — stream to a temp
   name ingest ignores (e.g. `.part`), then rename into place.
@@ -71,14 +71,14 @@ Facts the upload work must honor (`src/highdeas/ingest.py`):
   also trigger a refresh itself so adoption doesn't wait for a page to be open.
 
 Server binding today (`src/highdeas/app.py`): desktop mode runs Flask on a **random,
-loopback-only port** behind the native window; browser mode on `127.0.0.1:VOICE_PORT`
+loopback-only port** behind the native window; browser mode on `127.0.0.1:HIGHDEAS_PORT`
 (default 5000). Nothing is reachable from the LAN yet.
 
 ## Workstream 1 — server (Python, this repo, strict TDD)
 
 1. **`POST /upload`** on the Flask app: multipart audio file, auth via a shared token
-   (`VOICE_UPLOAD_TOKEN`, new `.env` key — add it to `.env.example` and the README
-   config table). Write atomically into `VOICE_INBOX_DIR` as above. Respond 2xx only
+   (`HIGHDEAS_UPLOAD_TOKEN`, new `.env` key — add it to `.env.example` and the README
+   config table). Write atomically into `HIGHDEAS_INBOX_DIR` as above. Respond 2xx only
    once the file is fully in place — the phone clears a recording on 2xx and must never
    lose one. Reject a missing/bad token (401) and non-audio suffixes.
 2. **A stable, LAN-reachable listener.** The phone needs a fixed `http://<pc>:<port>`
@@ -88,7 +88,7 @@ loopback-only port** behind the native window; browser mode on `127.0.0.1:VOICE_
    var for the port.
 3. **Windows-side notes for the README** (Douglas applies them on the PC after
    pulling): a one-time Windows Firewall inbound allowance for that port, setting
-   `VOICE_UPLOAD_TOKEN` in `.env`, and finding the PC's LAN address to enter in the
+   `HIGHDEAS_UPLOAD_TOKEN` in `.env`, and finding the PC's LAN address to enter in the
    phone's settings screen. Reachability beyond the home LAN (e.g. Tailscale) was
    discussed but is not part of v1 — the retry queue covers away-from-home recording.
 
@@ -114,7 +114,7 @@ loopback-only port** behind the native window; browser mode on `127.0.0.1:VOICE_
   green before touching anything. The code is cross-platform; the Windows-only bits
   (WebView2 window, taskbar identity) are guarded and fall back cleanly.
 - Run the server in browser mode with temp dirs (the defaults are Windows paths):
-  `VOICE_DESKTOP=0` plus `VOICE_INBOX_DIR`, `VOICE_BIN_DIR`, and `VOICE_DB` pointed at
+  `HIGHDEAS_DESKTOP=0` plus `HIGHDEAS_INBOX_DIR`, `HIGHDEAS_BIN_DIR`, and `HIGHDEAS_DB` pointed at
   scratch locations, then `.venv/bin/python -m highdeas.app`. Phone and Mac on the same
   Wi-Fi gives a true end-to-end loop; production is the same code on the PC once
   Douglas pulls.
