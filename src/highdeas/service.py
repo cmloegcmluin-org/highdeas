@@ -91,14 +91,17 @@ class InboxService:
         self._sleep = sleep
         self._refresh_lock = threading.Lock()
 
-    def refresh(self):
+    def refresh(self, wait=False):
         """Ingest and transcribe any waiting recordings, skipping when a refresh is
         already running. The app's own scan, the client poll, and a second browser
         tab can all land here at once; letting two scans race on the same inbox would
         transcribe a recording twice, or crash renaming a file the other just moved.
-        The in-flight scan is already ingesting them, so the skipped caller loses
-        nothing — its next poll sees whatever landed."""
-        if not self._refresh_lock.acquire(blocking=False):
+        A skipped poll loses nothing — its next poll sees whatever landed.
+
+        `wait=True` queues behind the running scan and then scans again, for the
+        one caller with no next poll: the upload endpoint fires once per landed
+        recording, and the in-flight scan's snapshot predates that file."""
+        if not self._refresh_lock.acquire(blocking=wait):
             return
         try:
             self._ingest_waiting_recordings()

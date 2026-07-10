@@ -109,8 +109,23 @@ def build_upload_app(service):
         # Adoption shouldn't wait for the scanner's next pass — but
         # transcription is slow, so refresh off the request thread and let
         # the 2xx return the moment the file is in place.
-        on_received=lambda key: _refresh_in_background(service),
+        on_received=lambda key: _refresh_when_free(service),
     )
+
+
+def _refresh_when_free(service):
+    """Refresh off the request thread, *waiting* for any scan already running:
+    during a burst of uploads the in-flight scan snapshotted the inbox before
+    this recording landed, and the upload's trigger fires exactly once — a
+    skipped (non-blocking) refresh would leave the file to the scanner's next
+    pass. Swallow errors like the scanner does."""
+    def run():
+        try:
+            service.refresh(wait=True)
+        except Exception as exc:  # noqa: BLE001 — a bad recording must not kill the thread
+            print(f"Post-upload refresh failed ({exc}).")
+
+    threading.Thread(target=run, daemon=True, name="highdeas-upload-refresh").start()
 
 
 def _chrome_launcher():
@@ -139,27 +154,30 @@ def main():
 def _start_upload_listener(upload_app):
     """Serve the upload app to the LAN in a daemon thread, in both desktop and
     browser modes. Only the upload route is exposed on 0.0.0.0 — the inbox UI
-    with its submit/delete routes stays loopback-only."""
+    with its submit/delete routes stays loopback-only.
+
+    Failures here disable phone uploads, never the app: a typo'd port or an
+    already-taken one must not kill a window the user is looking at (or,
+    under the pythonw taskbar launch, exit with no console at all)."""
     if upload_app is None:
         return
-    port = int(os.environ.get("HIGHDEAS_UPLOAD_PORT", "5055"))
-    threading.Thread(
-        target=lambda: upload_app.run(host="0.0.0.0", port=port, threaded=True, use_reloader=False),
-        daemon=True,
-        name="highdeas-upload",
-    ).start()
+    raw_port = os.environ.get("HIGHDEAS_UPLOAD_PORT", "5055")
+    try:
+        port = int(raw_port)
+    except ValueError:
+        print(f"HIGHDEAS_UPLOAD_PORT={raw_port!r} is not a port number; "
+              "phone uploads are off until it's fixed.")
+        return
 
-
-def _refresh_in_background(service):
-    """Adopt a landed upload now rather than on the scanner's next pass — off
-    the request thread, so the 2xx returns the moment the file is in place."""
-    def run():
+    def serve():
         try:
-            service.refresh()
-        except Exception as exc:  # noqa: BLE001 — a bad recording must not kill the thread
-            print(f"Post-upload refresh failed ({exc}).")
+            upload_app.run(host="0.0.0.0", port=port, threaded=True, use_reloader=False)
+        except Exception as exc:  # noqa: BLE001 — surface the dead listener, keep the app alive
+            print(f"The upload listener could not serve on port {port} ({exc}); "
+                  "phone uploads are off for this run.")
 
-    threading.Thread(target=run, daemon=True, name="highdeas-upload-refresh").start()
+    threading.Thread(target=serve, daemon=True, name="highdeas-upload").start()
+
 
 
 # How long the scan waits before looking in the inbox again. It is a directory listing

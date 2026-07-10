@@ -1,5 +1,6 @@
 import io
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -187,11 +188,13 @@ class FakeUploadService:
     def __init__(self, knows=False):
         self._knows = knows
         self.refreshed = threading.Event()
+        self.waited = None
 
     def knows(self, audio_filename):
         return self._knows
 
-    def refresh(self):
+    def refresh(self, wait=False):
+        self.waited = wait
         self.refreshed.set()
 
 
@@ -219,8 +222,10 @@ def test_build_upload_app_accepts_a_recording_and_kicks_off_ingest(tmp_path, mon
     assert (inbox / response.get_json()["stored"]).read_bytes() == b"RIFFxxxxWAVE"
     # Adoption doesn't wait for an open inbox page's poll: the upload triggers
     # a refresh itself — off the request thread, so the 2xx isn't held hostage
-    # to transcription.
+    # to transcription. And it must be a *waiting* refresh: during a burst the
+    # in-flight scan predates this file, and a skipped trigger never recurs.
     assert service.refreshed.wait(timeout=2)
+    assert service.waited is True
 
 
 def test_build_upload_app_confirms_an_already_processed_recording_without_reingesting(
@@ -262,21 +267,64 @@ def test_start_upload_listener_stays_dark_without_an_upload_app():
     _start_upload_listener(None)  # no token configured: nothing must listen
 
 
-def test_main_starts_the_upload_listener_alongside_the_ui(monkeypatch):
+def test_a_malformed_upload_port_disables_the_listener_not_the_app(monkeypatch, capsys):
+    # Every other env misconfiguration in this app degrades gracefully; a
+    # typo'd port must not take the window down with it (invisibly, under
+    # the pythonw taskbar launch).
+    monkeypatch.setenv("HIGHDEAS_UPLOAD_PORT", "5,055")
+    ran = []
+
+    class FakeApp:
+        def run(self, **kwargs):
+            ran.append(kwargs)
+
+    _start_upload_listener(FakeApp())
+
+    assert ran == []
+    assert "HIGHDEAS_UPLOAD_PORT" in capsys.readouterr().out
+
+
+def test_a_failed_bind_reports_itself_instead_of_dying_silently(monkeypatch, capsys):
+    # A second Highdeas instance (or another app on the port) would otherwise
+    # leave the window working and the phone retrying forever with no clue.
+    monkeypatch.setenv("HIGHDEAS_UPLOAD_PORT", "5155")
+    failed = threading.Event()
+
+    class FakeApp:
+        def run(self, **kwargs):
+            try:
+                raise OSError("Address already in use")
+            finally:
+                failed.set()
+
+    _start_upload_listener(FakeApp())
+
+    assert failed.wait(timeout=2)
+    deadline = time.monotonic() + 2
+    out = ""
+    while "upload listener" not in out and time.monotonic() < deadline:
+        out += capsys.readouterr().out
+        time.sleep(0.02)
+    assert "upload listener" in out
+
+
+def test_main_starts_the_upload_listener_before_the_blocking_ui(monkeypatch):
     import highdeas.app as app_mod
-    started = []
+    order = []
     monkeypatch.setenv("HIGHDEAS_DESKTOP", "0")
     monkeypatch.setattr(app_mod, "_set_windows_app_id", lambda: None)
     monkeypatch.setattr(app_mod, "build_app", lambda: ("APP", "SERVICE"))
     monkeypatch.setattr(app_mod, "_ingest_continuously", lambda service: None)
     monkeypatch.setattr(app_mod, "build_upload_app", lambda service: ("UPLOAD-FOR", service))
-    monkeypatch.setattr(app_mod, "_start_upload_listener", lambda app: started.append(app))
-    monkeypatch.setattr(app_mod, "_run_browser", lambda app: None)
+    monkeypatch.setattr(app_mod, "_start_upload_listener",
+                        lambda app: order.append(("upload", app)))
+    monkeypatch.setattr(app_mod, "_run_browser", lambda app: order.append(("ui", app)))
 
     app_mod.main()
 
-    # The upload listener rides along in every mode, built for the same service.
-    assert started == [("UPLOAD-FOR", "SERVICE")]
+    # _run_browser (and the desktop path) block for the process lifetime, so
+    # the listener must be up first — "after the UI" would mean never.
+    assert order == [("upload", ("UPLOAD-FOR", "SERVICE")), ("ui", "APP")]
 
 
 def test_run_browser_serves_on_the_configured_port_without_opening_a_browser(monkeypatch):

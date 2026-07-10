@@ -972,3 +972,44 @@ def test_knows_covers_pending_and_retired_memos_but_not_strangers(tmp_path):
     assert service.knows("pending.m4a")
     assert service.knows("retired.m4a")
     assert not service.knows("new.m4a")
+
+
+def test_refresh_can_wait_for_the_running_scan_instead_of_skipping(tmp_path):
+    # The upload endpoint fires a refresh per landed recording. A burst of
+    # pushes overlaps: the in-flight scan snapshotted the inbox before the
+    # later files landed, so a skipped (non-blocking) trigger would strand
+    # them until some future poll. wait=True queues the trigger instead.
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    (inbox / "a.m4a").write_bytes(b"A")
+    store = MemoStore(tmp_path / "memos.db")
+    scanning = threading.Event()
+    release = threading.Event()
+
+    class SlowTranscriber:
+        def transcribe(self, path):
+            scanning.set()
+            release.wait(timeout=5)
+            return Transcript(f"text for {Path(path).name}")
+
+    service = InboxService(
+        inbox_dir=inbox, store=store, transcriber=SlowTranscriber(),
+        bin_dir=tmp_path / "bin",
+        find_new=lambda d, known: [NewRecording(p, p.name)
+                                   for p in sorted(Path(d).glob("*.m4a"))
+                                   if p.name not in known],
+        clock=lambda: "2026-07-10T00:00",
+        recorded_time=lambda path: "2026-07-10T00:00",
+    )
+
+    first = threading.Thread(target=service.refresh)
+    first.start()
+    assert scanning.wait(timeout=5)
+    (inbox / "b.m4a").write_bytes(b"B")  # lands mid-scan, after the snapshot
+    waiter = threading.Thread(target=lambda: service.refresh(wait=True))
+    waiter.start()
+    release.set()
+    first.join(timeout=5)
+    waiter.join(timeout=5)
+
+    assert {m.audio_filename for m in store.list_pending()} == {"a.m4a", "b.m4a"}
