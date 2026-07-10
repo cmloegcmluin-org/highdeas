@@ -139,6 +139,12 @@ class InboxService:
     def pending(self):
         return self._store.list_pending()
 
+    def knows(self, audio_filename):
+        """Whether this recording — pending or retired — is already in the store.
+        The upload endpoint asks so a phone's retry of an already-processed
+        recording is confirmed instead of landing as an orphan file."""
+        return audio_filename in self._store.known_filenames()
+
     def has_incoming(self):
         """True when the inbox holds recordings not yet in the store, so a freshly
         opened page can say "Transcribing…" rather than "Your inbox is empty" while the

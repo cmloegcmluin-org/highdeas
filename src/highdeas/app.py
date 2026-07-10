@@ -13,6 +13,7 @@ from highdeas.routers import AsanaRouter, DriveMusicRouter, NotesnookRouter, Rou
 from highdeas.service import InboxService
 from highdeas.store import MemoStore
 from highdeas.transcribe import Transcriber
+from highdeas.upload import create_upload_app
 from highdeas.web import create_app
 from highdeas.window_state import WindowGeometryTracker, load_geometry
 
@@ -94,6 +95,24 @@ def build_app():
     return app, service
 
 
+def build_upload_app(service):
+    """The LAN-facing upload app the phone pushes recordings to, or None until
+    an upload token is configured — without a shared token there is nothing
+    safe to expose to the network."""
+    token = os.environ.get("HIGHDEAS_UPLOAD_TOKEN", "")
+    if not token:
+        return None
+    return create_upload_app(
+        inbox_dir=os.environ.get("HIGHDEAS_INBOX_DIR", DEFAULT_INBOX),
+        token=token,
+        is_known=service.knows,
+        # Adoption shouldn't wait for the scanner's next pass — but
+        # transcription is slow, so refresh off the request thread and let
+        # the 2xx return the moment the file is in place.
+        on_received=lambda key: _refresh_in_background(service),
+    )
+
+
 def _chrome_launcher():
     """Return a callable that opens a URL in a specific Chrome profile. Drive is
     signed into the wanted Google account only in that profile, and a link can't
@@ -111,9 +130,36 @@ def main():
     _set_windows_app_id()
     app, service = build_app()
     _ingest_continuously(service)
+    _start_upload_listener(build_upload_app(service))
     if os.environ.get("HIGHDEAS_DESKTOP", "1") == "1" and _run_desktop(app):
         return
     _run_browser(app)
+
+
+def _start_upload_listener(upload_app):
+    """Serve the upload app to the LAN in a daemon thread, in both desktop and
+    browser modes. Only the upload route is exposed on 0.0.0.0 — the inbox UI
+    with its submit/delete routes stays loopback-only."""
+    if upload_app is None:
+        return
+    port = int(os.environ.get("HIGHDEAS_UPLOAD_PORT", "5055"))
+    threading.Thread(
+        target=lambda: upload_app.run(host="0.0.0.0", port=port, threaded=True, use_reloader=False),
+        daemon=True,
+        name="highdeas-upload",
+    ).start()
+
+
+def _refresh_in_background(service):
+    """Adopt a landed upload now rather than on the scanner's next pass — off
+    the request thread, so the 2xx returns the moment the file is in place."""
+    def run():
+        try:
+            service.refresh()
+        except Exception as exc:  # noqa: BLE001 — a bad recording must not kill the thread
+            print(f"Post-upload refresh failed ({exc}).")
+
+    threading.Thread(target=run, daemon=True, name="highdeas-upload-refresh").start()
 
 
 # How long the scan waits before looking in the inbox again. It is a directory listing

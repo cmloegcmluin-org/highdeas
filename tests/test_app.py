@@ -1,3 +1,4 @@
+import io
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -8,7 +9,9 @@ from highdeas.app import (
     _open_when_ready,
     _open_window,
     _run_browser,
+    _start_upload_listener,
     build_app,
+    build_upload_app,
     default_bin_dir,
 )
 from highdeas.store import Memo, MemoStore
@@ -178,6 +181,104 @@ def test_build_app_reads_every_folder_from_the_environment(tmp_path, monkeypatch
     assert MemoStore(db_path).get("voice-3.m4a").status == "processed"
 
 
+class FakeUploadService:
+    """The two things the upload app asks of the inbox service."""
+
+    def __init__(self, knows=False):
+        self._knows = knows
+        self.refreshed = threading.Event()
+
+    def knows(self, audio_filename):
+        return self._knows
+
+    def refresh(self):
+        self.refreshed.set()
+
+
+def test_build_upload_app_is_off_until_a_token_is_configured(monkeypatch):
+    # Without a shared token there is nothing safe to expose to the LAN.
+    monkeypatch.delenv("HIGHDEAS_UPLOAD_TOKEN", raising=False)
+
+    assert build_upload_app(FakeUploadService()) is None
+
+
+def test_build_upload_app_accepts_a_recording_and_kicks_off_ingest(tmp_path, monkeypatch):
+    inbox = tmp_path / "inbox"
+    monkeypatch.setenv("HIGHDEAS_INBOX_DIR", str(inbox))
+    monkeypatch.setenv("HIGHDEAS_UPLOAD_TOKEN", "tok")
+    service = FakeUploadService()
+
+    app = build_upload_app(service)
+    response = app.test_client().post(
+        "/upload",
+        data={"audio": (io.BytesIO(b"RIFFxxxxWAVE"), "take.wav")},
+        headers={"Authorization": "Bearer tok"},
+    )
+
+    assert response.status_code == 201
+    assert (inbox / response.get_json()["stored"]).read_bytes() == b"RIFFxxxxWAVE"
+    # Adoption doesn't wait for an open inbox page's poll: the upload triggers
+    # a refresh itself — off the request thread, so the 2xx isn't held hostage
+    # to transcription.
+    assert service.refreshed.wait(timeout=2)
+
+
+def test_build_upload_app_confirms_an_already_processed_recording_without_reingesting(
+        tmp_path, monkeypatch):
+    monkeypatch.setenv("HIGHDEAS_INBOX_DIR", str(tmp_path / "inbox"))
+    monkeypatch.setenv("HIGHDEAS_UPLOAD_TOKEN", "tok")
+    service = FakeUploadService(knows=True)
+
+    app = build_upload_app(service)
+    response = app.test_client().post(
+        "/upload",
+        data={"audio": (io.BytesIO(b"RIFFxxxxWAVE"), "take.wav")},
+        headers={"Authorization": "Bearer tok"},
+    )
+
+    assert response.status_code == 200
+    assert not service.refreshed.is_set()
+
+
+def test_start_upload_listener_serves_the_upload_app_to_the_lan(monkeypatch):
+    monkeypatch.setenv("HIGHDEAS_UPLOAD_PORT", "5155")
+    served = threading.Event()
+    bound = {}
+
+    class FakeApp:
+        def run(self, host, port, threaded, use_reloader):
+            bound.update(host=host, port=port)
+            served.set()
+
+    _start_upload_listener(FakeApp())
+
+    # Off the calling thread (both UI modes block their own thread on their own
+    # server), reachable from the LAN, on the configured port.
+    assert served.wait(timeout=2)
+    assert bound == {"host": "0.0.0.0", "port": 5155}
+
+
+def test_start_upload_listener_stays_dark_without_an_upload_app():
+    _start_upload_listener(None)  # no token configured: nothing must listen
+
+
+def test_main_starts_the_upload_listener_alongside_the_ui(monkeypatch):
+    import highdeas.app as app_mod
+    started = []
+    monkeypatch.setenv("HIGHDEAS_DESKTOP", "0")
+    monkeypatch.setattr(app_mod, "_set_windows_app_id", lambda: None)
+    monkeypatch.setattr(app_mod, "build_app", lambda: ("APP", "SERVICE"))
+    monkeypatch.setattr(app_mod, "_ingest_continuously", lambda service: None)
+    monkeypatch.setattr(app_mod, "build_upload_app", lambda service: ("UPLOAD-FOR", service))
+    monkeypatch.setattr(app_mod, "_start_upload_listener", lambda app: started.append(app))
+    monkeypatch.setattr(app_mod, "_run_browser", lambda app: None)
+
+    app_mod.main()
+
+    # The upload listener rides along in every mode, built for the same service.
+    assert started == [("UPLOAD-FOR", "SERVICE")]
+
+
 def test_run_browser_serves_on_the_configured_port_without_opening_a_browser(monkeypatch):
     monkeypatch.setenv("HIGHDEAS_PORT", "5123")
     monkeypatch.setenv("HIGHDEAS_OPEN_BROWSER", "0")
@@ -197,6 +298,7 @@ def test_main_falls_back_to_the_browser_when_the_desktop_window_is_switched_off(
     import highdeas.app as app_mod
     opened = []
     monkeypatch.setenv("HIGHDEAS_DESKTOP", "0")
+    monkeypatch.delenv("HIGHDEAS_UPLOAD_TOKEN", raising=False)
     monkeypatch.setattr(app_mod, "_set_windows_app_id", lambda: None)
     monkeypatch.setattr(app_mod, "build_app", lambda: ("APP", "SERVICE"))
     monkeypatch.setattr(app_mod, "_ingest_continuously", lambda service: None)

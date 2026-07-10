@@ -955,3 +955,20 @@ def test_refresh_purges_expired_bin_items(tmp_path):
 
     assert store.get("old.m4a") is None
     assert not (bin_dir / "old.m4a").exists()
+
+
+def test_knows_covers_pending_and_retired_memos_but_not_strangers(tmp_path):
+    # The upload endpoint asks before accepting a retry: a recording the store
+    # already holds — still pending, or long since processed into the bin — is
+    # confirmed rather than re-adopted as an orphan file in the inbox.
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="pending.m4a", status="pending"))
+    store.upsert(Memo(audio_filename="retired.m4a", status="processed"))
+    service = InboxService(
+        inbox_dir=tmp_path / "inbox", store=store, transcriber=FakeTranscriber(),
+        bin_dir=tmp_path / "bin",
+    )
+
+    assert service.knows("pending.m4a")
+    assert service.knows("retired.m4a")
+    assert not service.knows("new.m4a")

@@ -127,6 +127,8 @@ Everything but the keys for the destinations you use is optional. Set these in `
 | `HIGHDEAS_CHROME_EXE` / `HIGHDEAS_CHROME_PROFILE` | system Chrome / `Default` | Chrome + profile used to open Drive and Asana links. |
 | `HIGHDEAS_DESKTOP` | `1` | `1` = native window, `0` = plain browser. |
 | `HIGHDEAS_PORT` | `5000` | Local port in browser mode. |
+| `HIGHDEAS_UPLOAD_TOKEN` | — | Shared secret the iOS capture app presents to `POST /upload`. Empty = the LAN upload listener never starts. |
+| `HIGHDEAS_UPLOAD_PORT` | `5055` | LAN-reachable port serving only `/upload`, in both desktop and browser modes. |
 
 ## Tests
 
