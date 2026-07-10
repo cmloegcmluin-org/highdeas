@@ -38,8 +38,8 @@ TRASH_SVG = (
 
 # One stylesheet shared by the inbox and bin pages so their chrome is identical —
 # same title bar, top-right link, and header row — and nothing jumps when you flip
-# between them. The two grids share widths too: a tiny row-number column, then
-# 300 | flex | a 334px middle band | two 104px action columns, so only the middle
+# between them. The two grids share widths too: a 44px row-handle column, then
+# 282 | flex | a 334px middle band | two 104px action columns, so only the middle
 # band's contents differ per page.
 _STYLE = """<style>
   /* Reserve the scrollbar gutter on every page so a page with a scrollbar and one
@@ -66,16 +66,33 @@ _STYLE = """<style>
   .notice { margin: 12px 0 0; padding: 10px 12px; border-radius: 8px; font-size: .9rem;
             color: #e5484d; background: rgba(229,72,77,.12); border: 1px solid rgba(229,72,77,.4); }
   .notice[hidden] { display: none; }
+  /* Consolidating acts on whichever rows are ticked, so its button belongs with the
+     selection rather than in a column header. The bar is absent until something is
+     picked, which keeps the page as quiet as it was before. */
+  .selbar { display: flex; align-items: center; gap: 12px; margin: 12px 0 0; padding: 8px 12px;
+            border-radius: 8px; font-size: .9rem;
+            background: rgba(59,130,246,.1); border: 1px solid rgba(59,130,246,.4); }
+  .selbar[hidden] { display: none; }
+  #selcount { margin-right: auto; opacity: .75; }
+  .selbtn { font: inherit; font-size: .8rem; padding: 5px 11px; border-radius: 7px; cursor: pointer;
+            background: transparent; color: inherit; border: 1px solid rgba(128,128,128,.4);
+            transition: color .15s, border-color .15s; }
+  .selbtn:hover:not(:disabled) { border-color: #3b82f6; color: #3b82f6; }
+  .selbtn:disabled { opacity: .45; cursor: default; }
   .empty { opacity: .7; padding: 48px 0; text-align: center; }
   .grid { display: grid; gap: 14px 18px; align-items: center; }
-  .grid.inbox  { grid-template-columns: 26px 300px minmax(220px, 1fr) 34px 200px 100px 104px 104px; }
-  .grid.bin    { grid-template-columns: 26px 300px minmax(220px, 1fr) 170px 56px 108px 104px 104px; }
+  .grid.inbox  { grid-template-columns: 44px 282px minmax(220px, 1fr) 34px 200px 100px 104px 104px; }
+  .grid.bin    { grid-template-columns: 44px 282px minmax(220px, 1fr) 170px 56px 108px 104px 104px; }
   .grid.body { margin-top: 12px; }
   .grid .head { font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; opacity: .55;
                 display: flex; align-items: flex-end; min-height: 32px;
                 padding-bottom: 4px; border-bottom: 1px solid rgba(128,128,128,.25); }
   .grid .sep { grid-column: 1 / -1; border-top: 1px solid rgba(128,128,128,.18); }
   .num { font-size: .8rem; opacity: .4; text-align: right; font-variant-numeric: tabular-nums; }
+  /* Spreadsheet-style row header: grab the number to drag the row somewhere else,
+     tick the box beside it to fold the row into another. */
+  .rowhead { display: flex; align-items: center; justify-content: flex-end; gap: 5px; }
+  .rowhead .pick { margin: 0; cursor: pointer; }
   /* Bulk actions live in their own column headers so they sit directly over the
      column they act on, instead of being pushed around by the topbar link. */
   .head form { width: 100%; margin: 0; }
@@ -97,8 +114,13 @@ _STYLE = """<style>
      one stayed behind. */
   .memo.failed textarea, .memo.failed input[type=text] { border-color: #e5484d; }
   /* A row mid-request: dimmed and locked so a bulk run reads as working through the
-     list, and so a row can't be double-submitted. */
-  .memo.sending { opacity: .5; transition: opacity .15s; }
+     list, and so a row can't be double-submitted. A display:contents row generates no
+     box of its own, so dimming has to reach its cells — set on the row it does nothing. */
+  .memo.sending > * { opacity: .5; transition: opacity .15s; }
+  .memo.dragging > * { opacity: .35; }
+  .memo .num { cursor: grab; }
+  .memo .num:active { cursor: grabbing; }
+  .memo.picked .num { opacity: 1; color: #3b82f6; }
   .memo button:disabled { cursor: default; }
   .memo .copy { font: inherit; font-size: 1.4rem; line-height: 1; padding: 0; height: 40px; width: 100%;
                 display: flex; align-items: center; justify-content: center; cursor: pointer;
@@ -169,6 +191,12 @@ _PAGE_HEAD = """<!doctype html>
       </div>
     </div>
     <div id="notice" class="notice" role="alert" hidden></div>
+    <div id="selection" class="selbar" hidden>
+      <span id="selcount"></span>
+      <button type="button" id="consolidate" class="selbtn" disabled
+              title="Fold the ticked notes into the topmost one">Consolidate</button>
+      <button type="button" id="clear-picks" class="selbtn">Clear</button>
+    </div>
     {% if memos %}
     <div class="grid inbox headrow">
       <div class="head"></div>
@@ -198,7 +226,10 @@ CONTENT_HTML = """{% if not memos %}
     {% for m in memos %}
     {% if not loop.first %}<div class="sep"></div>{% endif %}
     <div class="memo" data-file="{{ m.audio_filename }}">
-      <div class="num">{{ loop.index }}</div>
+      <div class="rowhead">
+        <input type="checkbox" class="pick" aria-label="Pick this note for consolidating">
+        <span class="num" draggable="true" title="Drag to move this note">{{ loop.index }}</span>
+      </div>
       <audio controls src="/audio/{{ m.audio_filename }}"></audio>
       <textarea name="transcript" aria-label="Transcript">{{ m.transcript }}</textarea>
       <button type="button" class="copy" title="Move transcript into Name" aria-label="Move transcript into Name">&rsaquo;</button>
@@ -230,6 +261,10 @@ _PAGE_TAIL = """  </main>
   var retired = {};
   var countEl = document.getElementById('count');
   var notice = document.getElementById('notice');
+  var selbar = document.getElementById('selection');
+  var selcount = document.getElementById('selcount');
+  var consolidateBtn = document.getElementById('consolidate');
+  var clearPicks = document.getElementById('clear-picks');
 
   // A submit/trash only leaves the list once the server confirms it; on failure the
   // row stays and we surface why here, so a note that never sent can't silently vanish.
@@ -237,17 +272,48 @@ _PAGE_TAIL = """  </main>
   function clearNotice() { if (notice) { notice.textContent = ''; notice.hidden = true; } }
   function describe(err) { return err && err.message ? ' (' + err.message + ')' : ''; }
 
+  function rows() { return Array.prototype.slice.call(content.querySelectorAll('.memo')); }
+  function picked() { return rows().filter(function (m) { return m.querySelector('.pick').checked; }); }
+
   function updateCount() {
     if (!countEl) return;
-    var n = content.querySelectorAll('.memo').length;
+    var n = rows().length;
     countEl.textContent = '— ' + n + ' item' + (n === 1 ? '' : 's');
   }
 
-  // Row numbers are a spreadsheet-style anchor, not IDs, so they always run 1..N
-  // in display order — renumber after anything is added or removed.
-  function renumber() {
-    var i = 0;
-    content.querySelectorAll('.memo .num').forEach(function (el) { el.textContent = ++i; });
+  // Ticking rows arms the selection bar. Consolidating needs two of them: one note
+  // folded into itself is nothing.
+  function syncPicks() {
+    var chosen = picked();
+    rows().forEach(function (memo) {
+      memo.classList.toggle('picked', memo.querySelector('.pick').checked);
+    });
+    if (!selbar) return;
+    selbar.hidden = chosen.length === 0;
+    selcount.textContent = chosen.length + ' selected';
+    consolidateBtn.disabled = chosen.length < 2;
+  }
+
+  function sep() {
+    var el = document.createElement('div');
+    el.className = 'sep';
+    return el;
+  }
+
+  // Separators and row numbers both describe the current order — numbers are a
+  // spreadsheet-style anchor, not IDs, so they always run 1..N down the page. Rebuild
+  // both from the DOM after anything is added, removed, or dragged into a new place.
+  function resync() {
+    var grid = content.querySelector('.grid');
+    if (grid) {
+      grid.querySelectorAll('.sep').forEach(function (el) { el.remove(); });
+      rows().forEach(function (memo, i) {
+        if (i) grid.insertBefore(sep(), memo);
+        memo.querySelector('.num').textContent = i + 1;
+      });
+    }
+    updateCount();
+    syncPicks();
   }
 
   function urlFor(prefix, memo) { return prefix + encodeURIComponent(memo.dataset.file); }
@@ -279,21 +345,14 @@ _PAGE_TAIL = """  </main>
     content.appendChild(p);
     var headrow = document.querySelector('.frozen .headrow');
     if (headrow) headrow.remove();
-    updateCount();
+    resync();
   }
 
   function removeRow(memo) {
     var grid = memo.closest('.grid');
-    var prev = memo.previousElementSibling;
-    if (prev && prev.classList.contains('sep')) {
-      prev.remove();
-    } else {
-      var next = memo.nextElementSibling;
-      if (next && next.classList.contains('sep')) next.remove();
-    }
     memo.remove();
-    if (grid && !grid.querySelector('.memo')) { showEmpty(); }
-    else { renumber(); updateCount(); }
+    if (grid && !grid.querySelector('.memo')) showEmpty();
+    else resync();
   }
 
   // Dim and lock a row while its request is in flight, so a bulk run visibly works
@@ -336,15 +395,76 @@ _PAGE_TAIL = """  </main>
     return retireOnOk(memo, post(urlFor('/delete/', memo)));
   }
 
+  // A .memo is display:contents, so it has no box of its own to grab or hit-test. Its
+  // number cell is the handle, and the row under the pointer is reached through
+  // whichever of its cells the pointer happens to be over.
+  var dragged = null;
+
+  function nextRow(memo) {
+    var el = memo.nextElementSibling;
+    while (el && !el.classList.contains('memo')) el = el.nextElementSibling;
+    return el;
+  }
+
+  // A row occupies one grid line across several cells of differing height; the line's
+  // extent is their union, so a drop reads the same wherever the pointer crosses it.
+  function midpoint(memo) {
+    var top = Infinity;
+    var bottom = -Infinity;
+    Array.prototype.forEach.call(memo.children, function (cell) {
+      var box = cell.getBoundingClientRect();
+      top = Math.min(top, box.top);
+      bottom = Math.max(bottom, box.bottom);
+    });
+    return (top + bottom) / 2;
+  }
+
+  function saveOrder() {
+    var data = new URLSearchParams();
+    rows().forEach(function (memo) { data.append('order', memo.dataset.file); });
+    post('/reorder', data).then(function (r) {
+      if (!r.ok) throw new Error('Failed');
+    }).catch(function () {
+      notify("Couldn't save the new order — the inbox will read back in recorded order next time you open it.");
+    });
+  }
+
+  // Rows move as you drag over them, so the list you let go of is the list you keep.
+  content.addEventListener('dragover', function (event) {
+    if (!dragged) return;  // dragging text out of a textarea, not a row
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    var over = event.target.closest('.memo');
+    if (!over || over === dragged) return;
+    var below = event.clientY > midpoint(over);
+    if (below ? nextRow(over) === dragged : nextRow(dragged) === over) return;
+    over.parentElement.insertBefore(dragged, below ? nextRow(over) : over);
+    resync();
+  });
+  content.addEventListener('drop', function (event) { if (dragged) event.preventDefault(); });
+
   function wire(memo) {
     var transcript = memo.querySelector('textarea[name=transcript]');
     var name = memo.querySelector('input[name=name]');
     var route = memo.querySelector('input[name=route]');
+    var handle = memo.querySelector('.num');
     [transcript, name].forEach(function (el) {
       el.addEventListener('input', function () { scheduleSave(memo); });
       el.addEventListener('blur', function () { flush(memo); });
     });
     route.addEventListener('change', function () { flush(memo); });
+    memo.querySelector('.pick').addEventListener('change', syncPicks);
+    handle.addEventListener('dragstart', function (event) {
+      dragged = memo;
+      memo.classList.add('dragging');
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', memo.dataset.file);
+    });
+    handle.addEventListener('dragend', function () {
+      memo.classList.remove('dragging');
+      dragged = null;
+      saveOrder();
+    });
     memo.querySelector('.copy').addEventListener('click', function () {
       name.value = transcript.value;
       transcript.value = '';
@@ -364,9 +484,45 @@ _PAGE_TAIL = """  </main>
     });
   }
 
-  content.querySelectorAll('.memo').forEach(wire);
-  renumber();
-  updateCount();
+  rows().forEach(wire);
+  resync();
+
+  // Consolidating folds the ticked notes into the topmost of them, so the transcripts
+  // arrive in the order they read on screen — which is what dragging rows together is
+  // for. The server merges and returns the result, and the rows it absorbed leave.
+  if (consolidateBtn) consolidateBtn.addEventListener('click', function () {
+    var chosen = picked();
+    if (chosen.length < 2) return;
+    clearNotice();
+    var keeper = chosen[0];
+    chosen.forEach(function (memo) { setBusy(memo, true); });
+    Promise.all(chosen.map(function (memo) { return flush(memo); })).then(function () {
+      var data = new URLSearchParams();
+      chosen.forEach(function (memo) { data.append('memo', memo.dataset.file); });
+      return post('/consolidate', data);
+    }).then(function (response) {
+      if (!response.ok) throw new Error('Failed');
+      return response.json();
+    }).then(function (merged) {
+      keeper.querySelector('textarea[name=transcript]').value = merged.transcript;
+      keeper.querySelector('input[name=name]').value = merged.name;
+      keeper.querySelector('.pick').checked = false;
+      setBusy(keeper, false);
+      chosen.slice(1).forEach(function (memo) {
+        retired[memo.dataset.file] = true;  // a poll snapshot must not re-add a folded row
+        memo.remove();
+      });
+      resync();
+    }).catch(function () {
+      chosen.forEach(function (memo) { setBusy(memo, false); });
+      notify("Couldn't consolidate those notes — they're all still in your inbox.");
+    });
+  });
+
+  if (clearPicks) clearPicks.addEventListener('click', function () {
+    rows().forEach(function (memo) { memo.querySelector('.pick').checked = false; });
+    syncPicks();
+  });
 
   // Run an action over the rows one at a time — not a 20-wide burst at the local
   // server and Notesnook — tallying failures so the outcome is reported once at the end.
@@ -379,7 +535,7 @@ _PAGE_TAIL = """  </main>
 
   var submitAll = document.getElementById('submit-all');
   if (submitAll) submitAll.addEventListener('click', function () {
-    var memos = Array.prototype.slice.call(content.querySelectorAll('.memo'));
+    var memos = rows();
     if (!memos.length) return;
     clearNotice();
     runEach(memos, submitRow).then(function (failures) {
@@ -389,7 +545,7 @@ _PAGE_TAIL = """  </main>
   });
   var trashAll = document.getElementById('trash-all');
   if (trashAll) trashAll.addEventListener('click', function () {
-    var memos = Array.prototype.slice.call(content.querySelectorAll('.memo'));
+    var memos = rows();
     if (!memos.length) return;
     if (!confirm('Trash all ' + memos.length + ' memo' + (memos.length === 1 ? '' : 's') + '? They go to the bin.')) return;
     clearNotice();
@@ -405,17 +561,11 @@ _PAGE_TAIL = """  </main>
   // untouched.
   var POLL_MS = 5000;
 
-  function sep() {
-    var el = document.createElement('div');
-    el.className = 'sep';
-    return el;
-  }
-
   function merge(html) {
     var incoming = document.createElement('div');
     incoming.innerHTML = html;
     var shown = {};
-    content.querySelectorAll('.memo').forEach(function (m) { shown[m.dataset.file] = true; });
+    rows().forEach(function (m) { shown[m.dataset.file] = true; });
     var fresh = [];
     incoming.querySelectorAll('.memo').forEach(function (memo) {
       var file = memo.dataset.file;
@@ -424,13 +574,13 @@ _PAGE_TAIL = """  </main>
     if (!fresh.length) return;
     var grid = content.querySelector('.grid');
     if (!grid) { location.reload(); return; }  // empty page: reload to build the grid + frozen header
+    // Fresh notes join the end, matching where the server sorts an unplaced memo, so a
+    // hand-arranged inbox isn't reshuffled by a recording that lands mid-session.
     fresh.forEach(function (memo) {
-      grid.appendChild(sep());
       grid.appendChild(memo);
       wire(memo);
     });
-    renumber();
-    updateCount();
+    resync();
   }
 
   function check() {

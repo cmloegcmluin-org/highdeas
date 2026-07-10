@@ -132,9 +132,39 @@ def test_inbox_rows_are_numbered(tmp_path):
     ])
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
-    body = client.get("/").data
-    assert b'class="num">1</div>' in body
-    assert b'class="num">2</div>' in body
+    body = client.get("/").data.decode()
+    assert ">1</span>" in body
+    assert ">2</span>" in body
+
+
+def test_each_inbox_row_has_a_drag_handle_and_a_selection_checkbox(tmp_path):
+    service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="one")])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data.decode()
+
+    # Spreadsheet-style: the row number is the handle you grab to move the row, and
+    # the box beside it picks the row out for consolidating.
+    assert 'class="num" draggable="true"' in body
+    assert 'class="pick"' in body
+    # A drop posts the whole on-screen order back.
+    assert "/reorder" in body
+
+
+def test_index_offers_a_selection_bar_that_consolidates_the_checked_rows(tmp_path):
+    service = FakeService(pending=[
+        Memo(audio_filename="a.m4a", transcript="one"),
+        Memo(audio_filename="b.m4a", transcript="two"),
+    ])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data.decode()
+
+    # Consolidating acts on a selection, so its button lives with the selection rather
+    # than in a column header — hidden until rows are ticked, disabled below two.
+    assert 'id="selection"' in body
+    assert 'id="consolidate"' in body
+    assert "/consolidate" in body
 
 
 def test_index_shows_a_transcribing_hint_while_recordings_await(tmp_path):
