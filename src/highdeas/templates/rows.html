@@ -31,7 +31,7 @@
       <div class="transcript" role="button" tabindex="0" title="Open the editor" aria-label="Edit transcript">{{ m.transcript }}</div>
       {{ clip('transcript') }}
     </div>
-    <button type="button" class="move" title="Move transcript into Name" aria-label="Move transcript into Name">&rsaquo;</button>
+    <button type="button" class="btn move" title="Move transcript into Name" aria-label="Move transcript into Name">&rsaquo;</button>
     <div class="cell oneline">
       <input type="text" name="name" value="{{ m.name }}" placeholder="Name…" autocomplete="off" aria-label="Name">
       {{ clip('name') }}
@@ -44,7 +44,7 @@
     </label>
     <div class="when">{{ m.recorded_at | when }}</div>
     <button type="button" class="go">Submit</button>
-    <button type="button" class="del" title="Delete" aria-label="Delete">{{ trash() }}</button>
+    <button type="button" class="btn del danger" title="Delete" aria-label="Delete">{{ trash() }}</button>
   </div>
   {% endfor %}
 </div>
