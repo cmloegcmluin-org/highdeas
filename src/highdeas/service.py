@@ -25,6 +25,11 @@ def _word_times(words):
     return json.dumps([[word.start, word.text] for word in words], separators=(",", ":"))
 
 
+def _snapshot(memo):
+    """A note's text as a group stores it, to be handed back when the group is broken up."""
+    return json.dumps({"name": memo.name, "transcript": memo.transcript})
+
+
 def _bullet(memo):
     """One consolidated note as a bullet: its name, colon, then its transcript."""
     text = memo.transcript.strip()
@@ -136,17 +141,39 @@ class InboxService:
             raise ValueError("Two groups have no obvious survivor; merge into one at a time.")
         target = groups[0] if groups else chosen[0]
         absorbed = [memo for memo in chosen if memo is not target]
-        # A note promoted to a group starts as a group holding one bullet: its own.
+        # A note promoted to a group starts as a group holding one bullet: its own. The
+        # note it was is kept, since ungrouping has to hand it back.
         head, promotion = ((target.transcript.rstrip(), {}) if target.kind == "group"
-                           else (_bullet(target), {"kind": "group", "name": ""}))
+                           else (_bullet(target), {"kind": "group", "name": "",
+                                                   "pre_group": _snapshot(target)}))
         self._store.update(
             target.audio_filename,
             transcript="\n".join([head, *(_bullet(memo) for memo in absorbed)]),
             **promotion,
         )
         for memo in absorbed:
-            self._retire(memo.audio_filename, "grouped")
+            self._retire(memo.audio_filename, "grouped", group_of=target.audio_filename)
         return self._store.get(target.audio_filename)
+
+    def ungroup(self, audio_filename):
+        """Break a group back into the separate notes it was folded from.
+
+        Every note it absorbed returns to the inbox with its own name, transcript, and
+        recording, in the place it held before; the group hands back the note it was and
+        stops being a group. Whatever was typed into the group's bullets since is let go —
+        this is the merge coming undone, not the bullets being unpicked.
+
+        A group folded before grouping learned to remember what it consumed has no note to
+        hand back, and keeps the bullets it is holding rather than emptying itself."""
+        group = self._store.get(audio_filename)
+        if group is None or group.kind != "group":
+            raise ValueError("Only a group can be broken back up into notes.")
+        for member in self._store.list_grouped_into(audio_filename):
+            self._unretire(member.audio_filename)
+        was = json.loads(group.pre_group) if group.pre_group else {}
+        self._store.update(audio_filename, kind="note", pre_group="",
+                           name=was.get("name", group.name),
+                           transcript=was.get("transcript", group.transcript))
 
     def submit(self, audio_filename):
         outcome = self._route(self._store.get(audio_filename)) or {}
@@ -159,7 +186,8 @@ class InboxService:
         """Bring a binned recording back into the inbox as a pending memo.
 
         It rejoins the end of the list rather than the slot it once held, since the
-        inbox it left may have been rearranged since.
+        inbox it left may have been rearranged since. A note absorbed into a group is
+        answering to that group no longer, or breaking the group up would claim it twice.
 
         Realign the memo and its file with the recording's content key on the way
         in: a memo retired before content-keying is stored under its raw inbox
@@ -178,7 +206,7 @@ class InboxService:
                 # A pre-fix restore already spawned this recording's keyed twin;
                 # drop the raw duplicate and converge onto the keyed memo.
                 self._store.remove(audio_filename)
-        self._store.update(key, status="pending", processed_at="", position=None)
+        self._store.update(key, status="pending", processed_at="", position=None, group_of="")
 
     def purge(self, audio_filename):
         """Permanently remove a single binned recording: its audio and its record."""
@@ -233,3 +261,12 @@ class InboxService:
             bin_dir.mkdir(parents=True, exist_ok=True)
             shutil.move(str(source), str(bin_dir / audio_filename))
         self._store.update(audio_filename, status=status, processed_at=self._clock(), **fields)
+
+    def _unretire(self, audio_filename):
+        """Put a memo back in the inbox where it was retired from, keeping the place it
+        held. It was keyed by content on the way in, so its recording needs no re-keying
+        on the way back — guard only in case the recording is no longer in the bin."""
+        source = Path(self._bin_dir) / audio_filename
+        if source.exists():
+            shutil.move(str(source), str(Path(self._inbox_dir) / audio_filename))
+        self._store.update(audio_filename, status="pending", processed_at="", group_of="")

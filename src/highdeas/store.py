@@ -31,6 +31,11 @@ class Memo:
     # notes merged into it. Memos stored before this column existed read back as
     # None, which is simply "not a group".
     kind: str = "note"
+    # Grouping is reversible, so a group keeps what it consumed. On each note it
+    # absorbed, the group's audio_filename; on the group itself, the note it was before
+    # its own text became the first bullet, as {"name": …, "transcript": …} JSON.
+    group_of: str = ""
+    pre_group: str = ""
 
 
 _COLUMNS = [f.name for f in fields(Memo)]
@@ -100,6 +105,16 @@ class MemoStore:
             rows = self._conn.execute(
                 "SELECT * FROM memos WHERE status = 'pending' "
                 "ORDER BY position IS NULL, position, recorded_at, created_at"
+            ).fetchall()
+        return [_row_to_memo(row) for row in rows]
+
+    def list_grouped_into(self, group_filename):
+        """The notes a group absorbed, in the order the inbox would show them again."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM memos WHERE group_of = ? "
+                "ORDER BY position IS NULL, position, recorded_at, created_at",
+                (group_filename,),
             ).fetchall()
         return [_row_to_memo(row) for row in rows]
 
