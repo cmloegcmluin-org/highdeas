@@ -2,6 +2,13 @@ from highdeas.store import Memo
 from highdeas.web import create_app
 
 
+def asset(client, filename):
+    """A static asset's source, for the behaviour that lives in CSS and JS."""
+    resp = client.get("/static/" + filename)
+    assert resp.status_code == 200, filename
+    return resp.data.decode()
+
+
 class FakeService:
     def __init__(self, pending=(), binned=(), incoming=False):
         self._pending = list(pending)
@@ -89,13 +96,23 @@ def test_index_renders_inbox_controls(tmp_path):
 
 
 def test_index_trash_all_asks_for_confirmation(tmp_path):
-    service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hi")])
-    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
-
-    body = client.get("/").data
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     # Trashing everything at once is bulk + easy to fat-finger, so it confirms first.
-    assert b"confirm(" in body
+    assert "confirm(" in asset(client, "inbox.js")
+
+
+def test_pages_load_the_shared_stylesheet_and_the_inbox_loads_its_script(tmp_path):
+    # The behaviour asserted below lives in these files, so every page has to pull
+    # them in — a page that forgets one looks fine in the markup and does nothing.
+    service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hi")],
+                          binned=[Memo(audio_filename="b.m4a", status="deleted", processed_at="2026-07-07T03:00")])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    index = client.get("/").data.decode()
+    assert "/static/app.css" in index
+    assert "/static/inbox.js" in index
+    assert "/static/app.css" in client.get("/bin").data.decode()
 
 
 def test_index_bulk_controls_sit_in_the_column_headers(tmp_path):
@@ -148,7 +165,7 @@ def test_each_inbox_row_has_a_drag_handle_and_a_selection_checkbox(tmp_path):
     assert 'class="num" draggable="true"' in body
     assert 'class="pick"' in body
     # A drop posts the whole on-screen order back.
-    assert "/reorder" in body
+    assert "/reorder" in asset(client, "inbox.js")
 
 
 def test_index_offers_a_selection_bar_that_consolidates_the_checked_rows(tmp_path):
@@ -164,7 +181,7 @@ def test_index_offers_a_selection_bar_that_consolidates_the_checked_rows(tmp_pat
     # than in a column header — hidden until rows are ticked, disabled below two.
     assert 'id="selection"' in body
     assert 'id="consolidate"' in body
-    assert "/consolidate" in body
+    assert "/consolidate" in asset(client, "inbox.js")
 
 
 def test_index_shows_a_transcribing_hint_while_recordings_await(tmp_path):
@@ -191,13 +208,10 @@ def test_index_shows_empty_state_when_the_inbox_is_idle(tmp_path):
 
 
 def test_index_polls_the_pending_endpoint_to_stay_current(tmp_path):
-    service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hi")])
-    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
-
-    body = client.get("/").data
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     # The open page keeps itself current by polling the pending fragment.
-    assert b"/pending" in body
+    assert "/pending" in asset(client, "inbox.js")
 
 
 def test_index_offers_a_manual_refresh_left_of_the_bin_link_even_when_empty(tmp_path):
@@ -215,14 +229,11 @@ def test_index_offers_a_manual_refresh_left_of_the_bin_link_even_when_empty(tmp_
 
 
 def test_refresh_button_shows_a_loading_label_while_it_checks(tmp_path):
-    service = FakeService(pending=[])
-    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
-
-    body = client.get("/").data.decode()
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     # Clicking Refresh swaps the label to a held "Loading…" then restores it, so a check
     # that surfaces nothing new still visibly reacts (the fetch is otherwise instant).
-    assert "Loading" in body
+    assert "Loading" in asset(client, "inbox.js")
 
 
 def test_pending_refreshes_and_renders_just_the_memo_rows(tmp_path):
@@ -348,26 +359,20 @@ def test_index_has_a_region_to_report_submit_failures(tmp_path):
 
 
 def test_submit_js_removes_a_row_only_after_the_server_confirms(tmp_path):
-    service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hi")])
-    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
-
-    body = client.get("/").data.decode()
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     # The row leaves the list only on a successful (r.ok) response; a failed submit
     # keeps it. Guards against regressing to optimistic removal.
-    assert "r.ok" in body
+    assert "r.ok" in asset(client, "inbox.js")
 
 
 def test_index_shows_a_per_row_sending_state_while_a_submit_is_in_flight(tmp_path):
-    service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hi")])
-    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
-
-    body = client.get("/").data.decode()
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     # A row dims/locks and its button reads "Sending…" while its request is in flight,
     # so Submit all visibly works through the list instead of rows silently vanishing.
-    assert "Sending" in body           # the in-flight button label
-    assert ".memo.sending" in body     # the dim-and-lock style the JS toggles
+    assert "Sending" in asset(client, "inbox.js")       # the in-flight button label
+    assert ".memo.sending" in asset(client, "app.css")  # the dim-and-lock style the JS toggles
 
 
 def test_reorder_route_persists_the_dropped_order_and_returns_204(tmp_path):
@@ -599,10 +604,7 @@ def test_open_drive_launches_chrome_at_a_drive_search_for_the_memo(tmp_path):
 
 
 def test_pages_reserve_the_scrollbar_gutter_so_they_dont_shift(tmp_path):
-    service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hi")],
-                          binned=[Memo(audio_filename="b.m4a", status="deleted", processed_at="2026-07-07T03:00")])
-    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
-    # Same gutter reserved on both, so flipping between them doesn't shift sideways.
-    assert b"scrollbar-gutter: stable" in client.get("/").data
-    assert b"scrollbar-gutter: stable" in client.get("/bin").data
+    # One stylesheet for both pages, so flipping between them doesn't shift sideways.
+    assert "scrollbar-gutter: stable" in asset(client, "app.css")
