@@ -21,7 +21,7 @@
 {% endblock %}
 
 {% block content %}
-  {% from "icons.html" import notesnook, drive, trash, group, kind_cell %}
+  {% from "icons.html" import notesnook, drive, asana, trash, group, kind_cell %}
   {% if not memos %}
   <p class="empty">Nothing in the bin. Submitted and deleted memos land here (kept for 90 days).</p>
   {% else %}
@@ -41,6 +41,8 @@
         {%- if m.status == 'deleted' %}<span title="Trashed" aria-label="Trashed">{{ trash() }}</span>
         {%- elif m.status == 'grouped' %}<span title="Merged into a group" aria-label="Merged into a group">{{ group() }}</span>
         {%- elif m.route == 'drive' %}<form method="post" action="/open-drive"><input type="hidden" name="q" value="{{ m.name or m.audio_filename.rsplit('.', 1)[0] }}"><button class="destlink" type="submit" title="Sent to Google Drive — open in Drive" aria-label="Sent to Google Drive — open in Drive">{{ drive() }}</button></form>
+        {%- elif m.route == 'asana' and m.asana_url %}<form method="post" action="/open-asana/{{ m.audio_filename }}"><button class="destlink" type="submit" title="Sent to Asana — open the task" aria-label="Sent to Asana — open the task">{{ asana() }}</button></form>
+        {%- elif m.route == 'asana' %}<span title="Sent to Asana" aria-label="Sent to Asana">{{ asana() }}</span>
         {%- else %}<span title="Sent to Notesnook" aria-label="Sent to Notesnook">{{ notesnook() }}</span>
         {%- endif %}</div>
       <div class="when">{{ m.processed_at | when }}</div>

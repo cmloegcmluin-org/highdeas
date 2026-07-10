@@ -45,6 +45,12 @@ class FakeService:
     def has_incoming(self):
         return self._incoming
 
+    def get(self, audio_filename):
+        for memo in self._pending + self._binned:
+            if memo.audio_filename == audio_filename:
+                return memo
+        return None
+
     def edit(self, audio_filename, **fields):
         self.edits.append((audio_filename, fields))
 
@@ -915,12 +921,48 @@ def test_bin_drive_memo_icon_posts_to_open_drive_with_the_memo_name(tmp_path):
 def test_open_drive_launches_chrome_at_a_drive_search_for_the_memo(tmp_path):
     launched = []
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin"),
-                        launch_drive=launched.append).test_client()
+                        open_link=launched.append).test_client()
 
     resp = client.post("/open-drive", data={"q": "Korok Dance"})
 
     assert resp.status_code == 204
     assert launched == ["https://drive.google.com/drive/u/0/search?q=Korok%20Dance"]
+
+
+def test_bin_asana_memo_icon_posts_to_open_asana(tmp_path):
+    service = FakeService(binned=[
+        Memo(audio_filename="s.m4a", name="Riff", status="processed", route="asana",
+             asana_url="https://app.asana.com/0/0/42/f", processed_at="2026-07-09T01:00"),
+        Memo(audio_filename="old.m4a", status="processed", route="asana",
+             processed_at="2026-07-09T00:30"),  # sent before permalinks were stored
+    ])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/bin").data.decode()
+
+    # Like the Drive icon, the Asana icon is the way back to where the note went —
+    # but only when a permalink was stored; a linkless row keeps a plain icon.
+    assert body.count('action="/open-asana/s.m4a"') == 1
+    assert 'action="/open-asana/old.m4a"' not in body
+    assert 'title="Sent to Asana — open the task"' in body
+    assert 'title="Sent to Asana"' in body  # the linkless row still names its destination
+
+
+def test_open_asana_opens_the_stored_task_link(tmp_path):
+    # The client sends only the filename; the server looks up the permalink Asana
+    # returned at submit time — it never launches a client-supplied URL.
+    opened = []
+    service = FakeService(binned=[
+        Memo(audio_filename="s.m4a", status="processed", route="asana",
+             asana_url="https://app.asana.com/0/0/42/f", processed_at="2026-07-09T01:00"),
+    ])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin"),
+                        open_link=opened.append).test_client()
+
+    assert client.post("/open-asana/s.m4a").status_code == 204
+    assert client.post("/open-asana/missing.m4a").status_code == 204  # unknown memo: no-op
+
+    assert opened == ["https://app.asana.com/0/0/42/f"]
 
 
 def test_pages_reserve_the_scrollbar_gutter_so_they_dont_shift(tmp_path):

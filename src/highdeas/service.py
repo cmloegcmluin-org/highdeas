@@ -110,6 +110,9 @@ class InboxService:
         in_bin = [memo for memo in self._store.list_retired() if memo.audio_filename in present]
         return sorted(in_bin, key=lambda memo: memo.processed_at, reverse=True)
 
+    def get(self, audio_filename):
+        return self._store.get(audio_filename)
+
     def edit(self, audio_filename, **fields):
         self._store.update(audio_filename, **fields)
 

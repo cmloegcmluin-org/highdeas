@@ -33,7 +33,7 @@ def _submitted_fields():
     }
 
 
-def create_app(service, inbox_dir, bin_dir, launch_drive=None, asana_parents=()):
+def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=()):
     app = Flask(__name__)
     app.jinja_env.filters["when"] = _format_when
 
@@ -130,10 +130,20 @@ def create_app(service, inbox_dir, bin_dir, launch_drive=None, asana_parents=())
     @app.post("/open-drive")
     def open_drive():
         """Open a memo in Google Drive. A link can't choose which Chrome profile
-        opens it, so the app launches Chrome itself (launch_drive) at a Drive search
-        for the memo — the server builds the URL so only Drive can be opened."""
-        if launch_drive is not None:
-            launch_drive("https://drive.google.com/drive/u/0/search?q=" + quote(request.form.get("q", "")))
+        opens it, so the app launches the browser itself (open_link) at a Drive
+        search for the memo — the server builds the URL so only Drive can be opened."""
+        if open_link is not None:
+            open_link("https://drive.google.com/drive/u/0/search?q=" + quote(request.form.get("q", "")))
+        return ("", 204)
+
+    @app.post("/open-asana/<path:filename>")
+    def open_asana(filename):
+        """Open the Asana task a memo became. The client names only the memo; the
+        server opens the permalink Asana returned at submit time — never a
+        client-supplied URL — via the same chosen-profile launch as Drive links."""
+        memo = service.get(filename)
+        if open_link is not None and memo is not None and memo.asana_url:
+            open_link(memo.asana_url)
         return ("", 204)
 
     return app

@@ -90,7 +90,7 @@ def build_app():
         route=Router(notesnook=notesnook, drive=drive, asana=asana),
     )
     app = create_app(service, inbox_dir=inbox_dir, bin_dir=bin_dir,
-                     launch_drive=_chrome_launcher(), asana_parents=asana_parents)
+                     open_link=_chrome_launcher(), asana_parents=asana_parents)
     return app, service
 
 
