@@ -4,19 +4,12 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-
-# Keep ffmpeg from flashing a console window on Windows; a no-op (0) elsewhere.
-_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+from highdeas.audio import NO_WINDOW as _NO_WINDOW
+from highdeas.audio import locate_ffmpeg as _default_ffmpeg
 
 
 class AudioDecodeError(Exception):
     """Raised when ffmpeg fails to decode an audio file."""
-
-
-def _default_ffmpeg():
-    import imageio_ffmpeg
-
-    return imageio_ffmpeg.get_ffmpeg_exe()
 
 
 def decode_to_wav(src, *, out_dir=None, ffmpeg_exe=None, runner=subprocess.run,
