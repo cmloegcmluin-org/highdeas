@@ -174,6 +174,30 @@ def test_unlit_destination_icons_go_greyscale_so_the_lit_one_reads_at_a_glance(t
     assert "filter: none" in css
 
 
+def test_asana_dropdown_elides_its_text_before_the_caret(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    css = asset(client, "app.css")
+    rule = css.split("select.asana-parent {")[1].split("}")[0]
+
+    # The closed control draws its caret inside the right edge, so a long task label
+    # ran underneath it. Reserve the caret's zone with right padding and ellipsize
+    # the text before it gets there.
+    assert "text-overflow: ellipsis" in rule
+    assert "padding: 4px 18px 4px 6px" in rule
+
+
+def test_asana_dropdown_list_pads_both_sides_evenly(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    css = asset(client, "app.css")
+    rule = css.split("select.asana-parent option {")[1].split("}")[0]
+
+    # Chromium's open list gave options a small left inset but none on the right, so
+    # the longest label touched the edge. Pad the options symmetrically.
+    assert "padding: 2px 6px" in rule
+
+
 def test_rows_top_align_so_the_asana_dropdown_grows_downward(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
