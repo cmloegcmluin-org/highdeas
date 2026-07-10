@@ -20,7 +20,7 @@
     <div class="num" draggable="true" title="Drag to move this note">{{ loop.index }}</div>
     <audio controls src="/audio/{{ m.audio_filename }}"></audio>
     <div class="transcript" role="button" tabindex="0" title="Open the editor" aria-label="Edit transcript">{{ m.transcript }}</div>
-    <button type="button" class="copy" title="Move transcript into Name" aria-label="Move transcript into Name">&rsaquo;</button>
+    <button type="button" class="btn copy" title="Move transcript into Name" aria-label="Move transcript into Name">&rsaquo;</button>
     <input type="text" name="name" value="{{ m.name }}" placeholder="Name…" autocomplete="off" aria-label="Name">
     <label class="toggle" title="Left = Notesnook, right = Google Drive">
       <input type="checkbox" name="route" value="drive" {{ 'checked' if m.route == 'drive' }}>
@@ -30,7 +30,7 @@
     </label>
     <div class="when">{{ m.recorded_at | when }}</div>
     <button type="button" class="go">Submit</button>
-    <button type="button" class="del" title="Delete" aria-label="Delete">{{ trash() }}</button>
+    <button type="button" class="btn del danger" title="Delete" aria-label="Delete">{{ trash() }}</button>
   </div>
   {% endfor %}
 </div>

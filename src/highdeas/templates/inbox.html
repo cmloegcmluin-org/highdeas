@@ -3,8 +3,8 @@
 
 {% block links %}
   <div class="links">
-    <button type="button" id="refresh" class="refresh" title="Check for new notes now">Refresh</button>
-    <a href="/bin">Bin &rarr;</a>
+    <button type="button" id="refresh" class="btn topbtn" title="Check for new notes now">Refresh</button>
+    <a class="btn topbtn" href="/bin">Bin &rarr;</a>
   </div>
 {% endblock %}
 
@@ -15,7 +15,7 @@
 {% endblock %}
 
 {#- Bulk actions live in their own column headers so they sit directly over the
-    column they act on, instead of being pushed around by the topbar link. -#}
+    column they act on, instead of being pushed around by the topbar buttons. -#}
 {% block headrow %}
   <div class="grid inbox headrow">
     <div class="head"></div>
@@ -25,8 +25,8 @@
     <div class="head">Name</div>
     <div class="head">Route</div>
     <div class="head">Recorded</div>
-    <div class="head"><button type="button" id="submit-all" class="head-btn">Submit all</button></div>
-    <div class="head"><button type="button" id="trash-all" class="head-btn">Trash all</button></div>
+    <div class="head"><button type="button" id="submit-all" class="btn head-btn">Submit all</button></div>
+    <div class="head"><button type="button" id="trash-all" class="btn head-btn danger">Trash all</button></div>
   </div>
 {% endblock %}
 

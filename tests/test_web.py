@@ -93,7 +93,7 @@ def test_index_renders_inbox_controls(tmp_path):
     # Each row carries its filename so JS can target /edit, /submit, /delete.
     assert b'data-file="a.m4a"' in body
     # The "copy transcript into name" control between Transcript and Name.
-    assert b'class="copy"' in body
+    assert b'class="btn copy"' in body
 
 
 def test_index_trash_all_asks_for_confirmation(tmp_path):
@@ -215,7 +215,7 @@ def test_index_bulk_controls_sit_in_the_column_headers(tmp_path):
 
     # Moved out of the topbar (no more .bulk container) and into the grid headers,
     # so they line up over the Submit and Trash columns instead of being shoved
-    # left by the "Bin →" link.
+    # left by the "Bin →" control.
     assert 'class="bulk"' not in body
     assert 'id="submit-all"' in body and 'id="trash-all"' in body
     assert body.index('grid inbox headrow') < body.index('id="submit-all"')
@@ -311,9 +311,9 @@ def test_index_polls_the_pending_endpoint_to_stay_current(tmp_path):
     assert "/pending" in asset(client, "inbox.js")
 
 
-def test_index_offers_a_manual_refresh_left_of_the_bin_link_even_when_empty(tmp_path):
+def test_index_offers_a_manual_refresh_left_of_the_bin_button_even_when_empty(tmp_path):
     # A manual "check for new notes now" button, for pulling in a note the 5s poll
-    # hasn't surfaced yet. It sits just left of the Bin link and lives in the topbar,
+    # hasn't surfaced yet. It sits just left of the Bin button and lives in the topbar,
     # not the memo list, so it's there even while the page is empty and waiting for
     # the very first note.
     service = FakeService(pending=[], incoming=False)
@@ -323,6 +323,26 @@ def test_index_offers_a_manual_refresh_left_of_the_bin_link_even_when_empty(tmp_
 
     assert 'id="refresh"' in body
     assert body.index('id="refresh"') < body.index('href="/bin"')
+
+
+def test_topbar_controls_are_buttons_not_text_links(tmp_path):
+    # Bare blue text reading "Refresh  Bin →" ran together as one phrase — "refresh
+    # bin". Both controls wear the same bordered button chrome so they read as two
+    # separate things to click.
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data.decode()
+    assert 'id="refresh" class="btn topbtn"' in body
+    assert '<a class="btn topbtn" href="/bin">' in body
+
+    css = asset(client, "app.css")
+    # The chrome itself: a bordered control, not an undecorated link.
+    assert "border: 1px solid" in css.split(".btn {")[1].split("}")[0]
+    # The shared base must precede every variant that resizes it: .btn's `font: inherit`
+    # shorthand resets font-size, so at equal specificity a later .btn silently undoes
+    # .topbtn's smaller type — the topbar buttons render at 16px instead of 13.6px.
+    for variant in (".topbtn {", ".head-btn {", ".binbtn {", ".play {", ".tool {"):
+        assert css.index(".btn {") < css.index(variant), variant
 
 
 def test_refresh_button_shows_a_loading_label_while_it_checks(tmp_path):
@@ -594,6 +614,14 @@ def test_bin_bulk_controls_sit_in_the_column_headers_and_confirm(tmp_path):
     assert body.index('grid bin headrow') < body.index('action="/restore-all"')
     # Both bulk actions confirm first (restore-all is disruptive, empty-bin destroys).
     assert body.count("confirm(") >= 2
+
+
+def test_bin_back_control_is_a_button_not_a_text_link(tmp_path):
+    # Same button chrome the inbox topbar uses, so "← Back to inbox" reads as a
+    # control rather than as prose in the title bar.
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    assert '<a class="btn topbtn" href="/">' in client.get("/bin").data.decode()
 
 
 def test_bin_rows_are_numbered(tmp_path):
