@@ -31,14 +31,21 @@ recording, or a subtask on an Asana task.
    order, a named note reading `- Name: transcript`. Tick an existing group and the rest
    merge into it, keeping its name; or drag a note by its grip onto a group's badge to
    drop it in. Two groups have no obvious survivor, so ticking two disables the button. A
-   badge in the third of the row's leading columns marks which rows are groups. The
-   folded-in recordings go to the bin, restorable if the merge was a mistake.
+   badge in the third of the row's leading columns marks which rows are groups.
+
+   A group is a memo the app makes, not a note promoted out of the pile. It stands where
+   the topmost note stood, bound for the same destination, and it **plays all of their
+   recordings, joined end to end** — with each note's word timings slid to where its
+   recording lands, so the editor still lights up each word as the group plays. The notes
+   themselves go to the bin, restorable if the merge was a mistake.
 
    Grouping comes undone two ways. Ctrl+Z (or the Undo button) walks back one merge at a
-   time, so a note dragged into a group comes back out without dissolving what it joined.
-   Or reach for the group's badge: it shows the stack coming apart, and clicking it breaks
-   the group all the way back into the separate notes it was folded from. Either way each
-   note returns with its own name, transcript, and recording, in the place it held.
+   time, so a note dragged into a group comes back out without dissolving what it joined —
+   the group's recording is rejoined out of what it has left. Or reach for the group's
+   badge: it shows the stack coming apart, and clicking it breaks the group all the way
+   back into the separate notes it was folded from, taking the recording the app made with
+   it. Either way each note returns with its own name, transcript, and recording, in the
+   place it held.
 6. **Edit** — clicking a transcript opens the note in a near-fullscreen editor, so a rough
    transcription gets fixed here rather than shipped out half-finished. The recording sits
    up top as a scrubbable waveform and starts playing; each word lights up in the text as

@@ -261,14 +261,30 @@
   // answers with the inbox it now holds and the page takes the list whole. The rows are
   // built afresh, which is why no step may hold one (see rowFor).
   function showRows(html) {
+    var were = orderOf();
     content.innerHTML = html;
     rows().forEach(wire);
+    var here = {};
+    rows().forEach(function (memo) { here[memo.dataset.file] = true; });
+    // A poll snapshot older than this list must not splice back a row that has left it.
+    were.forEach(function (file) { if (!here[file]) retired[file] = true; });
     resync();
   }
 
   function readRows(response) {
     if (!response.ok) return response.text().then(function (t) { throw new Error(t || 'Failed'); });
     return response.text().then(showRows);
+  }
+
+  // A merge answers with the rows and with the group's name, which changes every time its
+  // recording does — the app joins its members' end to end, and names the file by what is
+  // in it. Only the server can say what the group is called now.
+  function readGroup(response) {
+    if (!response.ok) return response.text().then(function (t) { throw new Error(t || 'Failed'); });
+    return response.json().then(function (result) {
+      showRows(result.rows);
+      return result.target;
+    });
   }
 
   // The server folds the notes as it holds them, not as the page shows them, so every
@@ -281,7 +297,6 @@
 
   // The merge is server-side, so the button locks until it answers: a double-click would
   // post a second selection whose absorbed rows are no longer in the inbox to group.
-  // Answers with the row that survived, which only the server can name.
   function mergeFiles(files) {
     if (groupBtn) groupBtn.disabled = true;
     var picks = rows().filter(function (memo) { return files.indexOf(memo.dataset.file) >= 0; });
@@ -289,21 +304,14 @@
     files.forEach(function (file) { data.append('files', file); });
     return flushEdits(picks).then(function () {
       return post('/group', data);
-    }).then(function (r) {
-      if (!r.ok) return r.text().then(function (t) { throw new Error(t || 'Failed'); });
-      return r.json();
-    }).then(function (result) {
-      // A poll snapshot taken before the merge must not splice the eaten rows back in.
-      files.forEach(function (file) { if (file !== result.target) retired[file] = true; });
-      showRows(result.rows);
-      return result.target;
-    });
+    }).then(readGroup);
   }
 
   // Walk the last merge back out of a group: the notes it took in return, and the group
-  // reads as it did before it — a plain note again, if that merge is what made it.
+  // reads as it did before it — gone, if that merge is what made it. Answers with what it
+  // is called now, since its recording is rejoined out of the members it has left.
   function unmergeRow(file) {
-    return post('/unmerge/' + encodeURIComponent(file)).then(readRows);
+    return post('/unmerge/' + encodeURIComponent(file)).then(readGroup);
   }
 
   // Nothing has moved when a merge is refused, so the notice says so and the button goes
@@ -319,11 +327,43 @@
     syncSelection();
   }
 
+  // A group is a moving target. Its recording is its members' joined end to end, and the
+  // file is named by what is in it, so every merge and every walk back renames the group.
+  // A step that remembered the name it saw would post it back long after the group had
+  // grown out of it. The page keeps a cell per group instead, rewritten each time, and
+  // the steps read the cell. A merge into a group is spotted the same way: the group's
+  // name of the moment is among the files being folded.
+  var groupNames = {};
+  var groupsMade = 0;
+
+  function cellOf(files) {
+    for (var id in groupNames) {
+      if (files.indexOf(groupNames[id]) >= 0) return id;
+    }
+    return null;
+  }
+
   function groupFiles(files) {
+    var id = cellOf(files) || 'group-' + (groupsMade += 1);
+    // What this merge takes in, which is everything but the group it takes them into.
+    var notes = files.filter(function (file) { return file !== groupNames[id]; });
+    function folding() {
+      return groupNames[id] ? [groupNames[id]].concat(notes) : notes;
+    }
     return mergeFiles(files).then(function (target) {
+      groupNames[id] = target;
       undoStack.did({
-        undo: function () { return unmergeRow(target).catch(unmergeFailed); },
-        redo: function () { return mergeFiles(files).catch(groupFailed); },
+        undo: function () {
+          return unmergeRow(groupNames[id]).then(function (left) {
+            if (left) groupNames[id] = left;
+            else delete groupNames[id];  // that merge is what made it: the group is gone
+          }, unmergeFailed);
+        },
+        redo: function () {
+          return mergeFiles(folding()).then(function (target) {
+            groupNames[id] = target;
+          }, groupFailed);
+        },
       });
     }).catch(groupFailed);
   }

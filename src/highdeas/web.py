@@ -98,8 +98,9 @@ def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=()):
     def group():
         """Consolidate the posted notes into one group memo.
 
-        The survivor is named alongside the rows: only the server knows which of the picked
-        notes it is, and Undo has to know which row to walk the merge back out of."""
+        The group is named alongside the rows: only the server knows what it is called —
+        a group's recording is one the app makes, named by its content — and Undo has to
+        know which row to walk the merge back out of."""
         try:
             grouped = service.group(request.form.getlist("files"))
         except ValueError as exc:
@@ -108,12 +109,15 @@ def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=()):
 
     @app.post("/unmerge/<path:filename>")
     def unmerge(filename):
-        """Walk back the last merge a group swallowed — what Undo posts."""
+        """Walk back the last merge a group swallowed — what Undo posts.
+
+        The group answers to a new name afterwards, since its recording is rejoined out of
+        the members it has left; "" when that merge is what made it and it is gone."""
         try:
-            service.unmerge(filename)
+            target = service.unmerge(filename)
         except ValueError as exc:
             return (str(exc), 400)
-        return _inbox_rows()
+        return {"target": target, "rows": _inbox_rows()}
 
     @app.post("/ungroup/<path:filename>")
     def ungroup(filename):

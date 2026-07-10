@@ -41,7 +41,9 @@ class FakeService:
         if self.group_error:
             raise ValueError(self.group_error)
         self.grouped.append(list(audio_filenames))
-        return Memo(audio_filename=audio_filenames[0], transcript="- one\n- two", kind="group")
+        # A group's recording is one the app makes, so it answers to a name of its own.
+        return Memo(audio_filename=f"group-of-{len(audio_filenames)}.m4a",
+                    transcript="- one\n- two", kind="group")
 
     def ungroup(self, audio_filename):
         if self.ungroup_error:
@@ -56,6 +58,8 @@ class FakeService:
         self.unmerged.append(audio_filename)
         self._pending = [Memo(audio_filename="a.m4a", transcript="one"),
                          Memo(audio_filename="b.m4a", transcript="two")]
+        # The group's recording is rejoined out of what it has left, so it is renamed.
+        return f"left-of-{audio_filename}"
 
     def pending(self):
         return self._pending
@@ -561,13 +565,27 @@ def test_grouping_is_walked_back_one_merge_at_a_time(tmp_path):
 
     js = asset(client, "inbox.js")
 
-    # Undo posts the last merge back out of the surviving row and redo folds the same notes
-    # in again. It walks back one merge, not the whole group: a note dragged into a group
+    # Undo posts the last merge back out of the group and redo folds the same notes in
+    # again. It walks back one merge, not the whole group: a note dragged into a group
     # that already existed must come back out without dissolving what it joined.
     step = js.split("function groupFiles")[1].split("\n  function ")[0]
     assert "undoStack.did(" in step
-    assert "unmergeRow(target)" in step and "mergeFiles(files)" in step
+    assert "unmergeRow(groupNames[id])" in step and "mergeFiles(folding())" in step
     assert "post('/unmerge/'" in js
+
+
+def test_a_group_is_read_from_a_cell_because_its_name_keeps_changing(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    js = asset(client, "inbox.js")
+
+    # A group's recording is its members' joined, and the file is named by what is in it,
+    # so every merge and every walk back renames the group. A step that remembered the name
+    # it saw would post it back long after the group had grown out of it.
+    cell = js.split("function groupFiles")[1].split("\n  function ")[0]
+    assert "groupNames[id] = target" in cell
+    assert "delete groupNames[id]" in cell  # the merge that made it took the group with it
+    assert "function cellOf(files)" in js   # a merge into a group names it among its files
 
 
 def test_an_action_that_takes_a_row_out_for_good_empties_the_stack(tmp_path):
@@ -969,7 +987,7 @@ def test_submit_saves_edits_then_submits_and_returns_204(tmp_path):
     assert resp.status_code == 204
 
 
-def test_group_route_consolidates_the_posted_notes_and_reports_the_survivor(tmp_path):
+def test_group_route_consolidates_the_posted_notes_and_names_the_group(tmp_path):
     service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="- one\n- two", kind="group")])
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
@@ -982,24 +1000,26 @@ def test_group_route_consolidates_the_posted_notes_and_reports_the_survivor(tmp_
     # takes the list the server holds rather than patching its own guess at it.
     assert 'data-file="a.m4a"' in body["rows"]
     assert "<!doctype" not in body["rows"]
-    # The survivor is named, because only the server knows which of the picked notes it is,
-    # and undo has to know which row to walk the merge back out of.
-    assert body["target"] == "a.m4a"
+    # Only the server can name the group: its recording is one the app makes, named by its
+    # content, and undo has to know which row to walk the merge back out of.
+    assert body["target"] == "group-of-2.m4a"
 
 
-def test_unmerge_route_walks_one_merge_back_and_answers_with_the_inbox(tmp_path):
-    service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="- one\n- two", kind="group")])
+def test_unmerge_route_walks_one_merge_back_and_renames_the_group(tmp_path):
+    service = FakeService(pending=[Memo(audio_filename="g.m4a", transcript="- one\n- two", kind="group")])
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
-    resp = client.post("/unmerge/a.m4a")
+    resp = client.post("/unmerge/g.m4a")
 
     # This is what Undo posts: one merge back, not the whole group apart.
-    assert service.unmerged == ["a.m4a"]
+    assert service.unmerged == ["g.m4a"]
     assert service.ungrouped == []
     assert resp.status_code == 200
-    body = resp.data.decode()
-    assert 'data-file="a.m4a"' in body and 'data-file="b.m4a"' in body
-    assert "<!doctype" not in body
+    body = resp.get_json()
+    assert 'data-file="a.m4a"' in body["rows"] and 'data-file="b.m4a"' in body["rows"]
+    assert "<!doctype" not in body["rows"]
+    # Its recording was rejoined out of what is left, so the group answers to a new name.
+    assert body["target"] == "left-of-g.m4a"
 
 
 def test_unmerge_route_refuses_a_memo_that_is_not_a_group(tmp_path):
