@@ -90,6 +90,14 @@ h1 { font-size: 1.35rem; margin: 0; }
 [data-kind="note"] .group-badge { display: none; }
 /* A group's badge while a dragged note hovers it: let go here and the note joins it. */
 .kind.dropping { outline: 2px dashed #3b82f6; outline-offset: 3px; border-radius: 6px; }
+/* On the inbox the badge is a button, and reaching for it shows the stack coming apart —
+   the click reads as what it does before it is made. */
+.ungroup { display: block; padding: 0; background: transparent; border: none;
+           color: inherit; cursor: pointer; }
+.ungroup .ic-broken { display: none; }
+.ungroup:hover .ic-whole, .ungroup:focus-visible .ic-whole { display: none; }
+.ungroup:hover .ic-broken, .ungroup:focus-visible .ic-broken { display: block; }
+.ungroup:hover svg, .ungroup:focus-visible svg { opacity: 1; color: #3b82f6; }
 /* Same icon in the header, as the button that folds the ticked notes into one group.
    Borderless like the row's copy buttons: it labels its column rather than framing it. */
 .kind-btn { display: flex; align-items: center; justify-content: center; width: 100%;

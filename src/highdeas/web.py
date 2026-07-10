@@ -94,6 +94,19 @@ def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=()):
         return {"target": grouped.audio_filename, "transcript": grouped.transcript,
                 "name": grouped.name}
 
+    @app.post("/ungroup/<path:filename>")
+    def ungroup(filename):
+        """Break a group back into its notes, answering with the inbox as it now reads.
+
+        Several rows come back at once, each into the place the server sorts it, so the
+        page takes the whole list rather than guessing where to splice them in."""
+        try:
+            service.ungroup(filename)
+        except ValueError as exc:
+            return (str(exc), 400)
+        return render_template("rows.html", memos=service.pending(),
+                               asana_parents=asana_parents)
+
     @app.post("/delete/<path:filename>")
     def delete(filename):
         service.delete(filename)

@@ -164,8 +164,8 @@
   }
 
   // A row only ever leaves the list by being submitted, trashed, or absorbed into a
-  // group. None of those come back, so the steps recorded before them can't be walked
-  // back onto a list that no longer holds this row.
+  // group. An absorbed one comes back when the group is broken up, but as a row built
+  // afresh, so the steps recorded before it left can't be walked back onto it either way.
   function removeRow(memo) {
     var grid = memo.closest('.grid');
     undoStack.clear();
@@ -251,13 +251,24 @@
     memo.dataset.kind = 'group';
   }
 
+  // The server folds the notes as it holds them, not as the page shows them, so every
+  // row being grouped hands over what it is holding first. Otherwise a name typed a
+  // moment ago is still sitting behind the auto-save's timer, and it is that older,
+  // nameless note the merge writes into the bullets.
+  function flushEdits(memos) {
+    return Promise.all(memos.map(function (memo) { return flush(memo); }));
+  }
+
   // The merge is server-side, so the button locks until it answers: a double-click would
   // post a second selection whose absorbed rows are no longer in the inbox to group.
   function groupFiles(files) {
     if (groupBtn) groupBtn.disabled = true;
+    var picks = rows().filter(function (memo) { return files.indexOf(memo.dataset.file) >= 0; });
     var data = new URLSearchParams();
     files.forEach(function (file) { data.append('files', file); });
-    return post('/group', data).then(function (r) {
+    return flushEdits(picks).then(function () {
+      return post('/group', data);
+    }).then(function (r) {
       if (!r.ok) return r.text().then(function (t) { throw new Error(t || 'Failed'); });
       return r.json();
     }).then(function (result) {
@@ -271,6 +282,23 @@
     }).catch(function (err) {
       notify("Couldn't group those notes — they're unchanged." + describe(err));
     }).then(syncSelection);
+  }
+
+  // Breaking a group up hands several rows back at once, each into the place the server
+  // sorts it, so the list is taken whole rather than spliced. The rows the group ate are
+  // shown again, which is all a later poll needs to leave them alone.
+  function ungroupRow(memo) {
+    return post('/ungroup/' + encodeURIComponent(memo.dataset.file)).then(function (r) {
+      if (!r.ok) return r.text().then(function (t) { throw new Error(t || 'Failed'); });
+      return r.text();
+    }).then(function (html) {
+      undoStack.clear();  // the steps behind this one were recorded against rows that were gone
+      content.innerHTML = html;
+      rows().forEach(wire);
+      resync();
+    }).catch(function (err) {
+      notify("Couldn't break up that group — it's unchanged." + describe(err));
+    });
   }
 
   if (selectAll) selectAll.addEventListener('change', function () {
@@ -482,6 +510,10 @@
     var handle = memo.querySelector('.grip');
     syncMove(memo);
     memo.querySelector('.pick').addEventListener('change', syncSelection);
+    memo.querySelector('.ungroup').addEventListener('click', function () {
+      clearNotice();
+      ungroupRow(memo);
+    });
     preview.addEventListener('click', function () { openEditor(memo); });
     preview.addEventListener('keydown', function (event) {
       if (event.key !== 'Enter' && event.key !== ' ') return;

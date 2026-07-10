@@ -26,6 +26,8 @@ class FakeService:
         self.reordered = []
         self.grouped = []
         self.group_error = None
+        self.ungrouped = []
+        self.ungroup_error = None
 
     def refresh(self):
         self.refreshed += 1
@@ -38,6 +40,13 @@ class FakeService:
             raise ValueError(self.group_error)
         self.grouped.append(list(audio_filenames))
         return Memo(audio_filename=audio_filenames[0], transcript="- one\n- two", kind="group")
+
+    def ungroup(self, audio_filename):
+        if self.ungroup_error:
+            raise ValueError(self.ungroup_error)
+        self.ungrouped.append(audio_filename)
+        self._pending = [Memo(audio_filename="a.m4a", transcript="one"),
+                         Memo(audio_filename="b.m4a", transcript="two")]
 
     def pending(self):
         return self._pending
@@ -312,6 +321,35 @@ def test_index_badges_a_group_row_and_leaves_a_plain_note_unbadged(tmp_path):
     assert body.count('data-kind="note"') == 1
 
 
+def test_a_group_row_wears_its_badge_as_the_button_that_breaks_it_up(tmp_path):
+    service = FakeService(pending=[Memo(audio_filename="g.m4a", transcript="- one", kind="group")])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data.decode()
+    css = asset(client, "app.css")
+
+    # The badge carries both faces: whole, and coming apart. Hovering swaps them, so the
+    # click reads as what it does before it is made.
+    assert 'class="group-badge ungroup"' in body
+    assert 'class="ic-whole"' in body and 'class="ic-broken"' in body
+    assert ".ungroup .ic-broken { display: none" in css
+    assert ".ungroup:hover .ic-whole" in css
+    assert "post('/ungroup/'" in asset(client, "inbox.js")
+
+
+def test_the_bin_badge_only_reports_a_group_and_cannot_break_it_up(tmp_path):
+    # Nothing in the bin is in the inbox to break apart, so its badge is not a button.
+    service = FakeService(binned=[
+        Memo(audio_filename="g.m4a", status="deleted", kind="group", processed_at="2026-07-10T03:00"),
+    ])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/bin").data.decode()
+
+    assert 'class="group-badge"' in body
+    assert "ungroup" not in body
+
+
 def test_index_puts_the_group_button_over_the_group_column_and_starts_it_disabled(tmp_path):
     service = FakeService(pending=[
         Memo(audio_filename="a.m4a", transcript="one"),
@@ -338,6 +376,18 @@ def test_the_inbox_posts_its_ticked_notes_to_the_group_endpoint(tmp_path):
     assert "post('/group'" in js
     assert "append('files'" in js
     assert "getElementById('select-all')" in js
+
+
+def test_grouping_hands_over_every_unsaved_edit_before_the_merge(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    js = asset(client, "inbox.js")
+
+    # The server folds the notes as it holds them. A name typed a moment before the click
+    # is still behind the auto-save's timer, and the bullet it belongs to came out bare —
+    # "learn to play it" rather than "Theremin lessons: learn to play it".
+    body = js.split("function groupFiles")[1].split("\n  function ")[0]
+    assert body.index("flushEdits(picks)") < body.index("post('/group'")
 
 
 def test_a_note_dragged_onto_a_group_joins_it_instead_of_reordering(tmp_path):
@@ -471,18 +521,21 @@ def test_the_inbox_records_the_three_actions_that_can_be_walked_back(tmp_path):
     assert "saveOrder()" in js.split("\n  function applyOrder(")[1].split("\n  function ")[0]
 
 
-def test_an_action_that_cannot_be_walked_back_empties_the_stack(tmp_path):
+def test_an_action_that_remakes_the_list_empties_the_stack(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     js = asset(client, "inbox.js")
 
-    # A submitted note is in Notesnook, a trashed one is in the bin, and a group has
-    # swallowed its neighbours' text. None of them come back on Ctrl+Z — and a stack
-    # that stepped over them to walk back some older, unrelated action would be worse
-    # than one that admits it has nothing left to offer.
-    assert js.count("undoStack.clear()") == 2
+    # A submitted note is in Notesnook, a trashed one is in the bin, a group has swallowed
+    # its neighbours' text, and breaking that group up hands the notes back as rows built
+    # afresh from the server. Every step on the stack closes over the row it touched, so
+    # after any of these it holds rows that are gone — and a stack that stepped over them
+    # to walk back some older, unrelated action would be worse than one that admits it has
+    # nothing left to offer. Grouping is undone by its own badge, not by Ctrl+Z.
+    assert js.count("undoStack.clear()") == 3
     assert "undoStack.clear()" in js.split("function removeRow")[1].split("\n  function ")[0]
     assert "undoStack.clear()" in js.split("function becomeGroup")[1].split("\n  function ")[0]
+    assert "undoStack.clear()" in js.split("function ungroupRow")[1].split("\n  function ")[0]
 
 
 def test_a_rows_transcript_is_a_preview_that_opens_the_editor(tmp_path):
@@ -842,6 +895,32 @@ def test_group_route_consolidates_the_posted_notes_and_reports_the_survivor(tmp_
     # would be auto-saved straight back.
     assert resp.status_code == 200
     assert resp.get_json() == {"target": "a.m4a", "transcript": "- one\n- two", "name": ""}
+
+
+def test_ungroup_route_breaks_the_group_up_and_answers_with_the_inbox(tmp_path):
+    service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="- one\n- two", kind="group")])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    resp = client.post("/ungroup/a.m4a")
+
+    assert service.ungrouped == ["a.m4a"]
+    # The restored notes come back where the server sorts them, so it answers with the
+    # rows themselves rather than leaving the client to guess where they belong.
+    assert resp.status_code == 200
+    body = resp.data.decode()
+    assert 'data-file="a.m4a"' in body and 'data-file="b.m4a"' in body
+    assert "<!doctype" not in body
+
+
+def test_ungroup_route_refuses_a_memo_that_is_not_a_group(tmp_path):
+    service = FakeService()
+    service.ungroup_error = "Only a group can be broken back up into notes."
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    resp = client.post("/ungroup/a.m4a")
+
+    assert resp.status_code == 400
+    assert b"Only a group can be broken back up" in resp.data
 
 
 def test_group_route_reports_a_selection_it_cannot_group(tmp_path):

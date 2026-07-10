@@ -2,9 +2,11 @@
    and forward again, so this file never has to know what a memo is — inbox.js hands it
    two thunks and it drives the Undo/Redo buttons and Ctrl+Z from there.
 
-   It holds only the actions that can be walked back. Submitting, trashing, and grouping
-   can't be, and they empty the stack rather than leave a step that would quietly reach
-   past them to undo something older and unrelated. */
+   It holds only the actions whose rows survive them. Submitting, trashing, grouping and
+   breaking a group back up each remake the list, and every step is a closure over the row
+   it touched, so they empty the stack rather than leave one that would quietly reach past
+   them to undo something older and unrelated. Grouping has its own way back — the badge on
+   the group's row — and doesn't need this one. */
 (function () {
   'use strict';
 
