@@ -1,12 +1,18 @@
 /* The inbox list: auto-save, submit, trash, bulk actions, grouping, drag-to-reorder,
    and the poll that streams in recordings arriving while the app is open. A row's
    transcript is a preview — clicking it hands the note to the editor dialog
-   (editor.js), which reports edits back here to be saved. */
+   (editor.js), which reports edits back here to be saved.
+
+   The actions that change a row without the user typing into it are recorded on the
+   undo stack (history.js) as the pair of steps that walk them back and forward again;
+   the ones that can't be walked back empty it. */
 (function () {
   'use strict';
 
   var content = document.getElementById('content');
   if (!content) return;
+
+  var undoStack = window.HighdeasHistory;
 
   // Rows this window has already submitted or trashed. A poll's snapshot can
   // still list one as pending (it was taken before the POST landed), so we skip
@@ -56,16 +62,41 @@
 
   function previewOf(memo) { return memo.querySelector('.transcript'); }
   function nameField(memo) { return memo.querySelector('input[name=name]'); }
+  function parentField(memo) { return memo.querySelector('select.asana-parent'); }
   function transcriptOf(memo) { return previewOf(memo).textContent; }
   function nameOf(memo) { return nameField(memo).value; }
+  function textOf(memo) { return { name: nameOf(memo), transcript: transcriptOf(memo) }; }
+
+  // Where the note is bound: the lit icon, and — for the one destination that asks —
+  // the task it becomes a subtask of. The two travel together, saved and undone as one.
+  function destinationOf(memo) {
+    var parent = parentField(memo);
+    return {
+      route: memo.querySelector('input.route:checked').value,
+      parent: parent ? parent.value : '',
+    };
+  }
+
+  // The parent-task dropdown only matters, and only shows, while Asana's icon is lit.
+  function setDestination(memo, chosen) {
+    memo.querySelectorAll('input.route').forEach(function (radio) {
+      radio.checked = radio.value === chosen.route;
+    });
+    var parent = parentField(memo);
+    if (parent) {
+      parent.value = chosen.parent;
+      parent.hidden = chosen.route !== 'asana';
+    }
+    flush(memo);
+  }
 
   function fields(memo) {
-    var parent = memo.querySelector('select.asana-parent');
+    var chosen = destinationOf(memo);
     return new URLSearchParams({
       name: nameOf(memo),
       transcript: transcriptOf(memo),
-      route: memo.querySelector('input.route:checked').value,
-      asana_parent: parent ? parent.value : '',
+      route: chosen.route,
+      asana_parent: chosen.parent,
     });
   }
 
@@ -97,16 +128,27 @@
     btn.disabled = back && !nameOf(memo).trim();
   }
 
-  function setText(memo, name, transcript) {
-    nameField(memo).value = name;
-    previewOf(memo).textContent = transcript;
+  function setText(memo, text) {
+    nameField(memo).value = text.name;
+    previewOf(memo).textContent = text.transcript;
     syncMove(memo);
   }
 
-  function moveText(memo) {
-    if (movesBack(memo)) setText(memo, '', nameOf(memo));
-    else setText(memo, transcriptOf(memo), '');
+  function apply(memo, text) {
+    setText(memo, text);
     flush(memo);
+  }
+
+  function moveText(memo) {
+    var was = textOf(memo);
+    var now = movesBack(memo)
+      ? { name: '', transcript: was.name }
+      : { name: was.transcript, transcript: '' };
+    apply(memo, now);
+    undoStack.did({
+      undo: function () { apply(memo, was); },
+      redo: function () { apply(memo, now); },
+    });
   }
 
   function showEmpty() {
@@ -120,8 +162,12 @@
     resync();
   }
 
+  // A row only ever leaves the list by being submitted, trashed, or absorbed into a
+  // group. None of those come back, so the steps recorded before them can't be walked
+  // back onto a list that no longer holds this row.
   function removeRow(memo) {
     var grid = memo.closest('.grid');
+    undoStack.clear();
     memo.remove();
     if (grid && !grid.querySelector('.memo')) showEmpty();
     else resync();
@@ -193,10 +239,13 @@
   }
 
   // The row that survived. Flipping data-kind is all it takes: CSS reveals the badge
-  // the row has carried all along, and the cell becomes a drop target.
+  // the row has carried all along, and the cell becomes a drop target. Its text is now
+  // its neighbours' as well, so nothing recorded against the text it used to hold can
+  // be walked back onto it.
   function becomeGroup(memo, result) {
     clearTimeout(memo._timer);
-    setText(memo, result.name, result.transcript);
+    undoStack.clear();
+    setText(memo, result);
     memo.querySelector('.pick').checked = false;
     memo.dataset.kind = 'group';
   }
@@ -244,6 +293,7 @@
   // about to leave the list, so dragend must not save an order that still contains it.
   var joining = false;
   var hovered = null;
+  var orderBefore = null;  // the order the drag started from, so dragend can record the move
 
   // The one place a dragged row means "join this" rather than "go here": a group's badge
   // cell. Dragging a group there would leave two groups and no obvious survivor, so only
@@ -282,14 +332,33 @@
     return (top + bottom) / 2;
   }
 
+  function orderOf() { return rows().map(function (memo) { return memo.dataset.file; }); }
+
   function saveOrder() {
     var data = new URLSearchParams();
-    rows().forEach(function (memo) { data.append('order', memo.dataset.file); });
+    orderOf().forEach(function (file) { data.append('order', file); });
     post('/reorder', data).then(function (r) {
       if (!r.ok) throw new Error('Failed');
     }).catch(function () {
       notify("Couldn't save the new order — the inbox will read back in recorded order next time you open it.");
     });
+  }
+
+  // Re-seat the rows in a remembered order. A note that arrived from the poll since then
+  // was never in it, and stays at the end where the server puts an unplaced memo.
+  function applyOrder(files) {
+    var grid = content.querySelector('.grid');
+    if (!grid) return;
+    var rank = {};
+    files.forEach(function (file, i) { rank[file] = i; });
+    function placeOf(memo) {
+      var place = rank[memo.dataset.file];
+      return place === undefined ? files.length : place;  // unranked: a note that arrived since
+    }
+    rows().sort(function (a, b) { return placeOf(a) - placeOf(b); })
+      .forEach(function (memo) { grid.appendChild(memo); });
+    resync();
+    saveOrder();
   }
 
   // Rows move as you drag over them, so the list you let go of is the list you keep —
@@ -335,7 +404,7 @@
       transcript: transcriptOf(memo),
       words: wordsOf(memo),
       onChange: function (note) {
-        setText(memo, note.name, note.transcript);
+        setText(memo, note);
         scheduleSave(memo);
       },
     });
@@ -368,7 +437,7 @@
   function wire(memo) {
     var preview = previewOf(memo);
     var name = nameField(memo);
-    var parent = memo.querySelector('select.asana-parent');
+    var parent = parentField(memo);
     var handle = memo.querySelector('.num');
     syncMove(memo);
     memo.querySelector('.pick').addEventListener('change', syncSelection);
@@ -381,17 +450,26 @@
     // Typing a name is the one thing that can wake a button left with nothing to move.
     name.addEventListener('input', function () { syncMove(memo); scheduleSave(memo); });
     name.addEventListener('blur', function () { flush(memo); });
-    // Lighting a destination icon saves it; the parent-task dropdown only matters
-    // (and only shows) while the lit icon is Asana's.
-    memo.querySelectorAll('input.route').forEach(function (radio) {
-      radio.addEventListener('change', function () {
-        if (parent) parent.hidden = radio.value !== 'asana';
-        flush(memo);
+    // Lighting a destination icon saves it, and so does picking a different parent
+    // task: one recorded step either way, since only one destination has a dropdown.
+    var was = destinationOf(memo);
+    function rebind() {
+      var chosen = destinationOf(memo);
+      var before = was;
+      was = chosen;
+      setDestination(memo, chosen);
+      undoStack.did({
+        undo: function () { was = before; setDestination(memo, before); },
+        redo: function () { was = chosen; setDestination(memo, chosen); },
       });
+    }
+    memo.querySelectorAll('input.route').forEach(function (radio) {
+      radio.addEventListener('change', rebind);
     });
-    if (parent) parent.addEventListener('change', function () { flush(memo); });
+    if (parent) parent.addEventListener('change', rebind);
     handle.addEventListener('dragstart', function (event) {
       dragged = memo;
+      orderBefore = orderOf();
       memo.classList.add('dragging');
       event.dataTransfer.effectAllowed = 'move';
       event.dataTransfer.setData('text/plain', memo.dataset.file);
@@ -400,10 +478,18 @@
       memo.classList.remove('dragging');
       dragged = null;
       highlight(null);
+      var was = orderBefore;
+      orderBefore = null;
       // The dropped note is being folded into a group, so it is leaving the inbox: the
       // rows it passed on the way there keep the order they already had on the server.
       if (joining) { joining = false; return; }
+      var now = orderOf();
+      if (now.join() === was.join()) return;  // let go where it was picked up
       saveOrder();
+      undoStack.did({
+        undo: function () { applyOrder(was); },
+        redo: function () { applyOrder(now); },
+      });
     });
     memo.querySelector('.move').addEventListener('click', function () { moveText(memo); });
     memo.querySelectorAll('.clip').forEach(function (btn) {

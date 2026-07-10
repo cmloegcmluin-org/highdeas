@@ -1,8 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Inbox{% endblock %}
 
+{#- Undo and Redo lead the topbar, ahead of the two controls that navigate rather than
+    act on the list. They start disabled — nothing has been done yet — and history.js
+    turns them on and off as the stack fills and empties. -#}
 {% block links %}
   <div class="links">
+    <button type="button" id="undo" class="btn topbtn" title="Undo (Ctrl+Z)" disabled>Undo</button>
+    <button type="button" id="redo" class="btn topbtn" title="Redo (Ctrl+Shift+Z)" disabled>Redo</button>
     <button type="button" id="refresh" class="btn topbtn" title="Check for new notes now">Refresh</button>
     <a class="btn topbtn" href="/bin">Bin &rarr;</a>
   </div>
@@ -40,6 +45,7 @@
 {% block dialogs %}{% include "editor.html" %}{% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='history.js') }}"></script>
 <script src="{{ url_for('static', filename='editor.js') }}"></script>
 <script src="{{ url_for('static', filename='inbox.js') }}"></script>
 {% endblock %}

@@ -157,8 +157,9 @@ def test_inbox_js_sends_the_picker_fields_and_toggles_the_dropdown(tmp_path):
     # Saves and submits carry the lit icon's route and the chosen parent task…
     assert "input.route:checked" in js
     assert "asana_parent" in js
-    # …and the dropdown follows the Asana icon: shown when lit, hidden otherwise.
-    assert "radio.value !== 'asana'" in js
+    # …and the dropdown follows the Asana icon: shown when lit, hidden otherwise. One
+    # place puts a row on a destination, so an undone route hides the dropdown too.
+    assert "parent.hidden = chosen.route !== 'asana'" in js
 
 
 def test_the_move_button_points_the_way_the_text_will_travel(tmp_path):
@@ -306,6 +307,75 @@ def test_pages_load_the_shared_stylesheet_and_the_inbox_loads_its_scripts(tmp_pa
     assert "/static/inbox.js" in index
     assert "/static/editor.js" in index
     assert "/static/app.css" in client.get("/bin").data.decode()
+
+
+def test_the_inbox_offers_undo_and_redo_buttons_that_start_with_nowhere_to_go(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data.decode()
+
+    # They lead the topbar, left of the two controls that navigate rather than act.
+    assert body.index('id="undo"') < body.index('id="redo"') < body.index('id="refresh"')
+    assert 'id="undo" class="btn topbtn"' in body and "Ctrl+Z" in body
+    assert 'id="redo" class="btn topbtn"' in body and "Ctrl+Shift+Z" in body
+    # Nothing has been done yet, so both start disabled — and a disabled topbar button
+    # has to look it.
+    assert body.count("disabled>Undo") == 1 and body.count("disabled>Redo") == 1
+    assert ".topbtn:disabled" in asset(client, "app.css")
+
+
+def test_the_undo_stack_is_loaded_before_the_page_that_records_into_it(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data.decode()
+
+    # inbox.js reaches for the stack as it wires each row, so it has to already be there.
+    assert body.index("/static/history.js") < body.index("/static/inbox.js")
+    assert "window.HighdeasHistory" in asset(client, "history.js")
+    # The bin is a read-only list of what has already left the inbox: nothing to undo.
+    assert "/static/history.js" not in client.get("/bin").data.decode()
+
+
+def test_undo_answers_the_keyboard_except_where_the_browser_has_a_better_one(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    js = asset(client, "history.js")
+
+    # Ctrl+Z walks back; Ctrl+Shift+Z and Ctrl+Y walk forward again.
+    assert "'z'" in js and "'y'" in js and "event.shiftKey" in js
+    # But a focused field keeps its own typing history, and the caret is standing in it.
+    # The open editor is off limits too: it holds a copy of the note, and walking the
+    # row out from under it would leave the two disagreeing.
+    assert "[contenteditable]" in js
+    assert "dialog[open]" in js
+
+
+def test_the_inbox_records_the_three_actions_that_can_be_walked_back(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    js = asset(client, "inbox.js")
+
+    # Sending text across the arrow, rebinding a note to a destination, and dropping a
+    # row somewhere new are the three things that change the list without the user
+    # typing into it — the three, therefore, that have nothing else to walk them back.
+    assert js.count("undoStack.did(") == 3
+    # Undoing has to persist, or the row reads back the way it was before the undo.
+    assert "flush(memo)" in js.split("\n  function apply(")[1].split("\n  function ")[0]
+    assert "saveOrder()" in js.split("\n  function applyOrder(")[1].split("\n  function ")[0]
+
+
+def test_an_action_that_cannot_be_walked_back_empties_the_stack(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    js = asset(client, "inbox.js")
+
+    # A submitted note is in Notesnook, a trashed one is in the bin, and a group has
+    # swallowed its neighbours' text. None of them come back on Ctrl+Z — and a stack
+    # that stepped over them to walk back some older, unrelated action would be worse
+    # than one that admits it has nothing left to offer.
+    assert js.count("undoStack.clear()") == 2
+    assert "undoStack.clear()" in js.split("function removeRow")[1].split("\n  function ")[0]
+    assert "undoStack.clear()" in js.split("function becomeGroup")[1].split("\n  function ")[0]
 
 
 def test_a_rows_transcript_is_a_preview_that_opens_the_editor(tmp_path):

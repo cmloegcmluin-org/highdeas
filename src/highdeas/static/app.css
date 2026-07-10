@@ -39,7 +39,8 @@ h1 { font-size: 1.35rem; margin: 0; }
           font-size: .85rem; padding: 6px 12px; text-decoration: none; }
 /* Sized for its widest label so swapping in "Loading…" doesn't shift the border. */
 #refresh { min-width: 92px; }
-#refresh:disabled { opacity: .5; cursor: default; }
+/* A check already in flight, and an undo with nothing left to walk back. */
+.topbtn:disabled { opacity: .4; cursor: default; }
 /* Shown only when a submit/trash fails, so a note that didn't actually send stays
    visible and explained instead of silently vanishing from the list. */
 .notice { margin: 12px 0 0; padding: 10px 12px; border-radius: 8px; font-size: .9rem;
