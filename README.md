@@ -14,11 +14,12 @@ recording.
    content-unique name, so a recycled inbox filename can never collide with a past memo.
 3. **Transcribe** — each recording is transcribed locally (`onnx-asr`, CPU). This runs
    in the background, so the window opens instantly and memos stream in as they finish.
-4. **Inbox** — a local Flask page opens in its own native window (Edge WebView2). Each
-   memo row has its audio, an auto-saving editable transcript, a chevron that moves the
-   transcript into the Name field, a Name box, a Notesnook⇄Drive toggle, and Submit /
-   Delete. Row numbers, a live item count, and a frozen title bar + column headers
-   (carrying **Submit all** / **Trash all**) stay in reach as the list scrolls.
+4. **Inbox** — a local Flask page opens in its own native window (Edge WebView2), at the
+   size, monitor, and maximized state it was last closed at — maximized until you say
+   otherwise. Each memo row has its audio, an auto-saving editable transcript, a chevron
+   that moves the transcript into the Name field, a Name box, a Notesnook⇄Drive toggle,
+   and Submit / Delete. Row numbers, a live item count, and a frozen title bar + column
+   headers (carrying **Submit all** / **Trash all**) stay in reach as the list scrolls.
    Recordings that arrive while the page is open are polled in automatically.
 5. **Route on submit**
    - **Notesnook** — the transcript becomes a note via the Notesnook Inbox API. An

@@ -14,6 +14,7 @@ from highdeas.service import InboxService
 from highdeas.store import MemoStore
 from highdeas.transcribe import Transcriber
 from highdeas.web import create_app
+from highdeas.window_state import WindowGeometryTracker, load_geometry
 
 DEFAULT_INBOX = r"C:\Users\Douglas\iCloudDrive\iCloud~is~workflow~my~workflows\VoiceInbox"
 DEFAULT_DRIVE_BASE = r"G:\My Drive\voice memos (top level)"
@@ -39,6 +40,8 @@ APP_NAME = "Highdeas"
 # If they drift, the taskbar falls back to pythonw.exe's generic python icon.
 APP_ID = "Douglas.Highdeas"
 APP_ICON = PROJECT_ROOT / "highdeas.ico"
+# Where the window's size, position, and maximized state are remembered between launches.
+WINDOW_STATE = PROJECT_ROOT / "window.json"
 
 # Shown instantly in the native window for the brief moment before the local server
 # accepts connections, so the user never stares at a blank frame. Self-contained; the
@@ -138,9 +141,7 @@ def _run_desktop(app):
     ).start()
 
     try:
-        window = webview.create_window(
-            APP_NAME, html=_SPLASH_HTML, width=1360, height=900, background_color="#0f172a",
-        )
+        window = _open_window(webview, WINDOW_STATE)
         url = f"http://127.0.0.1:{port}/"
         # pywebview 6's winforms backend applies this to the window (and thus the taskbar
         # button); without it Windows shows pythonw.exe's icon. The docstring's "GTK/QT
@@ -154,6 +155,17 @@ def _run_desktop(app):
     except Exception as exc:  # noqa: BLE001 — any failure should fall back to the browser
         print(f"Native window unavailable ({exc}); opening in the browser instead.")
         return False
+
+
+def _open_window(webview, state_path):
+    """Open the native window where it was left — same monitor, size, and maximized
+    state — and keep following it so the next launch can do the same."""
+    geometry = load_geometry(state_path).reachable_on(webview.screens)
+    window = webview.create_window(
+        APP_NAME, html=_SPLASH_HTML, background_color="#0f172a", **geometry.window_kwargs(),
+    )
+    WindowGeometryTracker(state_path, geometry).attach(window)
+    return window
 
 
 def _open_when_ready(window, url, wait_until_ready):
