@@ -1228,7 +1228,6 @@ def test_bin_shows_its_timestamp_in_the_same_readable_form_as_the_inbox(tmp_path
 
 def test_bin_shows_destination_icon_instead_of_status_word(tmp_path):
     service = FakeService(binned=[
-        Memo(audio_filename="d.m4a", status="deleted", processed_at="2026-07-07T03:00"),
         Memo(audio_filename="n.m4a", status="processed", route="notesnook", processed_at="2026-07-07T02:00"),
         Memo(audio_filename="g.m4a", status="processed", route="drive", processed_at="2026-07-07T01:00"),
     ])
@@ -1238,23 +1237,27 @@ def test_bin_shows_destination_icon_instead_of_status_word(tmp_path):
 
     # A destination icon with a label, not the raw status/badge.
     assert b'class="badge"' not in body
-    assert b"Trashed" in body
     assert b"Sent to Notesnook" in body
     assert b"Sent to Google Drive" in body
 
 
-def test_bin_says_a_note_was_merged_into_a_group_rather_than_sent_to_notesnook(tmp_path):
+def test_bin_says_nothing_about_where_a_memo_that_was_never_sent_went(tmp_path):
+    # "Where" answers one question: which of the three destinations took this memo. A
+    # trashed note and one merged into a group were never sent anywhere, so the column
+    # has nothing to say — an icon there is a destination that doesn't exist. Both keep
+    # the route they were bound for, so the status has to be read before the route, or
+    # the bin claims they went to Notesnook.
     service = FakeService(binned=[
-        Memo(audio_filename="m.m4a", status="grouped", route="notesnook", processed_at="2026-07-08T03:00"),
+        Memo(audio_filename="d.m4a", status="deleted", route="notesnook", processed_at="2026-07-07T03:00"),
+        Memo(audio_filename="m.m4a", status="grouped", route="drive", processed_at="2026-07-08T03:00"),
     ])
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
-    body = client.get("/bin").data
+    body = client.get("/bin").data.decode()
 
-    # An absorbed note keeps its route field, so the "Where" column must read its status
-    # first — otherwise the bin claims a merged note was sent to Notesnook.
-    assert b"Merged into a group" in body
-    assert b"Sent to Notesnook" not in body
+    assert body.count('<div class="dest"></div>') == 2
+    for said in ("Trashed", "Merged into a group", "Sent to Notesnook", "Sent to Google Drive"):
+        assert said not in body
 
 
 def test_bin_row_offers_restore_and_confirmed_permanent_delete(tmp_path):

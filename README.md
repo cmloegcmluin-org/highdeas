@@ -68,11 +68,12 @@ recording, or a subtask on an Asana task.
    inside iCloud and never triggers a per-file "move off iCloud" prompt. The inbox
    therefore only ever holds unprocessed recordings.
 9. **Bin tab** (`/bin`) — lists everything retired (sent to Notesnook, Drive, or Asana,
-   merged into a group, or deleted) with its audio, transcript, a destination icon, and
-   date, plus **Restore** / **Delete** and bulk **Restore all** / **Empty bin**. The Drive
-   icon reopens that memo in Drive in your chosen Chrome profile; the Asana icon opens
-   the created task the same way. Items older than 90 days are purged automatically
-   whenever the app runs.
+   merged into a group, or deleted) with its audio, transcript, and date, plus **Restore**
+   / **Delete** and bulk **Restore all** / **Empty bin**. **Where** names the destination
+   that took the memo, and stays empty for the ones that went nowhere; the Drive icon
+   reopens that memo in Drive in your chosen Chrome profile, and the Asana icon opens the
+   created task the same way. Items older than 90 days are purged automatically whenever
+   the app runs.
 
 ## Launch it
 

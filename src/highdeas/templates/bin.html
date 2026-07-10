@@ -22,7 +22,7 @@
 {% endblock %}
 
 {% block content %}
-  {% from "icons.html" import notesnook, drive, asana, trash, group, kind_cell %}
+  {% from "icons.html" import notesnook, drive, asana, kind_cell %}
   {% if not memos %}
   <p class="empty">Nothing in the bin. Submitted and deleted memos land here (kept for 90 days).</p>
   {% else %}
@@ -35,15 +35,17 @@
       <audio controls src="/bin-audio/{{ m.audio_filename }}"></audio>
       <div class="text">{{ m.transcript }}</div>
       <div class="name">{{ m.name or m.audio_filename }}</div>
-      {#- Where the memo went. A memo keeps its route field whatever happens to it, so
-          the status has to be read first: a trashed or merged note never went anywhere. -#}
+      {#- Which of the three destinations took the memo. A trashed note, and one merged
+          into a group, went to none of them and the column has nothing to say about
+          them — yet both still carry the route they were bound for, so the status is
+          read before the route or the bin claims they were sent. -#}
       <div class="dest">
-        {%- if m.status == 'deleted' %}<span title="Trashed" aria-label="Trashed">{{ trash() }}</span>
-        {%- elif m.status == 'grouped' %}<span title="Merged into a group" aria-label="Merged into a group">{{ group() }}</span>
-        {%- elif m.route == 'drive' %}<form method="post" action="/open-drive"><input type="hidden" name="q" value="{{ m.name or m.audio_filename.rsplit('.', 1)[0] }}"><button class="destlink" type="submit" title="Sent to Google Drive — open in Drive" aria-label="Sent to Google Drive — open in Drive">{{ drive() }}</button></form>
+        {%- if m.status == 'processed' %}
+        {%- if m.route == 'drive' %}<form method="post" action="/open-drive"><input type="hidden" name="q" value="{{ m.name or m.audio_filename.rsplit('.', 1)[0] }}"><button class="destlink" type="submit" title="Sent to Google Drive — open in Drive" aria-label="Sent to Google Drive — open in Drive">{{ drive() }}</button></form>
         {%- elif m.route == 'asana' and m.asana_url %}<form method="post" action="/open-asana/{{ m.audio_filename }}"><button class="destlink" type="submit" title="Sent to Asana — open the task" aria-label="Sent to Asana — open the task">{{ asana() }}</button></form>
         {%- elif m.route == 'asana' %}<span title="Sent to Asana" aria-label="Sent to Asana">{{ asana() }}</span>
         {%- else %}<span title="Sent to Notesnook" aria-label="Sent to Notesnook">{{ notesnook() }}</span>
+        {%- endif %}
         {%- endif %}</div>
       <div><form method="post" action="/restore/{{ m.audio_filename }}"><button class="btn binbtn" type="submit">Restore</button></form></div>
       <div><form method="post" action="/purge/{{ m.audio_filename }}" onsubmit="return confirm('Permanently delete this recording? This cannot be undone.');"><button class="btn binbtn danger" type="submit">Delete</button></form></div>
