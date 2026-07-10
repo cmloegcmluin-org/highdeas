@@ -575,6 +575,12 @@ def create_app(service, inbox_dir, bin_dir, launch_drive=None):
             return (f"Submit failed: {exc}", 502)
         return ("", 204)
 
+    @app.post("/reorder")
+    def reorder():
+        """Persist the order a drag-and-drop left the inbox rows in, top to bottom."""
+        service.reorder(request.form.getlist("order"))
+        return ("", 204)
+
     @app.post("/delete/<path:filename>")
     def delete(filename):
         service.delete(filename)

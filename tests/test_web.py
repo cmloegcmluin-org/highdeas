@@ -15,9 +15,13 @@ class FakeService:
         self.purged = []
         self.emptied = 0
         self.restored_all = 0
+        self.reordered = []
 
     def refresh(self):
         self.refreshed += 1
+
+    def reorder(self, audio_filenames):
+        self.reordered.append(list(audio_filenames))
 
     def pending(self):
         return self._pending
@@ -334,6 +338,17 @@ def test_index_shows_a_per_row_sending_state_while_a_submit_is_in_flight(tmp_pat
     # so Submit all visibly works through the list instead of rows silently vanishing.
     assert "Sending" in body           # the in-flight button label
     assert ".memo.sending" in body     # the dim-and-lock style the JS toggles
+
+
+def test_reorder_route_persists_the_dropped_order_and_returns_204(tmp_path):
+    service = FakeService()
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    resp = client.post("/reorder", data={"order": ["c.m4a", "a.m4a", "b.m4a"]})
+
+    # The client posts every row in its on-screen order after a drop.
+    assert service.reordered == [["c.m4a", "a.m4a", "b.m4a"]]
+    assert resp.status_code == 204
 
 
 def test_edit_route_saves_fields_and_returns_204(tmp_path):

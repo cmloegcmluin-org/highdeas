@@ -112,6 +112,18 @@ def test_refresh_surfaces_a_new_recording_that_reuses_a_retired_memos_name(tmp_p
     assert (bin_dir / "voice-8.m4a").read_bytes() == b"OLD-RECORDING"
 
 
+def test_reorder_rearranges_the_pending_inbox(tmp_path):
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="a.m4a", status="pending", recorded_at="2026-07-07T01:00"))
+    store.upsert(Memo(audio_filename="b.m4a", status="pending", recorded_at="2026-07-07T02:00"))
+    service = InboxService(inbox_dir="/inbox", store=store,
+                            transcriber=FakeTranscriber(), bin_dir=tmp_path / "bin")
+
+    service.reorder(["b.m4a", "a.m4a"])
+
+    assert [m.audio_filename for m in service.pending()] == ["b.m4a", "a.m4a"]
+
+
 def test_submit_routes_then_marks_processed(tmp_path):
     store = MemoStore(tmp_path / "memos.db")
     store.upsert(Memo(audio_filename="a.m4a", route="drive", status="pending"))
@@ -244,6 +256,29 @@ def test_restore_moves_audio_back_to_inbox_and_marks_pending(tmp_path):
     assert memo.processed_at == ""
     assert not (bin_dir / "a.m4a").exists()  # left the bin
     assert (inbox / memo.audio_filename).read_bytes() == b"A"  # back in the inbox, playable
+
+
+def test_restore_drops_a_memos_old_position_so_it_lands_at_the_end(tmp_path):
+    # A memo carries the slot it was dragged into. Coming back from the bin it must
+    # forget it, or it reappears in the middle of a since-rearranged inbox.
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "old.m4a").write_bytes(b"OLD")
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="here.m4a", status="pending"))
+    store.upsert(Memo(audio_filename="old.m4a", status="deleted", processed_at="2026-07-07T03:00"))
+    store.reorder(["old.m4a", "here.m4a"])  # old.m4a used to lead the inbox
+
+    InboxService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
+                  bin_dir=bin_dir).restore("old.m4a")
+
+    # Restore re-keys the recording, so identify it by what it isn't: it trails the
+    # memo that stayed, instead of reclaiming its old leading slot.
+    pending = store.list_by_status("pending")
+    assert len(pending) == 2
+    assert pending[0].audio_filename == "here.m4a"
 
 
 def test_restoring_a_legacy_named_memo_does_not_duplicate_it_on_the_next_refresh(tmp_path):

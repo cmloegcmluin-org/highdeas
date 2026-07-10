@@ -97,6 +97,10 @@ class InboxService:
     def edit(self, audio_filename, **fields):
         self._store.update(audio_filename, **fields)
 
+    def reorder(self, audio_filenames):
+        """Fix the inbox to the order the user dragged its rows into."""
+        self._store.reorder(audio_filenames)
+
     def submit(self, audio_filename):
         self._route(self._store.get(audio_filename))
         self._retire_audio(audio_filename)
@@ -108,6 +112,9 @@ class InboxService:
 
     def restore(self, audio_filename):
         """Bring a binned recording back into the inbox as a pending memo.
+
+        It rejoins the end of the list rather than the slot it once held, since the
+        inbox it left may have been rearranged since.
 
         Realign the memo and its file with the recording's content key on the way
         in: a memo retired before content-keying is stored under its raw inbox
@@ -126,7 +133,7 @@ class InboxService:
                 # A pre-fix restore already spawned this recording's keyed twin;
                 # drop the raw duplicate and converge onto the keyed memo.
                 self._store.remove(audio_filename)
-        self._store.update(key, status="pending", processed_at="")
+        self._store.update(key, status="pending", processed_at="", position=None)
 
     def purge(self, audio_filename):
         """Permanently remove a single binned recording: its audio and its record."""
