@@ -93,7 +93,7 @@ def find_new_recordings(inbox_dir, known_names, *, still_in_cloud=is_cloud_place
     return found
 
 
-def recording_key(path):
+def recording_key(path, name=None):
     """The filename a recording is stored under, unique to the recording itself.
 
     The iOS Shortcut recycles inbox names — every new recording lands as
@@ -105,13 +105,18 @@ def recording_key(path):
 
     Only Highdeas writes a key into a name, so a name that already carries one is
     taken at its word: re-keying is idempotent, and — since opening a file is what
-    pulls it down from iCloud — an adopted recording is never read again to be named."""
+    pulls it down from iCloud — an adopted recording is never read again to be named.
+
+    `name` keys the content of `path` as if it were stored under that filename:
+    an upload sits staged under a temp name ingest ignores, but must land under
+    the key of the filename the client intended."""
     path = Path(path)
-    if _KEY_SUFFIX.search(path.stem):
-        return path.name
+    named = Path(name) if name else path
+    if _KEY_SUFFIX.search(named.stem):
+        return named.name
     fingerprint = f"{path.stat().st_size}:{recording_time(path)}"
     digest = hashlib.sha256(fingerprint.encode()).hexdigest()[:12]
-    return f"{path.stem}-{digest}{path.suffix}"
+    return f"{named.stem}-{digest}{named.suffix}"
 
 
 def recording_time(path):

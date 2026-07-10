@@ -204,6 +204,19 @@ def test_recording_key_distinguishes_a_reused_name_with_new_content(tmp_path):
     assert recording_key(second).endswith(".m4a")
 
 
+def test_recording_key_can_key_a_staged_file_under_its_intended_name(tmp_path):
+    # An upload is staged under a temp name ingest ignores (.part); its key must
+    # be built from the filename the client intended, not the staging name.
+    staged = tmp_path / "upload-1234.part"
+    staged.write_bytes(_mp4(1_700_000_000))
+
+    key = recording_key(staged, name="voice-8.m4a")
+
+    landed = tmp_path / "voice-8.m4a"
+    staged.rename(landed)
+    assert key == recording_key(landed)
+
+
 def test_recording_key_names_an_already_keyed_recording_without_reading_it(tmp_path):
     raw = tmp_path / "voice-8.m4a"
     raw.write_bytes(_mp4(1_700_000_000))
