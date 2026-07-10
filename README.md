@@ -12,26 +12,35 @@ recording.
    no manual upload.
 2. **Ingest** — the app watches the inbox and adopts each new recording under a
    content-unique name, so a recycled inbox filename can never collide with a past memo.
-3. **Transcribe** — each recording is transcribed locally (`onnx-asr`, CPU). This runs
-   in the background, so the window opens instantly and memos stream in as they finish.
+3. **Transcribe** — each recording is transcribed locally (`onnx-asr`, CPU), along with
+   the second each word was spoken on. This runs in the background, so the window opens
+   instantly and memos stream in as they finish.
 4. **Inbox** — a local Flask page opens in its own native window (Edge WebView2), at the
    size, monitor, and maximized state it was last closed at — maximized until you say
-   otherwise. Each memo row has its audio, an auto-saving editable transcript, a chevron
-   that moves the transcript into the Name field, a Name box, a Notesnook⇄Drive toggle,
-   and Submit / Delete. Row numbers, a live item count, and a frozen title bar + column
-   headers (carrying **Submit all** / **Trash all**) stay in reach as the list scrolls.
-   Recordings that arrive while the page is open are polled in automatically.
-5. **Route on submit**
-   - **Notesnook** — the transcript becomes a note via the Notesnook Inbox API. An
-     unnamed memo is titled the way Notesnook names untitled notes (`Note <date> <time>`).
+   otherwise. Each memo row has its audio, a transcript preview, a chevron that moves the
+   transcript into the Name field, a Name box, a Notesnook⇄Drive toggle, and Submit /
+   Delete. Drag a row by its number to reorder the list, or tick a few and **Consolidate**
+   them into one. Row numbers, a live item count, and a frozen title bar + column headers
+   (carrying **Submit all** / **Trash all**) stay in reach as the list scrolls. Recordings
+   that arrive while the page is open are polled in automatically.
+5. **Edit** — clicking a transcript opens the note in a near-fullscreen editor, so a rough
+   transcription gets fixed here rather than shipped out half-finished. The recording sits
+   up top as a scrubbable waveform and starts playing; each word lights up in the text as
+   it's spoken (highlighted, never selected, so your caret stays where you left it). The
+   title has room to be read whole, and the body takes bulleted and numbered lists. Edits
+   auto-save, and the words re-match to the text as you change it.
+6. **Route on submit**
+   - **Notesnook** — the transcript becomes a note via the Notesnook Inbox API, lists and
+     all. An unnamed memo is titled the way Notesnook names untitled notes
+     (`Note <date> <time>`).
    - **Google Drive (music)** — the audio is copied into a dated
      `_YYYY_MM_DD_NOT_YET_PROCESSED_MUSIC` folder under your Drive base, renamed from the
      memo's name, with a `.docx` of the transcript alongside if there is one.
-6. **Retire to the bin** — on Submit or Delete the recording leaves the inbox for a
+7. **Retire to the bin** — on Submit or Delete the recording leaves the inbox for a
    local bin, kept beside the inbox by default so the move stays inside iCloud and never
    triggers a per-file "move off iCloud" prompt. The inbox therefore only ever holds
    unprocessed recordings.
-7. **Bin tab** (`/bin`) — lists everything retired (sent to Notesnook, sent to Drive, or
+8. **Bin tab** (`/bin`) — lists everything retired (sent to Notesnook, sent to Drive, or
    deleted) with its audio, transcript, a destination icon, and date, plus **Restore** /
    **Delete** and bulk **Restore all** / **Empty bin**. The Drive icon reopens that memo
    in Drive in your chosen Chrome profile. Items older than 90 days are purged
