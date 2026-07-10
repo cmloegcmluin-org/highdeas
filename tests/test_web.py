@@ -161,6 +161,19 @@ def test_index_renders_the_editor_dialog_once_for_every_row(tmp_path):
     assert 'data-cmd="insertOrderedList"' in body
 
 
+def test_the_editor_dialog_stays_hidden_until_something_opens_it(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    css = asset(client, "app.css")
+    # The browser hides a closed <dialog> with UA `display: none`, but ANY author
+    # `display` on the element overrides that — an unconditional `display: flex`
+    # painted the empty editor at the bottom of the page on every load. The flex
+    # layout may apply only while the dialog is actually open.
+    editor_rule = css.split(".editor {", 1)[1].split("}", 1)[0]
+    assert "display" not in editor_rule
+    assert ".editor[open]" in css
+
+
 def test_the_editor_autoplays_and_highlights_without_selecting(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 

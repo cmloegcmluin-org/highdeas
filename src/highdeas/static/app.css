@@ -144,8 +144,11 @@ h1 { font-size: 1.35rem; margin: 0; }
 .editor { width: min(1100px, 92vw); height: min(900px, 90vh); box-sizing: border-box;
           padding: 20px 24px 18px; border: none; border-radius: 14px;
           background: Canvas; color: CanvasText; overflow: hidden;
-          box-shadow: 0 24px 64px rgba(0,0,0,.35);
-          display: flex; flex-direction: column; gap: 14px; }
+          box-shadow: 0 24px 64px rgba(0,0,0,.35); }
+/* Lay the dialog out only while it's open: the browser hides a closed <dialog>
+   with UA `display: none`, and any unconditional author `display` overrides that —
+   which painted the empty editor at the bottom of every page load. */
+.editor[open] { display: flex; flex-direction: column; gap: 14px; }
 .editor::backdrop { background: rgba(0,0,0,.55); }
 .editor-head { display: flex; align-items: center; gap: 14px; }
 /* The title gets the full width of the dialog, so a long auto-title reads whole. */
