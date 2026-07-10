@@ -8,8 +8,13 @@ import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from highdeas import audio
 from highdeas.ingest import find_new_recordings, recording_key, recording_time
 from highdeas.store import Memo
+
+# The joined recording is written here before it is named by its content, in the bin
+# rather than the inbox: a half-written file in the inbox would be ingested as a memo.
+_JOINING = "group"
 
 
 def _no_router(memo):
@@ -25,6 +30,12 @@ def _word_times(words):
     return json.dumps([[word.start, word.text] for word in words], separators=(",", ":"))
 
 
+def _shifted(memo, offset):
+    """A note's word timings as they read once its recording starts `offset` seconds in."""
+    spoken = json.loads(memo.word_times) if memo.word_times else []
+    return [[round(start + offset, 3), word] for start, word in spoken]
+
+
 def _merges(memo):
     """The trail of merges a group has swallowed, oldest first."""
     return json.loads(memo.merges) if memo.merges else []
@@ -35,11 +46,11 @@ def _trail(steps):
     return json.dumps(steps) if steps else ""
 
 
-def _step(target, absorbed):
-    """One merge: what it took in, and the memo as it read before it took them."""
-    return {"files": [memo.audio_filename for memo in absorbed],
-            "kind": target.kind or "note", "name": target.name,
-            "transcript": target.transcript}
+def _step(memos, group=None):
+    """One merge: the notes it took in, and the group as it read before it took them."""
+    return {"files": [memo.audio_filename for memo in memos],
+            "name": group.name if group else "",
+            "transcript": group.transcript if group else ""}
 
 
 def _bullet(memo):
@@ -54,7 +65,8 @@ def _bullet(memo):
 class InboxService:
     def __init__(self, *, inbox_dir, store, transcriber, bin_dir,
                  find_new=find_new_recordings, route=_no_router, clock=_now,
-                 recorded_time=recording_time):
+                 recorded_time=recording_time, join_audio=audio.join,
+                 audio_length=audio.duration):
         self._inbox_dir = inbox_dir
         self._store = store
         self._transcriber = transcriber
@@ -63,6 +75,8 @@ class InboxService:
         self._route = route
         self._clock = clock
         self._recorded_time = recorded_time
+        self._join_audio = join_audio
+        self._audio_length = audio_length
         self._refresh_lock = threading.Lock()
 
     def refresh(self):
@@ -140,11 +154,15 @@ class InboxService:
     def group(self, audio_filenames):
         """Consolidate the named pending notes into a single group memo.
 
-        The notes become bullets, in inbox order rather than the order they were
-        picked. An already-grouped note among them is the survivor — the others fold
-        into its existing bullets — otherwise the topmost note is promoted to a group
-        and its own name and transcript become the first bullet, leaving the group
-        free to be titled. The absorbed notes retire to the bin, still restorable.
+        A group is a memo the app makes, not a note promoted out of the pile. Every note
+        picked becomes a bullet — in inbox order, not the order they were ticked, a named
+        one reading "- Name: transcript" — and every one of them retires to the bin. What
+        stands in their place is a new memo whose recording is theirs joined end to end,
+        carrying their word timings slid to where each lands in it. It sits where the
+        topmost note sat, bound for the same destination, waiting to be titled.
+
+        Pick a group among them and it is the group that grows: the rest fold into its
+        bullets, its recording gains theirs on the end, and its name is left alone.
 
         The merge joins the group's trail, so it can be walked back on its own later."""
         chosen = [m for m in self.pending() if m.audio_filename in set(audio_filenames)]
@@ -153,53 +171,135 @@ class InboxService:
         groups = [memo for memo in chosen if memo.kind == "group"]
         if len(groups) > 1:
             raise ValueError("Two groups have no obvious survivor; merge into one at a time.")
-        target = groups[0] if groups else chosen[0]
-        absorbed = [memo for memo in chosen if memo is not target]
-        # A note promoted to a group starts as a group holding one bullet: its own.
-        head = target.transcript.rstrip() if target.kind == "group" else _bullet(target)
-        self._store.update(
-            target.audio_filename,
-            transcript="\n".join([head, *(_bullet(memo) for memo in absorbed)]),
-            kind="group",
-            name=target.name if target.kind == "group" else "",
-            merges=_trail(_merges(target) + [_step(target, absorbed)]),
-        )
+        group = groups[0] if groups else None
+        absorbed = [memo for memo in chosen if memo is not group]
         for memo in absorbed:
             self._retire(memo.audio_filename, "grouped")
-        return self._store.get(target.audio_filename)
+        if group is None:
+            return self._found_group(chosen)
+        trail = _merges(group) + [_step(absorbed, group)]
+        return self._rejoin(group, trail, name=group.name, transcript="\n".join(
+            [group.transcript.rstrip(), *(_bullet(memo) for memo in absorbed)]))
+
+    def _found_group(self, members):
+        """Make the memo that stands in the place of the notes it was folded from."""
+        lead, trail = members[0], [_step(members)]
+        joined = self._join_members(trail, Path(lead.audio_filename).suffix)
+        self._store.upsert(Memo(
+            audio_filename=joined,
+            transcript="\n".join(_bullet(memo) for memo in members),
+            kind="group",
+            route=lead.route,
+            asana_parent=lead.asana_parent,
+            status="pending",
+            created_at=self._clock(),
+            recorded_at=lead.recorded_at,
+            position=lead.position,
+            word_times=self._join_timings(trail),
+            merges=_trail(trail),
+        ))
+        return self._store.get(joined)
 
     def unmerge(self, audio_filename):
         """Walk back the last merge this group swallowed, and only that one.
 
         The notes that merge took in return to the inbox with their own name, transcript,
         and recording, in the place each held, and the group reads as it did before it —
-        which, for the merge that made the group, is a plain note again. Bullets typed
-        into the group since are let go: this is the merge coming undone, not the bullets
-        being unpicked.
+        its recording rejoined out of what is left. Walk back the merge that made the
+        group and the group itself goes: it was never a note, and the notes it stood for
+        are all back. Bullets typed into it since are let go: this is the merge coming
+        undone, not the bullets being unpicked.
 
         A group folded before the trail existed has no merge to walk back, so it only
-        stops being a group, keeping the bullets it is holding rather than emptying
-        itself. The notes it ate stay in the bin, restorable one at a time."""
+        stops being a group, keeping the bullets and the recording it is holding. The
+        notes it ate stay in the bin, restorable one at a time.
+
+        Answers with the group's filename, which changes with its recording — or "" when
+        the group is gone."""
         group = self._store.get(audio_filename)
         if group is None or group.kind != "group":
             raise ValueError("Only a group can have a merge walked back.")
         trail = _merges(group)
         if not trail:
             self._store.update(audio_filename, kind="note")
-            return
+            return audio_filename
         step = trail.pop()
         for filename in step["files"]:
             self._unretire(filename)
-        self._store.update(audio_filename, kind=step["kind"], name=step["name"],
-                           transcript=step["transcript"], merges=_trail(trail))
+        if not trail:
+            self._discard_recording(audio_filename)
+            self._store.remove(audio_filename)
+            return ""
+        return self._rejoin(group, trail, name=step["name"],
+                            transcript=step["transcript"]).audio_filename
 
     def ungroup(self, audio_filename):
         """Break a group all the way back into the separate notes it was folded from."""
         group = self._store.get(audio_filename)
         if group is None or group.kind != "group":
             raise ValueError("Only a group can be broken back up into notes.")
-        while self._store.get(audio_filename).kind == "group":
-            self.unmerge(audio_filename)
+        while audio_filename:
+            group = self._store.get(audio_filename)
+            if group is None or group.kind != "group":
+                break
+            audio_filename = self.unmerge(audio_filename)
+
+    def _rejoin(self, group, trail, *, name, transcript):
+        """Rebuild the group's recording out of the members its trail now names.
+
+        The recording is named by its content, so a group that gains or loses a member
+        changes its filename with it — the memo is re-keyed onto the new recording and
+        the one it replaces is dropped."""
+        joined = self._join_members(trail, Path(group.audio_filename).suffix)
+        if joined != group.audio_filename:
+            self._store.rekey(group.audio_filename, joined)
+            self._discard_recording(group.audio_filename)
+        self._store.update(joined, name=name, transcript=transcript, kind="group",
+                           merges=_trail(trail), word_times=self._join_timings(trail))
+        return self._store.get(joined)
+
+    def _members(self, trail):
+        """Every note a group has swallowed, in the order its bullets read."""
+        return [filename for step in trail for filename in step["files"]]
+
+    def _recording(self, audio_filename):
+        """Where a member's recording is right now: the inbox if it is back, else the bin."""
+        landed = Path(self._inbox_dir) / audio_filename
+        binned = Path(self._bin_dir) / audio_filename
+        return landed if landed.exists() else (binned if binned.exists() else None)
+
+    def _join_members(self, trail, suffix):
+        """The group's recording: its members' joined, named by its own content.
+
+        Written into the bin first. The inbox is scanned for new recordings, and a
+        half-written file there would be ingested as a memo of its own."""
+        sources = [path for path in map(self._recording, self._members(trail)) if path]
+        bin_dir = Path(self._bin_dir)
+        bin_dir.mkdir(parents=True, exist_ok=True)
+        staged = bin_dir / f"{_JOINING}{suffix}"
+        self._join_audio(sources, staged)
+        joined = recording_key(staged)
+        staged.replace(Path(self._inbox_dir) / joined)
+        return joined
+
+    def _join_timings(self, trail):
+        """The members' word timings, each slid to where its recording starts."""
+        spoken, offset = [], 0.0
+        for filename in self._members(trail):
+            source = self._recording(filename)
+            if source is None:
+                continue
+            memo = self._store.get(filename)
+            if memo is not None:
+                spoken.extend(_shifted(memo, offset))
+            offset += self._audio_length(source)
+        return json.dumps(spoken, separators=(",", ":"))
+
+    def _discard_recording(self, audio_filename):
+        """Drop a recording the app made and no memo plays any more."""
+        made = Path(self._inbox_dir) / audio_filename
+        if made.exists():
+            made.unlink()
 
     def submit(self, audio_filename):
         outcome = self._route(self._store.get(audio_filename)) or {}
