@@ -18,6 +18,7 @@
     {% if memos %}{% block headrow %}{% endblock %}{% endif %}
   </div>
   <main id="content">{% block content %}{% endblock %}</main>
+  {% block dialogs %}{% endblock %}
   {% block scripts %}{% endblock %}
 </body>
 </html>

@@ -1,6 +1,7 @@
 /* The inbox list: auto-save, submit, trash, bulk actions, drag-to-reorder,
    consolidating the ticked rows, and the poll that streams in recordings arriving
-   while the app is open. */
+   while the app is open. A row's transcript is a preview — clicking it hands the note
+   to the editor dialog (editor.js), which reports edits back here to be saved. */
 (function () {
   'use strict';
 
@@ -71,10 +72,12 @@
 
   function urlFor(prefix, memo) { return prefix + encodeURIComponent(memo.dataset.file); }
 
+  function transcriptOf(memo) { return memo.querySelector('.transcript').textContent; }
+
   function fields(memo) {
     return new URLSearchParams({
       name: memo.querySelector('input[name=name]').value,
-      transcript: memo.querySelector('textarea[name=transcript]').value,
+      transcript: transcriptOf(memo),
       route: memo.querySelector('input[name=route]').checked ? 'drive' : 'notesnook',
     });
   }
@@ -184,7 +187,7 @@
 
   // Rows move as you drag over them, so the list you let go of is the list you keep.
   content.addEventListener('dragover', function (event) {
-    if (!dragged) return;  // dragging text out of a textarea, not a row
+    if (!dragged) return;  // dragging a text selection, not a row by its handle
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
     var over = event.target.closest('.memo');
@@ -196,15 +199,43 @@
   });
   content.addEventListener('drop', function (event) { if (dragged) event.preventDefault(); });
 
+  // The transcriber's word timings, [[startSeconds, word], …], ride along on the row
+  // so opening the editor costs no extra request. Older memos carry none.
+  function wordsOf(memo) {
+    try { return memo.dataset.words ? JSON.parse(memo.dataset.words) : []; }
+    catch (err) { return []; }
+  }
+
+  function openEditor(memo) {
+    if (memo.classList.contains('sending') || !window.HighdeasEditor) return;
+    var name = memo.querySelector('input[name=name]');
+    var preview = memo.querySelector('.transcript');
+    window.HighdeasEditor.open({
+      audioUrl: urlFor('/audio/', memo),
+      name: name.value,
+      transcript: transcriptOf(memo),
+      words: wordsOf(memo),
+      onChange: function (note) {
+        name.value = note.name;
+        preview.textContent = note.transcript;
+        scheduleSave(memo);
+      },
+    });
+  }
+
   function wire(memo) {
-    var transcript = memo.querySelector('textarea[name=transcript]');
+    var preview = memo.querySelector('.transcript');
     var name = memo.querySelector('input[name=name]');
     var route = memo.querySelector('input[name=route]');
     var handle = memo.querySelector('.num');
-    [transcript, name].forEach(function (el) {
-      el.addEventListener('input', function () { scheduleSave(memo); });
-      el.addEventListener('blur', function () { flush(memo); });
+    preview.addEventListener('click', function () { openEditor(memo); });
+    preview.addEventListener('keydown', function (event) {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      openEditor(memo);
     });
+    name.addEventListener('input', function () { scheduleSave(memo); });
+    name.addEventListener('blur', function () { flush(memo); });
     route.addEventListener('change', function () { flush(memo); });
     memo.querySelector('.pick').addEventListener('change', syncPicks);
     handle.addEventListener('dragstart', function (event) {
@@ -219,8 +250,8 @@
       saveOrder();
     });
     memo.querySelector('.copy').addEventListener('click', function () {
-      name.value = transcript.value;
-      transcript.value = '';
+      name.value = transcriptOf(memo);
+      preview.textContent = '';
       flush(memo);
     });
     memo.querySelector('.go').addEventListener('click', function () {
@@ -257,7 +288,7 @@
       if (!response.ok) throw new Error('Failed');
       return response.json();
     }).then(function (merged) {
-      keeper.querySelector('textarea[name=transcript]').value = merged.transcript;
+      keeper.querySelector('.transcript').textContent = merged.transcript;
       keeper.querySelector('input[name=name]').value = merged.name;
       keeper.querySelector('.pick').checked = false;
       setBusy(keeper, false);

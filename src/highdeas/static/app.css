@@ -1,8 +1,8 @@
-/* One stylesheet shared by the inbox and bin pages so their chrome is identical —
-   same title bar, top-right link, and header row — and nothing jumps when you flip
-   between them. The two grids share widths too: a 44px row-handle column, then
-   282 | flex | a 334px middle band | two 104px action columns, so only the middle
-   band's contents differ per page. */
+/* One stylesheet for the inbox, the bin, and the note editor, so their chrome is
+   identical — same title bar, top-right link, and header row — and nothing jumps
+   when you flip between them. The two grids share widths too: a 44px row-handle
+   column, then 282 | flex | a 334px middle band | two 104px action columns, so only
+   the middle band's contents differ per page. */
 
 /* Reserve the scrollbar gutter on every page so a page with a scrollbar and one
    without stay the same width — otherwise margin:auto re-centers and the layout
@@ -68,13 +68,21 @@ h1 { font-size: 1.35rem; margin: 0; }
 /* Inbox rows */
 .memo { display: contents; }
 .memo audio { width: 100%; }
-.memo textarea, .memo input[type=text] {
+.memo input[type=text] {
   width: 100%; box-sizing: border-box; padding: 8px; font: inherit;
   border: 1px solid rgba(128,128,128,.4); border-radius: 8px; background: transparent; color: inherit; }
-.memo textarea { min-height: 60px; resize: vertical; }
+/* The transcript is a preview, not a field: it opens the editor dialog, where the
+   note has room to be worked on. Clamped so a long memo can't stretch its row. */
+.memo .transcript { box-sizing: border-box; padding: 8px; font: inherit; cursor: pointer;
+                    border: 1px solid rgba(128,128,128,.4); border-radius: 8px;
+                    white-space: pre-wrap; overflow: hidden; min-height: 60px;
+                    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3;
+                    transition: border-color .15s, background .15s; }
+.memo .transcript:hover, .memo .transcript:focus-visible { border-color: #3b82f6; }
+.memo .transcript:empty::before { content: "Add a transcript…"; opacity: .45; }
 /* A row whose submit/trash just failed: outline its fields so it's obvious which
    one stayed behind. */
-.memo.failed textarea, .memo.failed input[type=text] { border-color: #e5484d; }
+.memo.failed .transcript, .memo.failed input[type=text] { border-color: #e5484d; }
 /* A row mid-request: dimmed and locked so a bulk run reads as working through the
    list, and so a row can't be double-submitted. A display:contents row generates no
    box of its own, so dimming has to reach its cells — set on the row it does nothing. */
@@ -96,8 +104,8 @@ h1 { font-size: 1.35rem; margin: 0; }
              transition: color .15s, opacity .15s, border-color .15s; }
 .memo .del:hover { opacity: 1; color: #e5484d; border-color: #e5484d; }
 .memo .del svg { width: 16px; height: 16px; display: block; margin: 0 auto; }
-.memo .go { font: inherit; padding: 9px 0; width: 100%; border-radius: 8px; border: none;
-            background: #3b82f6; color: #fff; cursor: pointer; }
+.go { font: inherit; padding: 9px 0; width: 100%; border-radius: 8px; border: none;
+      background: #3b82f6; color: #fff; cursor: pointer; }
 .toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
 .toggle input { position: absolute; width: 0; height: 0; opacity: 0; }
 .toggle .ic { width: 18px; height: 18px; opacity: .35; transition: opacity .15s; }
@@ -129,3 +137,55 @@ h1 { font-size: 1.35rem; margin: 0; }
 .binbtn.restore:hover { border-color: #3b82f6; color: #3b82f6; }
 .binbtn.purge:hover { border-color: #e5484d; color: #e5484d; }
 .row form { width: 100%; margin: 0; }
+
+/* ---- The note editor -------------------------------------------------------
+   A near-fullscreen dialog: the recording as a scrubbable waveform up top, the
+   whole title on one line, and a rich body with room to think in. */
+.editor { width: min(1100px, 92vw); height: min(900px, 90vh); box-sizing: border-box;
+          padding: 20px 24px 18px; border: none; border-radius: 14px;
+          background: Canvas; color: CanvasText; overflow: hidden;
+          box-shadow: 0 24px 64px rgba(0,0,0,.35);
+          display: flex; flex-direction: column; gap: 14px; }
+.editor::backdrop { background: rgba(0,0,0,.55); }
+.editor-head { display: flex; align-items: center; gap: 14px; }
+/* The title gets the full width of the dialog, so a long auto-title reads whole. */
+.editor-name { flex: 1; min-width: 0; font: inherit; font-size: 1.3rem; font-weight: 600;
+               padding: 8px 10px; border-radius: 9px; background: transparent; color: inherit;
+               border: 1px solid rgba(128,128,128,.35); }
+.editor-name:focus { outline: none; border-color: #3b82f6; }
+.editor-close { flex: none; font: inherit; font-size: 1.7rem; line-height: 1; width: 40px; height: 40px;
+                border: none; border-radius: 9px; background: transparent; color: inherit;
+                opacity: .5; cursor: pointer; transition: opacity .15s; }
+.editor-close:hover { opacity: 1; }
+
+.player { display: flex; flex-direction: column; gap: 8px; }
+.wave { display: block; width: 100%; height: 96px; border-radius: 10px; cursor: pointer;
+        background: rgba(128,128,128,.08); touch-action: none; }
+.player-bar { display: flex; align-items: center; gap: 14px; font-size: .85rem; }
+.play { font: inherit; font-size: .85rem; min-width: 76px; padding: 6px 0; border-radius: 8px;
+        cursor: pointer; background: transparent; color: inherit;
+        border: 1px solid rgba(128,128,128,.4); transition: color .15s, border-color .15s; }
+.play:hover { border-color: #3b82f6; color: #3b82f6; }
+.time { opacity: .6; font-variant-numeric: tabular-nums; }
+.wave-note { opacity: .5; }
+.wave-note[hidden] { display: none; }
+
+.toolbar { display: flex; gap: 8px; }
+.tool { font: inherit; font-size: .8rem; padding: 5px 11px; border-radius: 8px; cursor: pointer;
+        background: transparent; color: inherit; border: 1px solid rgba(128,128,128,.4);
+        transition: color .15s, border-color .15s; }
+.tool:hover { border-color: #3b82f6; color: #3b82f6; }
+
+.editor-body { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 16px; font-size: 1.05rem;
+               border: 1px solid rgba(128,128,128,.35); border-radius: 10px; }
+.editor-body:focus { outline: none; border-color: #3b82f6; }
+.editor-body p { margin: 0 0 .55em; min-height: 1.45em; }
+.editor-body ul, .editor-body ol { margin: 0 0 .55em; padding-left: 1.6em; }
+.editor-body li { margin: 0 0 .2em; }
+/* The word being spoken right now. The CSS Custom Highlight API paints it without
+   touching the DOM or the selection, so it lights up without ever being selected —
+   the caret and any real selection stay exactly where the user left them. */
+::highlight(spoken) { background-color: rgba(250, 204, 21, .45); }
+
+.editor-foot { display: flex; justify-content: flex-end; }
+.editor-foot .go { width: 120px; }

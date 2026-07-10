@@ -103,7 +103,7 @@ def test_index_trash_all_asks_for_confirmation(tmp_path):
     assert "confirm(" in asset(client, "inbox.js")
 
 
-def test_pages_load_the_shared_stylesheet_and_the_inbox_loads_its_script(tmp_path):
+def test_pages_load_the_shared_stylesheet_and_the_inbox_loads_its_scripts(tmp_path):
     # The behaviour asserted below lives in these files, so every page has to pull
     # them in — a page that forgets one looks fine in the markup and does nothing.
     service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hi")],
@@ -113,7 +113,85 @@ def test_pages_load_the_shared_stylesheet_and_the_inbox_loads_its_script(tmp_pat
     index = client.get("/").data.decode()
     assert "/static/app.css" in index
     assert "/static/inbox.js" in index
+    assert "/static/editor.js" in index
     assert "/static/app.css" in client.get("/bin").data.decode()
+
+
+def test_a_rows_transcript_is_a_preview_that_opens_the_editor(tmp_path):
+    # Not a draggable textarea any more: the row shows the transcript, and clicking
+    # it hands the note to the editor dialog, where it has room to be worked on.
+    service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hello there")])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data.decode()
+
+    assert "<textarea" not in body
+    assert 'class="transcript"' in body
+    assert ">hello there</div>" in body
+
+
+def test_a_row_carries_its_word_timings_so_the_editor_can_highlight_along(tmp_path):
+    # The timings ride along on the row, so opening the editor costs no extra request.
+    service = FakeService(pending=[
+        Memo(audio_filename="a.m4a", transcript="hi there", word_times='[[0.5,"hi"],[0.9,"there"]]'),
+    ])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data.decode()
+
+    assert "[[0.5,&#34;hi&#34;],[0.9,&#34;there&#34;]]" in body  # escaped into data-words
+
+
+def test_index_renders_the_editor_dialog_once_for_every_row(tmp_path):
+    service = FakeService(pending=[
+        Memo(audio_filename="a.m4a", transcript="one"),
+        Memo(audio_filename="b.m4a", transcript="two"),
+    ])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data.decode()
+
+    # One dialog serves every row — the client fills it in on open.
+    assert body.count('id="editor"') == 1
+    assert 'id="editor-name"' in body       # the whole title, on one line
+    assert 'id="editor-wave"' in body       # the scrubbable waveform
+    assert 'id="editor-body"' in body       # the big rich-text body
+    assert 'contenteditable="true"' in body
+    assert 'data-cmd="insertUnorderedList"' in body
+    assert 'data-cmd="insertOrderedList"' in body
+
+
+def test_the_editor_autoplays_and_highlights_without_selecting(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    script = asset(client, "editor.js")
+    # It starts playing on open — the click that opened the dialog is the gesture
+    # autoplay needs.
+    assert "audio.play()" in script
+    # And it lights the spoken word with the Custom Highlight API, which paints a
+    # range without touching the selection or the caret.
+    assert "CSS.highlights.set('spoken'" in script
+    assert "::highlight(spoken)" in asset(client, "app.css")
+
+
+def test_the_editor_saves_on_the_way_out_rather_than_after_it_has_closed(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    script = asset(client, "editor.js")
+    # A dialog's `close` event is dispatched from a queued task, so a final save hung
+    # on it loses an edit made in the moment before closing. Both exits flush first:
+    # the buttons through closeEditor, and Esc through the `cancel` it fires on the
+    # way to closing.
+    assert "function closeEditor" in script
+    assert "dialog.addEventListener('cancel', teardown)" in script
+
+
+def test_the_editor_is_not_rendered_on_the_bin_page(tmp_path):
+    # Binned notes are read-only; nothing there to edit.
+    service = FakeService(binned=[Memo(audio_filename="b.m4a", status="deleted", processed_at="2026-07-07T03:00")])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    assert 'id="editor"' not in client.get("/bin").data.decode()
 
 
 def test_index_bulk_controls_sit_in_the_column_headers(tmp_path):
