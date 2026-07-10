@@ -274,10 +274,10 @@ def test_the_move_button_points_the_way_the_text_will_travel(tmp_path):
     assert "classList.toggle('back', back)" in js
     assert "'Move transcript into Name'" in js and "'Move name into Transcript'" in js
     assert ".memo .move.back svg" in css  # the same chevron, turned around
-    # And with both cells empty there is no move to make, either way — a disabled chevron
-    # has to fade past the resting dim the row's icon buttons already sit at.
+    # And with both cells empty there is no move to make, either way, so the chevron is
+    # disabled and takes the one fade every spent button in the app takes.
     assert "btn.disabled" in js
-    assert ".memo .move:disabled" in css
+    assert "opacity: .4" in css.split(".btn:disabled {")[1].split("}")[0]
 
 
 def test_inbox_transcript_has_a_copy_to_clipboard_button(tmp_path):
@@ -329,6 +329,57 @@ def test_index_gives_every_row_a_select_checkbox_under_a_select_all(tmp_path):
     assert body.index('id="select-all"') < body.index('class="pick"')
 
 
+def test_the_select_column_is_exactly_as_wide_as_the_box_it_holds(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    css = asset(client, "app.css")
+    columns = css.split(".grid.inbox")[1].split("grid-template-columns:")[1].split(";")[0].split()
+    box = css.split(".pick, #select-all {")[1].split("}")[0]
+
+    # The rule under a column head is drawn across the whole cell, so a column wider than
+    # its checkbox underlined empty space either side of it. The column is the checkbox.
+    assert "width: 15px" in box
+    assert columns[1] == "15px"
+
+
+def test_a_button_is_faded_only_when_it_is_disabled_and_always_by_the_same_amount(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    css = asset(client, "app.css")
+
+    # The group badge, Submit, the chevron and the bin each carried a fade of their own,
+    # so the same button read at one strength in a row and another in the head above it.
+    # There is one fade in the app now, and it says the button has nothing to do.
+    assert "opacity: .4" in css.split(".btn:disabled {")[1].split("}")[0]
+    for rule in (".memo .move, .memo .del {", ".memo .move:disabled {"):
+        assert rule not in css, rule
+    assert "opacity" not in css.split(".kind svg {")[1].split("}")[0]
+
+
+def test_the_header_rule_runs_on_one_line_under_every_named_column(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    css = asset(client, "app.css")
+
+    # Each head draws its own rule at its own bottom edge, and a head holding a 34px
+    # button is taller than one holding a word — so the underline stepped down under the
+    # bulk buttons. Stretch every head to the row's height and the rule is one line again.
+    assert "align-items: stretch" in css.split(".grid.headrow {")[1].split("}")[0]
+
+
+def test_a_head_that_holds_a_control_is_as_bright_as_the_column_under_it(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    css = asset(client, "app.css")
+
+    # The head cells were dimmed as a whole, which took the select-all box and the bulk
+    # buttons down with them — and no child can climb back out of its parent's opacity,
+    # so a select-all read fainter than the very boxes it ticks. Only a head that is
+    # nothing but a word is a label, and only a label is dimmed.
+    assert "opacity" not in css.split(".grid .head {")[1].split("}")[0]
+    assert "opacity: .55" in css.split(".grid .head:not(:has(button, input)) {")[1].split("}")[0]
+
+
 def test_index_badges_a_group_row_and_leaves_a_plain_note_unbadged(tmp_path):
     service = FakeService(pending=[
         Memo(audio_filename="a.m4a", transcript="a loose note"),
@@ -352,8 +403,9 @@ def test_a_group_row_wears_its_badge_as_the_button_that_breaks_it_up(tmp_path):
     css = asset(client, "app.css")
 
     # The badge carries both faces: whole, and coming apart. Hovering swaps them, so the
-    # click reads as what it does before it is made.
-    assert 'class="group-badge ungroup"' in body
+    # click reads as what it does before it is made. It is a button that acts on its row,
+    # so it takes the same square as the button heading its column.
+    assert 'class="btn icon group-badge ungroup"' in body
     assert 'class="ic-whole"' in body and 'class="ic-broken"' in body
     assert ".ungroup .ic-broken { display: none" in css
     assert ".ungroup:hover .ic-whole" in css
@@ -385,7 +437,7 @@ def test_index_puts_the_group_button_over_the_group_column_and_starts_it_disable
     # Like Submit all and Trash all, it sits in the header of the column it acts on —
     # here the group column, beside the checkboxes that feed it — and wears their chrome,
     # rather than being the one bulk action drawn as a bare glyph.
-    assert 'id="group-picked" class="btn head-btn"' in body
+    assert 'id="group-picked" class="btn icon"' in body
     assert body.index('id="select-all"') < body.index('id="group-picked"') < body.index(">Audio<")
     # Nothing is ticked on load, so there is nothing to group yet.
     opening_tag = body[body.index('id="group-picked"'):]
@@ -494,20 +546,26 @@ def test_every_button_that_is_only_a_glyph_is_the_same_square(tmp_path):
     binned = client.get("/bin").data.decode()
     css = asset(client, "app.css")
 
-    # Undo, Redo, Refresh, the row's chevron, its Submit and its bin, and the bin page's
-    # Restore and Delete are all a picture and nothing else, so they are all one square —
-    # the eye learns the target once and finds it everywhere.
+    # The topbar's three, the column heads, the row's chevron, its Submit and its bin, and
+    # the bin page's Restore and Delete are all a picture and nothing else, so they are all
+    # one square — the eye learns the target once and finds it everywhere.
     square = css.split(".btn.icon {")[1].split("}")[0]
     assert "width: 34px" in square and "height: 34px" in square
     for control in ("undo", "redo", "refresh"):
         assert f'id="{control}" class="btn topbtn icon"' in inbox
+    assert 'id="group-picked" class="btn icon"' in inbox
+    assert 'id="submit-all" class="btn icon"' in inbox
+    assert 'id="trash-all" class="btn icon danger"' in inbox
     assert 'class="btn icon move"' in inbox
     assert 'class="btn icon go"' in inbox
     assert 'class="btn icon del danger"' in inbox
+    assert 'class="btn icon" title="Restore all"' in binned
+    assert 'class="btn icon danger" title="Empty bin"' in binned
     assert 'class="btn icon" title="Restore"' in binned
     assert 'class="btn icon danger" title="Delete"' in binned
-    # No glyph asks for a size of its own any more: .btn svg draws every one of them.
-    assert ".topbtn svg" not in css
+    # No glyph asks for a size of its own any more: .btn svg draws every one of them, and
+    # a head no longer needs a chrome of its own to sit in.
+    assert ".topbtn svg" not in css and ".head-btn" not in css
 
     # A label swap is no way to say "checking" once the label is a picture: spin it.
     js = asset(client, "inbox.js")
@@ -654,8 +712,8 @@ def test_a_column_of_submits_and_its_bulk_head_wear_the_same_glyph(tmp_path):
 
     # A bulk button and the row buttons beneath it do the same thing, so they say it the
     # same way — one paper plane over a column of them, one bin over a column of bins.
-    assert 'id="submit-all" class="btn head-btn" title="Submit all" aria-label="Submit all"' in body
-    assert 'id="trash-all" class="btn head-btn danger" title="Trash all" aria-label="Trash all"' in body
+    assert 'id="submit-all" class="btn icon" title="Submit all" aria-label="Submit all"' in body
+    assert 'id="trash-all" class="btn icon danger" title="Trash all" aria-label="Trash all"' in body
     assert 'class="btn icon go" title="Submit" aria-label="Submit"><svg' in body
     assert ">Submit all<" not in body and ">Trash all<" not in body
     assert ">Submit</button>" not in body
@@ -969,7 +1027,7 @@ def test_topbar_controls_are_buttons_not_text_links(tmp_path):
     # The shared base must precede every variant that resizes it: .btn's `font: inherit`
     # shorthand resets font-size, so at equal specificity a later .btn silently undoes
     # .topbtn's smaller type — the topbar buttons render at 16px instead of 13.6px.
-    for variant in (".topbtn {", ".head-btn {", ".play {", ".tool {"):
+    for variant in (".topbtn {", ".play {", ".tool {"):
         assert css.index(".btn {") < css.index(variant), variant
 
 
@@ -1362,8 +1420,8 @@ def test_the_bins_columns_of_buttons_and_their_bulk_heads_wear_the_same_glyphs(t
 
     # The bin's heads speak the way the inbox's do: a glyph over a column of the same
     # glyph. Restore's arrow doubles back, Delete's is the bin the inbox trashes into.
-    assert 'class="btn head-btn" title="Restore all" aria-label="Restore all"><svg' in body
-    assert 'class="btn head-btn danger" title="Empty bin" aria-label="Empty bin"><svg' in body
+    assert 'class="btn icon" title="Restore all" aria-label="Restore all"><svg' in body
+    assert 'class="btn icon danger" title="Empty bin" aria-label="Empty bin"><svg' in body
     assert 'class="btn icon" title="Restore" aria-label="Restore"><svg' in body
     assert 'class="btn icon danger" title="Delete" aria-label="Delete"><svg' in body
     for word in (">Restore all<", ">Empty bin<", ">Restore<", ">Delete<"):

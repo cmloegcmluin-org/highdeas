@@ -82,7 +82,7 @@
     inbox to break apart, so the bin's badge only reports. -#}
 {% macro kind_cell(breakable=false) -%}
 <div class="kind">
-  {%- if breakable %}<button type="button" class="group-badge ungroup" title="Break this group back into its notes" aria-label="Break this group back into its notes"><span class="ic-whole">{{ group() }}</span><span class="ic-broken">{{ ungroup() }}</span></button>
+  {%- if breakable %}<button type="button" class="btn icon group-badge ungroup" title="Break this group back into its notes" aria-label="Break this group back into its notes"><span class="ic-whole">{{ group() }}</span><span class="ic-broken">{{ ungroup() }}</span></button>
   {%- else %}<span class="group-badge" title="A group of notes" aria-label="A group of notes">{{ group() }}</span>
   {%- endif %}</div>
 {%- endmacro %}

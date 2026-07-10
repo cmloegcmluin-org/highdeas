@@ -22,8 +22,8 @@
     <div class="head">Transcript</div>
     <div class="head">Name</div>
     <div class="head">Where</div>
-    <div class="head"><form method="post" action="/restore-all" onsubmit="return confirm('Restore all {{ memos|length }} item{{ 's' if memos|length != 1 else '' }} to the inbox?');"><button type="submit" class="btn head-btn" title="Restore all" aria-label="Restore all">{{ restore() }}</button></form></div>
-    <div class="head"><form method="post" action="/empty-bin" onsubmit="return confirm('Permanently delete all {{ memos|length }} item{{ 's' if memos|length != 1 else '' }}? This cannot be undone.');"><button type="submit" class="btn head-btn danger" title="Empty bin" aria-label="Empty bin">{{ trash() }}</button></form></div>
+    <div class="head"><form method="post" action="/restore-all" onsubmit="return confirm('Restore all {{ memos|length }} item{{ 's' if memos|length != 1 else '' }} to the inbox?');"><button type="submit" class="btn icon" title="Restore all" aria-label="Restore all">{{ restore() }}</button></form></div>
+    <div class="head"><form method="post" action="/empty-bin" onsubmit="return confirm('Permanently delete all {{ memos|length }} item{{ 's' if memos|length != 1 else '' }}? This cannot be undone.');"><button type="submit" class="btn icon danger" title="Empty bin" aria-label="Empty bin">{{ trash() }}</button></form></div>
   </div>
 {% endblock %}
 
