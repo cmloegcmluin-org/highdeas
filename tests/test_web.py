@@ -162,6 +162,20 @@ def test_inbox_js_sends_the_picker_fields_and_toggles_the_dropdown(tmp_path):
     assert "parent.hidden = chosen.route !== 'asana'" in js
 
 
+def test_asana_dropdown_list_paints_the_system_palette_not_white(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    css = asset(client, "app.css")
+
+    # Chromium derives the OPEN dropdown list's colors from the select's computed
+    # style: a transparent select got a white popup while the options kept the dark
+    # theme's light text — white on white. Paint the control and its options with
+    # the system palette so the list reads in both themes.
+    assert "select.asana-parent option" in css
+    assert css.count("background: Canvas") >= 2  # the select and its options
+    assert "background: transparent" not in css.split("select.asana-parent")[1].split("}")[0]
+
+
 def test_the_move_button_points_the_way_the_text_will_travel(tmp_path):
     service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hi", name="Idea")])
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()

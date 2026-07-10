@@ -153,10 +153,14 @@ h1 { font-size: 1.35rem; margin: 0; }
 .route-pick input:focus-visible + .ic { outline: 2px solid #3b82f6; outline-offset: 2px; border-radius: 4px; }
 .route-pick input:checked + .ic { opacity: 1; }
 /* The Asana-only extra: which task the note becomes a subtask of. Hidden unless
-   the Asana icon is the lit one, so the other two routes stay a bare icon row. */
+   the Asana icon is the lit one, so the other two routes stay a bare icon row.
+   Canvas, not transparent: Chromium paints the OPEN dropdown list from the select's
+   computed colors, and a transparent select gets a white popup under the dark
+   theme's light text — white on white. Canvas matches the page behind it anyway. */
 .memo select.asana-parent { width: 100%; box-sizing: border-box; padding: 4px 6px;
-                            font: inherit; font-size: .8rem; color: inherit; background: transparent;
+                            font: inherit; font-size: .8rem; color: inherit; background: Canvas;
                             border: 1px solid rgba(128,128,128,.4); border-radius: 8px; }
+.memo select.asana-parent option { background: Canvas; color: CanvasText; }
 .memo select.asana-parent[hidden] { display: none; }
 
 /* Bin rows */
