@@ -29,6 +29,9 @@ h1 { font-size: 1.35rem; margin: 0; }
        transition: color .15s, border-color .15s; }
 .btn:not(:disabled):hover { border-color: #3b82f6; color: #3b82f6; }
 .btn.danger:not(:disabled):hover { border-color: #e5484d; color: #e5484d; }
+/* A check already in flight, an undo with nothing left to walk back, a Group with
+   nothing ticked to fold: faded, and no longer offering itself to the pointer. */
+.btn:disabled { opacity: .4; cursor: default; }
 /* Most of them say their action with a glyph rather than a word, and every glyph is
    drawn at one size and centred in its button. The two that want their own size —
    the topbar's and the row's chevron — ask for it below, so this must stay above them. */
@@ -52,8 +55,6 @@ h1 { font-size: 1.35rem; margin: 0; }
    A word swapped in for a beat was the old way, and a picture has no word to swap. */
 #refresh.spinning svg { animation: spin .7s linear infinite; }
 @keyframes spin { to { transform: rotate(1turn); } }
-/* A check already in flight, and an undo with nothing left to walk back. */
-.topbtn:disabled { opacity: .4; cursor: default; }
 /* Undo and Redo blink when a step is walked back, so Ctrl+Z looks like the click it
    stands for. The keyframes are the hover chrome with a fill behind it — a press. */
 .topbtn.flash { animation: press .2s ease-out; }
@@ -106,21 +107,13 @@ h1 { font-size: 1.35rem; margin: 0; }
 .ungroup:hover .ic-whole, .ungroup:focus-visible .ic-whole { display: none; }
 .ungroup:hover .ic-broken, .ungroup:focus-visible .ic-broken { display: block; }
 .ungroup:hover svg, .ungroup:focus-visible svg { opacity: 1; color: #3b82f6; }
-/* Same icon in the header, as the button that folds the ticked notes into one group.
-   Borderless like the row's copy buttons: it labels its column rather than framing it. */
-.kind-btn { display: flex; align-items: center; justify-content: center; width: 100%;
-            padding: 2px 0; background: transparent; color: inherit; border: none;
-            cursor: pointer; opacity: .55; transition: opacity .15s, color .15s; }
-.kind-btn svg { width: 18px; height: 18px; display: block; }
-.kind-btn:not(:disabled):hover { opacity: 1; color: #3b82f6; }
-.kind-btn:disabled { opacity: .2; cursor: default; }
 /* Bulk actions live in their own column headers so they sit directly over the
    column they act on, instead of being pushed around by the topbar buttons. */
 .head form { width: 100%; margin: 0; }
 /* Every head wears the glyph of the column it presses — a paper plane over the Submits,
-   a bin over the bins, an arrow doubling back over the Restores. */
-.head-btn { width: 100%; padding: 4px 9px; font-size: .72rem;
-            text-transform: none; letter-spacing: normal; }
+   a bin over the bins, an arrow doubling back over the Restores, a stack over the badges.
+   All three of the inbox's are pressed the same way, so all three are framed the same. */
+.head-btn { width: 100%; padding: 4px 0; }
 
 /* Inbox rows */
 .memo { display: contents; }
@@ -180,7 +173,6 @@ h1 { font-size: 1.35rem; margin: 0; }
 .drag-ghost { display: grid; position: fixed; top: 0; left: -10000px; pointer-events: none;
               padding: 8px; border-radius: 10px; background: Canvas;
               border: 1px solid #3b82f6; box-shadow: 0 12px 28px rgba(0,0,0,.35); }
-.memo button:disabled { cursor: default; }
 /* The row's three buttons — chevron, Submit, bin — wear the app's one outline chrome.
    Submit keeps its full weight, being what the row is for; the two either side of it
    sit dimmed until reached for, so a list of rows reads as text and not as buttons. */

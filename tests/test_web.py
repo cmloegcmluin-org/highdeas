@@ -383,7 +383,9 @@ def test_index_puts_the_group_button_over_the_group_column_and_starts_it_disable
     body = client.get("/").data.decode()
 
     # Like Submit all and Trash all, it sits in the header of the column it acts on —
-    # here the group column, beside the checkboxes that feed it.
+    # here the group column, beside the checkboxes that feed it — and wears their chrome,
+    # rather than being the one bulk action drawn as a bare glyph.
+    assert 'id="group-picked" class="btn head-btn"' in body
     assert body.index('id="select-all"') < body.index('id="group-picked"') < body.index(">Audio<")
     # Nothing is ticked on load, so there is nothing to group yet.
     opening_tag = body[body.index('id="group-picked"'):]
@@ -457,11 +459,11 @@ def test_the_inbox_offers_undo_and_redo_buttons_that_start_with_nowhere_to_go(tm
     assert body.index('id="undo"') < body.index('id="redo"') < body.index('id="refresh"')
     assert 'title="Undo (Ctrl+Z)"' in body
     assert 'title="Redo (Ctrl+Shift+Z)"' in body
-    # Nothing has been done yet, so both start disabled — and a disabled topbar button
+    # Nothing has been done yet, so both start disabled — and a disabled button
     # has to look it.
     assert 'aria-label="Undo" disabled>' in body
     assert 'aria-label="Redo" disabled>' in body
-    assert ".topbtn:disabled" in asset(client, "app.css")
+    assert ".btn:disabled" in asset(client, "app.css")
 
 
 def test_the_topbar_acts_through_icons_and_names_them_for_a_screen_reader(tmp_path):
