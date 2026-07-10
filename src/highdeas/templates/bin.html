@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Bin{% endblock %}
 
-{% block links %}<a class="btn topbtn" href="/">&larr; Back to inbox</a>{% endblock %}
+{#- The mirror of the inbox's "Bin →": an arrow, and the name of where it goes. -#}
+{% block links %}<a class="btn topbtn" href="/">&larr; Inbox</a>{% endblock %}
 
 {#- The bin has nothing to reorder and nothing to select, so it carries neither a grip
     nor a checkbox, and held their columns open with empties for no one. It starts at the

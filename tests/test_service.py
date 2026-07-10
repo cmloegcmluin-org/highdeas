@@ -414,7 +414,7 @@ def test_refresh_leaves_a_raw_named_pending_memo_already_in_the_inbox_untouched(
     """Refresh must not re-ingest a memo that is already pending with its audio in
     the inbox. A memo stored under a raw (pre-content-key) name is the trap: its
     content key differs from its filename, so find_new mistakes it for a brand-new
-    recording and re-transcribes it — hanging 'Back to inbox' (or 500ing) and
+    recording and re-transcribes it — hanging the bin's '← Inbox' (or 500ing) and
     spawning a duplicate row. Restore now re-keys incoming files, but a legacy
     raw-named memo left sitting pending in the inbox never passes through restore,
     so refresh has to recognize it on its own."""
@@ -426,7 +426,7 @@ def test_refresh_leaves_a_raw_named_pending_memo_already_in_the_inbox_untouched(
 
     service = InboxService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
                             bin_dir=tmp_path / "bin", clock=lambda: "2026-07-07T20:00:00")
-    service.refresh()  # the "Back to inbox" reload that re-scans the inbox
+    service.refresh()  # the "← Inbox" reload that re-scans the inbox
 
     # Left exactly as it was — not re-adopted, re-transcribed, or duplicated.
     pending = service.pending()

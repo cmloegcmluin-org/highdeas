@@ -99,7 +99,7 @@ class InboxService:
         # never re-ingest it. find_new keys by content: a memo stored under a raw
         # (pre-content-key) name has a content key that differs from its filename,
         # so find_new would mistake it for a brand-new recording and re-transcribe
-        # it — hanging "Back to inbox" (or 500ing) and spawning a duplicate row.
+        # it — hanging the bin's "← Inbox" (or 500ing) and spawning a duplicate row.
         # Restore now re-keys incoming files, but a legacy raw-named memo left
         # sitting pending in the inbox never passes through restore; guard it here.
         pending = {memo.audio_filename for memo in self._store.list_pending()}

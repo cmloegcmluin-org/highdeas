@@ -1306,11 +1306,16 @@ def test_bin_bulk_controls_sit_in_the_column_headers_and_confirm(tmp_path):
 
 
 def test_bin_back_control_is_a_button_not_a_text_link(tmp_path):
-    # Same button chrome the inbox topbar uses, so "← Back to inbox" reads as a
-    # control rather than as prose in the title bar.
+    # Same button chrome the inbox topbar uses, so "← Inbox" reads as a control
+    # rather than as prose in the title bar.
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
-    assert '<a class="btn topbtn" href="/">' in client.get("/bin").data.decode()
+    body = client.get("/bin").data.decode()
+
+    assert '<a class="btn topbtn" href="/">' in body
+    # It names where it goes, and nothing else — the mirror of the inbox's "Bin →".
+    assert "&larr; Inbox<" in body
+    assert "Back to inbox" not in body
 
 
 def test_bin_rows_carry_no_number_and_no_placeholder_columns(tmp_path):
