@@ -352,14 +352,40 @@ def test_the_inbox_offers_undo_and_redo_buttons_that_start_with_nowhere_to_go(tm
 
     body = client.get("/").data.decode()
 
-    # They lead the topbar, left of the two controls that navigate rather than act.
+    # They lead the topbar, left of the two controls that navigate rather than act, and
+    # each names its shortcut where the pointer will find it.
     assert body.index('id="undo"') < body.index('id="redo"') < body.index('id="refresh"')
-    assert 'id="undo" class="btn topbtn"' in body and "Ctrl+Z" in body
-    assert 'id="redo" class="btn topbtn"' in body and "Ctrl+Shift+Z" in body
+    assert 'title="Undo (Ctrl+Z)"' in body
+    assert 'title="Redo (Ctrl+Shift+Z)"' in body
     # Nothing has been done yet, so both start disabled — and a disabled topbar button
     # has to look it.
-    assert body.count("disabled>Undo") == 1 and body.count("disabled>Redo") == 1
+    assert 'aria-label="Undo" disabled>' in body
+    assert 'aria-label="Redo" disabled>' in body
     assert ".topbtn:disabled" in asset(client, "app.css")
+
+
+def test_the_topbar_acts_through_icons_and_names_them_for_a_screen_reader(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data.decode()
+
+    # Undo, Redo and Refresh carry a glyph, not a word, so the topbar reads as three
+    # things to press rather than a sentence. An icon has no text to name it, so each
+    # one says who it is in its title and its accessible label.
+    for control in ("undo", "redo", "refresh"):
+        assert f'id="{control}" class="btn topbtn icon"' in body
+    assert ">Undo<" not in body and ">Redo<" not in body and ">Refresh<" not in body
+    assert body.count('aria-label="Undo"') == 1
+    assert body.count('aria-label="Redo"') == 1
+    assert body.count('aria-label="Refresh"') == 1
+    assert body.count("<svg") >= 3
+
+    # A label swap is no way to say "checking" once the label is a picture: spin it.
+    js = asset(client, "inbox.js")
+    css = asset(client, "app.css")
+    assert "Loading" not in js
+    assert "classList.add('spinning')" in js
+    assert "#refresh.spinning svg" in css and "@keyframes spin" in css
 
 
 def test_the_undo_stack_is_loaded_before_the_page_that_records_into_it(tmp_path):
@@ -660,7 +686,7 @@ def test_topbar_controls_are_buttons_not_text_links(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     body = client.get("/").data.decode()
-    assert 'id="refresh" class="btn topbtn"' in body
+    assert 'id="refresh" class="btn topbtn icon"' in body
     assert '<a class="btn topbtn" href="/bin">' in body
 
     css = asset(client, "app.css")
@@ -673,12 +699,14 @@ def test_topbar_controls_are_buttons_not_text_links(tmp_path):
         assert css.index(".btn {") < css.index(variant), variant
 
 
-def test_refresh_button_shows_a_loading_label_while_it_checks(tmp_path):
+def test_refresh_button_spins_and_locks_for_a_held_beat_while_it_checks(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
-    # Clicking Refresh swaps the label to a held "Loading…" then restores it, so a check
-    # that surfaces nothing new still visibly reacts (the fetch is otherwise instant).
-    assert "Loading" in asset(client, "inbox.js")
+    js = asset(client, "inbox.js")
+    # A local check is near-instant, so the spin is held for a beat: a press that
+    # surfaces nothing new still visibly reacts, and can't double-fire while it runs.
+    assert "REFRESH_FEEDBACK_MS" in js
+    assert "refreshBtn.disabled = true" in js
 
 
 def test_pending_refreshes_and_renders_just_the_memo_rows(tmp_path):

@@ -37,8 +37,14 @@ h1 { font-size: 1.35rem; margin: 0; }
 .topbar .links { display: flex; align-items: center; gap: 10px; }
 .topbtn { display: inline-flex; align-items: center; justify-content: center;
           font-size: .85rem; padding: 6px 12px; text-decoration: none; }
-/* Sized for its widest label so swapping in "Loading…" doesn't shift the border. */
-#refresh { min-width: 92px; }
+/* The three that act on the list are glyphs, so they get a square target rather than a
+   label-shaped one. Their names live in a title and an aria-label. */
+.topbtn.icon { padding: 7px; }
+.topbtn svg { width: 17px; height: 17px; display: block; }
+/* A check is otherwise instant: spin the arrows for a beat so the press visibly lands.
+   A word swapped in for a beat was the old way, and a picture has no word to swap. */
+#refresh.spinning svg { animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(1turn); } }
 /* A check already in flight, and an undo with nothing left to walk back. */
 .topbtn:disabled { opacity: .4; cursor: default; }
 /* Undo and Redo blink when a step is walked back, so Ctrl+Z looks like the click it

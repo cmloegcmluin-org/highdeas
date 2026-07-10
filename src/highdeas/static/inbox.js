@@ -585,18 +585,18 @@
   setTimeout(poll, POLL_MS);
 
   // Manual "check now": the same inbox rescan the poll runs, on demand. A local check
-  // returns almost instantly, so hold a "Loading…" label on the button for a beat —
-  // even when nothing new turns up — so the click visibly does something and can't
+  // returns almost instantly, so hold the button's arrows spinning for a beat — even
+  // when nothing new turns up — so the click visibly does something and can't
   // double-fire. Whatever it finds still streams in through merge as usual.
   var REFRESH_FEEDBACK_MS = 700;
   var refreshBtn = document.getElementById('refresh');
   if (refreshBtn) refreshBtn.addEventListener('click', function () {
     if (refreshBtn.disabled) return;
     refreshBtn.disabled = true;
-    refreshBtn.textContent = 'Loading…';
+    refreshBtn.classList.add('spinning');
     var held = new Promise(function (done) { setTimeout(done, REFRESH_FEEDBACK_MS); });
     Promise.all([check(), held]).then(function () {
-      refreshBtn.textContent = 'Refresh';
+      refreshBtn.classList.remove('spinning');
       refreshBtn.disabled = false;
     });
   });
