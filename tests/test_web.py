@@ -716,6 +716,20 @@ def test_dragging_a_row_carries_a_picture_of_the_whole_row(tmp_path):
     assert ".drag-ghost" in asset(client, "app.css")
 
 
+def test_the_drag_picture_leaves_the_dragged_rows_destination_where_it_was(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    js = asset(client, "inbox.js")
+
+    # The picture clones the row's cells, its destination radios among them. Radios share
+    # a group by name across the whole document, so putting the clone's checked one into
+    # the page unchecked the row's own: the lit icon went dark the moment the row was
+    # picked up, and every save after it read no route at all. The picture is a picture,
+    # so its inputs answer to no name.
+    ghost = js.split("function dragImage")[1].split("\n  }")[0]
+    assert ghost.index("removeAttribute('name')") < ghost.index("document.body.appendChild(ghost)")
+
+
 def test_inbox_row_shows_when_the_recording_was_made_in_its_leading_column(tmp_path):
     # Reconciling a row against the recordings on the phone means knowing when it was
     # recorded, so each row leads with its recording time under a "Recorded" header —

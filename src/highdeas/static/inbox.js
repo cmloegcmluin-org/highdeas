@@ -391,6 +391,13 @@
     Array.prototype.forEach.call(memo.children, function (cell) {
       ghost.appendChild(cell.cloneNode(true));
     });
+    // A radio group is every radio of that name in the document, so putting the clone's
+    // checked one on the page evicts the row's own: the lit destination went dark the
+    // moment the row was picked up, and every save after it found no route at all. The
+    // picture is a picture — its inputs answer to no name.
+    ghost.querySelectorAll('input[type=radio]').forEach(function (radio) {
+      radio.removeAttribute('name');
+    });
     document.body.appendChild(ghost);
     // Hold the picture where the cursor took hold of the row, so it doesn't jump.
     event.dataTransfer.setDragImage(
