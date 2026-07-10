@@ -918,6 +918,22 @@ def test_the_editor_saves_on_the_way_out_rather_than_after_it_has_closed(tmp_pat
     assert "dialog.addEventListener('cancel', teardown)" in script
 
 
+def test_a_click_off_the_editor_closes_it(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    script = asset(client, "editor.js")
+    # Clicking the dim margin around the dialog closes it, the same as Done — a modal you
+    # can dismiss by clicking off it, not only through the × in its corner. The backdrop
+    # belongs to the <dialog>, so its clicks land on the element itself; the dialog is
+    # measured so a click off it is told from one in the padding or a gap between rows,
+    # which must not close.
+    assert "dialog.addEventListener('click'" in script
+    assert "getBoundingClientRect" in script
+    # And it leaves the same way the buttons do, so the last edit is still flushed.
+    handler = script.split("dialog.addEventListener('click'", 1)[1][:400]
+    assert "closeEditor" in handler
+
+
 def test_the_editor_is_not_rendered_on_the_bin_page(tmp_path):
     # Binned notes are read-only; nothing there to edit.
     service = FakeService(binned=[Memo(audio_filename="b.m4a", status="deleted", processed_at="2026-07-07T03:00")])

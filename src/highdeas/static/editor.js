@@ -344,6 +344,24 @@
   document.getElementById('editor-close').addEventListener('click', closeEditor);
   document.getElementById('editor-done').addEventListener('click', closeEditor);
 
+  // A click on the dim margin around the dialog closes it too, the same as Done — a
+  // modal you can dismiss by clicking off it, not only through the × in its corner. The
+  // backdrop belongs to the <dialog>, so its clicks land on the element itself; the box
+  // is measured because the element also owns the padding and the gaps between rows, and
+  // a click there is inside the dialog and must not close it. Requiring the press to
+  // start off the dialog as well keeps a selection dragged out past the edge from being
+  // read as a click off it and tearing the note down mid-select.
+  function isOffDialog(event) {
+    var box = dialog.getBoundingClientRect();
+    return event.clientX < box.left || event.clientX > box.right ||
+           event.clientY < box.top || event.clientY > box.bottom;
+  }
+  var pressedOff = false;
+  dialog.addEventListener('pointerdown', function (event) { pressedOff = isOffDialog(event); });
+  dialog.addEventListener('click', function (event) {
+    if (pressedOff && isOffDialog(event)) closeEditor();
+  });
+
   nameEl.addEventListener('input', scheduleSave);
   bodyEl.addEventListener('input', function () { scheduleSave(); scheduleAlign(); });
   // Once the user is working in the text, stop yanking it around under them.
