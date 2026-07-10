@@ -229,7 +229,7 @@
       dragged = null;
       saveOrder();
     });
-    memo.querySelector('.copy').addEventListener('click', function () {
+    memo.querySelector('.move').addEventListener('click', function () {
       name.value = transcriptOf(memo);
       preview.textContent = '';
       flush(memo);

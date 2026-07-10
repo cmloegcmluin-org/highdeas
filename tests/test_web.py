@@ -92,8 +92,8 @@ def test_index_renders_inbox_controls(tmp_path):
     assert b'href="/bin"' in body
     # Each row carries its filename so JS can target /edit, /submit, /delete.
     assert b'data-file="a.m4a"' in body
-    # The "copy transcript into name" control between Transcript and Name.
-    assert b'class="copy"' in body
+    # The "move transcript into name" control between Transcript and Name.
+    assert b'class="move"' in body
 
 
 def test_index_trash_all_asks_for_confirmation(tmp_path):
