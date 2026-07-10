@@ -162,6 +162,18 @@ def test_inbox_js_sends_the_picker_fields_and_toggles_the_dropdown(tmp_path):
     assert "parent.hidden = chosen.route !== 'asana'" in js
 
 
+def test_unlit_destination_icons_go_greyscale_so_the_lit_one_reads_at_a_glance(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    css = asset(client, "app.css")
+
+    # Opacity alone left the lit icon too close to its dimmed neighbours — especially
+    # Notesnook's single dark green, the default route. Unlit icons drop to greyscale
+    # too, so the one in brand color is unmistakably the selected one.
+    assert "filter: grayscale(1)" in css
+    assert "filter: none" in css
+
+
 def test_asana_dropdown_list_paints_the_system_palette_not_white(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
