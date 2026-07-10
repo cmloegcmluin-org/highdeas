@@ -388,6 +388,22 @@ def test_undo_answers_the_keyboard_except_where_the_browser_has_a_better_one(tmp
     assert "dialog[open]" in js
 
 
+def test_a_walked_back_step_blinks_the_button_it_belongs_to(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    js = asset(client, "history.js")
+    css = asset(client, "app.css")
+
+    # Ctrl+Z leaves no mark on the page — the row it walked back may be scrolled out of
+    # sight. Blink the button the shortcut stands for, so the key and the click read as
+    # the same action, and a held key blinks once per step rather than sticking lit.
+    assert "flash(undoBtn)" in js and "flash(redoBtn)" in js
+    assert "offsetWidth" in js  # the reflow that lets the animation restart mid-flight
+    # Nothing to walk back, nothing to blink: the step has to have found an action.
+    assert "if (!action) return false" in js
+    assert ".topbtn.flash" in css and "@keyframes press" in css
+
+
 def test_the_inbox_records_the_three_actions_that_can_be_walked_back(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 

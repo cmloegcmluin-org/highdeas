@@ -34,16 +34,27 @@
     sync();
   }
 
+  // A step walked back leaves no mark on the page — the row it touched may well be
+  // scrolled out of sight. Blink the button the step belongs to, so a shortcut and a
+  // click read as the same action. Restarting the animation costs a reflow, which is
+  // what makes a held Ctrl+Z blink once per step instead of sticking lit.
+  function flash(button) {
+    button.classList.remove('flash');
+    void button.offsetWidth;
+    button.classList.add('flash');
+  }
+
   function step(from, onto, direction) {
     var action = from.pop();
-    if (!action) return;
+    if (!action) return false;
     onto.push(action);
     sync();
     action[direction]();
+    return true;
   }
 
-  function undo() { step(done, undone, 'undo'); }
-  function redo() { step(undone, done, 'redo'); }
+  function undo() { if (step(done, undone, 'undo')) flash(undoBtn); }
+  function redo() { if (step(undone, done, 'redo')) flash(redoBtn); }
 
   // Inside a text field or the editor's body, Ctrl+Z belongs to the browser: its
   // per-field typing history is the one the caret is standing in, and it is better than
@@ -67,6 +78,9 @@
 
   undoBtn.addEventListener('click', undo);
   redoBtn.addEventListener('click', redo);
+  [undoBtn, redoBtn].forEach(function (button) {
+    button.addEventListener('animationend', function () { button.classList.remove('flash'); });
+  });
 
   window.HighdeasHistory = { did: did, clear: clear };
 })();
