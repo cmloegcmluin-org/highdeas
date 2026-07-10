@@ -40,6 +40,13 @@ struct ContentView: View {
             .sheet(isPresented: $showSettings) {
                 SettingsView()
             }
+            .alert("Recording couldn't start",
+                   isPresented: Binding(get: { model.recordingProblem != nil },
+                                        set: { if !$0 { model.recordingProblem = nil } })) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(model.recordingProblem ?? "")
+            }
         }
     }
 }

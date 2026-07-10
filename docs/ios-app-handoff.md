@@ -123,6 +123,11 @@ clients; fixing it would mean changing the fingerprint scheme itself.
   with a scrub slider (`AVAudioPlayer` + `Slider`).
 - Push: multipart POST with the token header; a `URLSession` background session with
   retry/backoff; mark sent and clear only on 2xx. Auto-push fires when recording stops.
+  Verified behavior (simulator, 2026-07-10): with the server down, the *system* session
+  holds the failed task and retries on its own schedule — the row shows "Uploading…"
+  rather than the app's own backoff countdown, and when the server returns the upload
+  delivers itself with no user action. That's the mission behavior (memos arrive on
+  their own); just don't expect the app-level retry states to narrate it.
 - Settings: server URL + token, plain editable fields.
 - Tests: XCTest the pure logic (queue state machine, request building). The
   audio/hardware layer is verified on the device — don't fake-TDD it.

@@ -28,6 +28,10 @@ struct RecordingItem: Identifiable, Equatable {
 @MainActor
 final class CaptureModel: ObservableObject {
     @Published private(set) var items: [RecordingItem] = []
+    /// Why recording could not start, for the UI to say out loud. A record
+    /// button that silently does nothing (denied microphone, audio-session
+    /// failure) reads as a lost memo.
+    @Published var recordingProblem: String?
     @AppStorage("serverURL") var serverURL: String = "" { didSet { wake() } }
     @AppStorage("uploadToken") var uploadToken: String = "" { didSet { wake() } }
 
@@ -66,7 +70,12 @@ final class CaptureModel: ObservableObject {
         if recorder.isRecording {
             recorder.stop()  // adopt() runs via onFinished
         } else {
-            try? recorder.start(into: activeDirectory)
+            do {
+                try recorder.start(into: activeDirectory)
+            } catch {
+                recordingProblem = String(describing: error)
+                NSLog("Highdeas: recording could not start: %@", String(describing: error))
+            }
             rebuildItems()
         }
     }
@@ -90,9 +99,17 @@ final class CaptureModel: ObservableObject {
 
     /// A crash or force-quit mid-recording leaves a file in the in-progress
     /// folder. What was captured up to that moment is still a memo — adopt it
-    /// on the next launch rather than leaving it invisible.
+    /// on the next launch rather than leaving it invisible. But a header-only
+    /// torso (killed before any audio frames were written) is not a memo:
+    /// pushing one plants a file in the PC inbox that fails transcription on
+    /// every refresh, forever. Nothing audible fits in a kilobyte.
     private func adoptLeftovers() {
         for url in files(in: activeDirectory) {
+            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            if size < 1024 {
+                try? FileManager.default.removeItem(at: url)
+                continue
+            }
             try? FileManager.default.createDirectory(
                 at: recordingsDirectory, withIntermediateDirectories: true)
             try? FileManager.default.moveItem(
