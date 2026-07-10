@@ -106,6 +106,24 @@ class InboxService:
         self._retire_audio(audio_filename)
         self._store.update(audio_filename, status="processed", processed_at=self._clock())
 
+    def consolidate(self, audio_filenames):
+        """Fold several pending memos into the first, in the order given.
+
+        The keeper gains every transcript, one paragraph each, and the first name any
+        of them carries. The folded-in recordings go to the bin — each is a real take,
+        so it stays restorable rather than being destroyed by a merge."""
+        keeper, *folded = audio_filenames
+        memos = [self._store.get(filename) for filename in audio_filenames]
+        spoken = [memo.transcript.strip() for memo in memos if memo.transcript.strip()]
+        self._store.update(
+            keeper,
+            transcript="\n\n".join(spoken),
+            name=next((memo.name for memo in memos if memo.name), ""),
+        )
+        for filename in folded:
+            self.delete(filename)
+        return self._store.get(keeper)
+
     def delete(self, audio_filename):
         self._retire_audio(audio_filename)
         self._store.update(audio_filename, status="deleted", processed_at=self._clock())

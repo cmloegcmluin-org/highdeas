@@ -351,6 +351,34 @@ def test_reorder_route_persists_the_dropped_order_and_returns_204(tmp_path):
     assert resp.status_code == 204
 
 
+def test_consolidate_route_merges_the_chosen_memos_and_returns_the_merged_fields(tmp_path):
+    from highdeas.service import InboxService
+    from highdeas.store import MemoStore
+
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    (inbox / "a.m4a").write_bytes(b"A")
+    (inbox / "b.m4a").write_bytes(b"B")
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="a.m4a", status="pending", transcript="one"))
+    store.upsert(Memo(audio_filename="b.m4a", status="pending", transcript="two", name="Idea"))
+
+    class StubTranscriber:
+        def transcribe(self, path):
+            return ""
+
+    service = InboxService(inbox_dir=inbox, store=store, transcriber=StubTranscriber(),
+                            bin_dir=tmp_path / "bin", clock=lambda: "T")
+    client = create_app(service, inbox_dir=str(inbox), bin_dir=str(tmp_path / "bin")).test_client()
+
+    resp = client.post("/consolidate", data={"memo": ["a.m4a", "b.m4a"]})
+
+    # The merged fields come back so the client can update the row it kept in place.
+    assert resp.status_code == 200
+    assert resp.get_json() == {"name": "Idea", "transcript": "one\n\ntwo"}
+    assert [m.audio_filename for m in service.pending()] == ["a.m4a"]
+
+
 def test_edit_route_saves_fields_and_returns_204(tmp_path):
     service = FakeService()
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()

@@ -146,6 +146,76 @@ def test_submit_routes_then_marks_processed(tmp_path):
     assert memo.processed_at == "2026-07-07T05:00"
 
 
+def test_consolidate_folds_the_other_transcripts_into_the_first_memo(tmp_path):
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="a.m4a", status="pending", transcript="First thought."))
+    store.upsert(Memo(audio_filename="b.m4a", status="pending", transcript="Second thought."))
+    service = InboxService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
+                            bin_dir=tmp_path / "bin", clock=lambda: "T")
+
+    merged = service.consolidate(["a.m4a", "b.m4a"])
+
+    assert merged.audio_filename == "a.m4a"
+    assert merged.transcript == "First thought.\n\nSecond thought."
+    assert store.get("a.m4a").transcript == "First thought.\n\nSecond thought."
+
+
+def test_consolidate_skips_blank_transcripts_rather_than_leaving_gaps(tmp_path):
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="a.m4a", status="pending", transcript=" one \n"))
+    store.upsert(Memo(audio_filename="b.m4a", status="pending", transcript="   "))
+    store.upsert(Memo(audio_filename="c.m4a", status="pending", transcript="two"))
+    service = InboxService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
+                            bin_dir=tmp_path / "bin", clock=lambda: "T")
+
+    merged = service.consolidate(["a.m4a", "b.m4a", "c.m4a"])
+
+    # A silent take contributes no text, and no run of blank lines either.
+    assert merged.transcript == "one\n\ntwo"
+
+
+def test_consolidate_takes_the_first_name_any_of_the_memos_carries(tmp_path):
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="a.m4a", status="pending", name=""))
+    store.upsert(Memo(audio_filename="b.m4a", status="pending", name="Song idea"))
+    store.upsert(Memo(audio_filename="c.m4a", status="pending", name="Later name"))
+    service = InboxService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
+                            bin_dir=tmp_path / "bin", clock=lambda: "T")
+
+    merged = service.consolidate(["a.m4a", "b.m4a", "c.m4a"])
+
+    # The keeper had no name, so the merge adopts the first one that was typed.
+    assert merged.name == "Song idea"
+
+
+def test_consolidate_bins_the_recordings_it_folded_in(tmp_path):
+    # The text is merged into the keeper, but each folded-in recording is a real
+    # take: it goes to the bin, restorable, rather than being destroyed.
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    bin_dir = tmp_path / "bin"
+    (inbox / "a.m4a").write_bytes(b"KEEP")
+    (inbox / "b.m4a").write_bytes(b"FOLDED")
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="a.m4a", status="pending", transcript="one"))
+    store.upsert(Memo(audio_filename="b.m4a", status="pending", transcript="two"))
+    service = InboxService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
+                            bin_dir=bin_dir, clock=lambda: "2026-07-09T10:00")
+
+    service.consolidate(["a.m4a", "b.m4a"])
+
+    assert [m.audio_filename for m in service.pending()] == ["a.m4a"]
+    assert (inbox / "a.m4a").exists()
+    assert (bin_dir / "b.m4a").read_bytes() == b"FOLDED"
+    assert store.get("b.m4a").status == "deleted"
+
+
 def test_delete_marks_memo_deleted(tmp_path):
     store = MemoStore(tmp_path / "memos.db")
     store.upsert(Memo(audio_filename="a.m4a", status="pending"))

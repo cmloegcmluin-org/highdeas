@@ -1,7 +1,7 @@
 """Local Flask app: the inbox and bin pages for editing and routing memos."""
 from urllib.parse import quote
 
-from flask import Flask, redirect, render_template_string, request, send_from_directory
+from flask import Flask, jsonify, redirect, render_template_string, request, send_from_directory
 
 # Inline, self-contained brand icons for the route toggle (no external assets).
 NOTESNOOK_SVG = (
@@ -580,6 +580,13 @@ def create_app(service, inbox_dir, bin_dir, launch_drive=None):
         """Persist the order a drag-and-drop left the inbox rows in, top to bottom."""
         service.reorder(request.form.getlist("order"))
         return ("", 204)
+
+    @app.post("/consolidate")
+    def consolidate():
+        """Fold the chosen memos, listed top to bottom, into the first of them. The
+        merged fields come back so the client can refresh the row it keeps in place."""
+        merged = service.consolidate(request.form.getlist("memo"))
+        return jsonify(name=merged.name, transcript=merged.transcript)
 
     @app.post("/delete/<path:filename>")
     def delete(filename):
