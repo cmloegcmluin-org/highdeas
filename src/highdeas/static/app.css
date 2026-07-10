@@ -1,8 +1,10 @@
 /* One stylesheet for the inbox, the bin, and the note editor, so their chrome is
    identical — same title bar, top-right buttons, and header row — and nothing jumps
-   when you flip between them. The two grids share widths too: a 26px row-handle
-   column, then 260 | flex | a 474px middle band | two 104px action columns, so only
-   the middle band's contents differ per page. Each band ends with a 120px timestamp
+   when you flip between them. The two grids share widths too: three thin leading
+   columns (a select checkbox — empty in the bin, which has nothing to select; the
+   row-number handle; the group badge), then 236 | flex | a middle band | two 94px
+   action columns, so only the middle band's contents differ per page. The bin's band
+   spans one column fewer, so it is a gap wider. Each band ends with a 106px timestamp
    column, so the inbox's "Recorded" and the bin's "When" sit in the same place. */
 
 /* Reserve the scrollbar gutter on every page so a page with a scrollbar and one
@@ -45,8 +47,8 @@ h1 { font-size: 1.35rem; margin: 0; }
 .notice[hidden] { display: none; }
 .empty { opacity: .7; padding: 48px 0; text-align: center; }
 .grid { display: grid; gap: 14px 18px; align-items: center; }
-.grid.inbox  { grid-template-columns: 26px 260px minmax(220px, 1fr) 34px 170px 96px 120px 104px 104px; }
-.grid.bin    { grid-template-columns: 26px 260px minmax(220px, 1fr) 262px 56px 120px 104px 104px; }
+.grid.inbox  { grid-template-columns: 22px 26px 30px 236px minmax(220px, 1fr) 30px 150px 92px 106px 94px 94px; }
+.grid.bin    { grid-template-columns: 22px 26px 30px 236px minmax(220px, 1fr) 234px 56px 106px 94px 94px; }
 .grid.body { margin-top: 12px; }
 .grid .head { font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; opacity: .55;
               display: flex; align-items: flex-end; min-height: 32px;
@@ -55,6 +57,24 @@ h1 { font-size: 1.35rem; margin: 0; }
 .num { font-size: .8rem; opacity: .4; text-align: right; font-variant-numeric: tabular-nums; }
 /* Timestamps on both pages: the inbox's recording time and the bin's processed time. */
 .when { font-size: .8rem; opacity: .6; white-space: nowrap; }
+/* The selection column: tick rows, then act on them as a set (grouping). */
+.pick, #select-all { width: 15px; height: 15px; margin: 0; cursor: pointer; accent-color: #3b82f6; }
+/* The group column. Every row carries the badge and only a group shows it, so the client
+   promotes a row by flipping data-kind. The cell stretches to the row's full height, to
+   be a big enough target for a note dragged onto a group. */
+.kind { align-self: stretch; display: flex; align-items: center; justify-content: center; }
+.kind svg { width: 18px; height: 18px; display: block; opacity: .55; }
+[data-kind="note"] .group-badge { display: none; }
+/* A group's badge while a dragged note hovers it: let go here and the note joins it. */
+.kind.dropping { outline: 2px dashed #3b82f6; outline-offset: 3px; border-radius: 6px; }
+/* Same icon in the header, as the button that folds the ticked notes into one group.
+   Borderless like the row's copy buttons: it labels its column rather than framing it. */
+.kind-btn { display: flex; align-items: center; justify-content: center; width: 100%;
+            padding: 2px 0; background: transparent; color: inherit; border: none;
+            cursor: pointer; opacity: .55; transition: opacity .15s, color .15s; }
+.kind-btn svg { width: 18px; height: 18px; display: block; }
+.kind-btn:not(:disabled):hover { opacity: 1; color: #3b82f6; }
+.kind-btn:disabled { opacity: .2; cursor: default; }
 /* Bulk actions live in their own column headers so they sit directly over the
    column they act on, instead of being pushed around by the topbar buttons. */
 .head form { width: 100%; margin: 0; }

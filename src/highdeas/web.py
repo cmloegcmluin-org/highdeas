@@ -80,6 +80,17 @@ def create_app(service, inbox_dir, bin_dir, launch_drive=None):
         service.reorder(request.form.getlist("order"))
         return ("", 204)
 
+    @app.post("/group")
+    def group():
+        """Consolidate the posted notes into one group memo, answering with the row that
+        survives and the fields it now holds, so the page can patch itself."""
+        try:
+            grouped = service.group(request.form.getlist("files"))
+        except ValueError as exc:
+            return (str(exc), 400)
+        return {"target": grouped.audio_filename, "transcript": grouped.transcript,
+                "name": grouped.name}
+
     @app.post("/delete/<path:filename>")
     def delete(filename):
         service.delete(filename)

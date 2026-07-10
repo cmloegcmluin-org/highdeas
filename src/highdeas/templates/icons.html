@@ -19,3 +19,16 @@
 {% macro check() -%}
 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
 {%- endmacro %}
+
+{#- Stacked layers: a memo that consolidates several notes into one bulleted note.
+    Worn as a row's badge, and pressed in the inbox header to make a group. -#}
+{% macro group() -%}
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 3 8l9 5 9-5-9-5ZM3 12l9 5 9-5M3 16l9 5 9-5"/></svg>
+{%- endmacro %}
+
+{#- The group column's cell. Every row carries the badge; CSS shows it only on a group,
+    so promoting a note to a group is a data-kind flip and needs no markup from the
+    client. On the inbox the cell is also where a note is dropped to join a group. -#}
+{% macro kind_cell() -%}
+<div class="kind"><span class="group-badge" title="A group of notes" aria-label="A group of notes">{{ group() }}</span></div>
+{%- endmacro %}

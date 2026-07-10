@@ -1,7 +1,7 @@
-/* The inbox list: auto-save, submit, trash, bulk actions, drag-to-reorder, and the
-   poll that streams in recordings arriving while the app is open. A row's transcript
-   is a preview — clicking it hands the note to the editor dialog (editor.js), which
-   reports edits back here to be saved. */
+/* The inbox list: auto-save, submit, trash, bulk actions, grouping, drag-to-reorder,
+   and the poll that streams in recordings arriving while the app is open. A row's
+   transcript is a preview — clicking it hands the note to the editor dialog
+   (editor.js), which reports edits back here to be saved. */
 (function () {
   'use strict';
 
@@ -49,6 +49,7 @@
       });
     }
     updateCount();
+    syncSelection();
   }
 
   function urlFor(prefix, memo) { return prefix + encodeURIComponent(memo.dataset.file); }
@@ -132,10 +133,102 @@
     return retireOnOk(memo, post(urlFor('/delete/', memo)));
   }
 
+  // ---- Grouping: fold several notes into one bulleted memo. --------------------
+  // A group's row absorbs the others' text, so exactly one survivor must be obvious:
+  // group at least two notes, and at most one of them may already be a group.
+  var groupBtn = document.getElementById('group-picked');
+  var selectAll = document.getElementById('select-all');
+
+  function isGroup(memo) { return memo.dataset.kind === 'group'; }
+  function picked() { return rows().filter(function (m) { return m.querySelector('.pick').checked; }); }
+
+  function syncSelection() {
+    var chosen = picked();
+    var groups = chosen.filter(isGroup).length;
+    if (groupBtn) {
+      groupBtn.disabled = chosen.length < 2 || groups > 1;
+      groupBtn.title = groups > 1
+        ? 'Two groups have no obvious survivor — select at most one'
+        : 'Group the selected notes';
+    }
+    if (selectAll) {
+      var all = rows().length;
+      selectAll.checked = all > 0 && chosen.length === all;
+      selectAll.indeterminate = chosen.length > 0 && chosen.length < all;
+    }
+  }
+
+  // The row that survived. Flipping data-kind is all it takes: CSS reveals the badge
+  // the row has carried all along, and the cell becomes a drop target.
+  function becomeGroup(memo, result) {
+    clearTimeout(memo._timer);
+    memo.querySelector('.transcript').textContent = result.transcript;
+    memo.querySelector('input[name=name]').value = result.name;
+    memo.querySelector('.pick').checked = false;
+    memo.dataset.kind = 'group';
+  }
+
+  // The merge is server-side, so the button locks until it answers: a double-click would
+  // post a second selection whose absorbed rows are no longer in the inbox to group.
+  function groupFiles(files) {
+    if (groupBtn) groupBtn.disabled = true;
+    var data = new URLSearchParams();
+    files.forEach(function (file) { data.append('files', file); });
+    return post('/group', data).then(function (r) {
+      if (!r.ok) return r.text().then(function (t) { throw new Error(t || 'Failed'); });
+      return r.json();
+    }).then(function (result) {
+      rows().forEach(function (memo) {
+        var file = memo.dataset.file;
+        if (files.indexOf(file) < 0) return;
+        if (file === result.target) return becomeGroup(memo, result);
+        retired[file] = true;  // a poll snapshot taken before the merge must not re-add it
+        removeRow(memo);
+      });
+    }).catch(function (err) {
+      notify("Couldn't group those notes — they're unchanged." + describe(err));
+    }).then(syncSelection);
+  }
+
+  if (selectAll) selectAll.addEventListener('change', function () {
+    var checked = selectAll.checked;
+    content.querySelectorAll('.pick').forEach(function (box) { box.checked = checked; });
+    syncSelection();
+  });
+
+  if (groupBtn) groupBtn.addEventListener('click', function () {
+    var files = picked().map(function (memo) { return memo.dataset.file; });
+    if (files.length < 2) return;
+    clearNotice();
+    groupFiles(files);
+  });
+
   // A .memo is display:contents, so it has no box of its own to grab or hit-test. Its
   // number cell is the handle, and the row under the pointer is reached through
   // whichever of its cells the pointer happens to be over.
   var dragged = null;
+  // Set when a drag ended on a group rather than between rows: the dragged note is
+  // about to leave the list, so dragend must not save an order that still contains it.
+  var joining = false;
+  var hovered = null;
+
+  // The one place a dragged row means "join this" rather than "go here": a group's badge
+  // cell. Dragging a group there would leave two groups and no obvious survivor, so only
+  // a loose note is ever accepted.
+  function dropTarget(event) {
+    if (!dragged || isGroup(dragged)) return null;
+    var cell = event.target.closest('.kind');
+    if (!cell) return null;
+    var memo = cell.closest('.memo');
+    return memo && memo !== dragged && isGroup(memo) ? cell : null;
+  }
+
+  function highlight(cell) {
+    if (hovered === cell) return;
+    if (hovered) hovered.classList.remove('dropping');
+    hovered = cell;
+    if (hovered) hovered.classList.add('dropping');
+  }
 
   function nextRow(memo) {
     var el = memo.nextElementSibling;
@@ -166,10 +259,14 @@
     });
   }
 
-  // Rows move as you drag over them, so the list you let go of is the list you keep.
+  // Rows move as you drag over them, so the list you let go of is the list you keep —
+  // unless you are over a group's badge, where letting go joins the group instead.
   content.addEventListener('dragover', function (event) {
     if (!dragged) return;  // dragging a text selection, not a row by its handle
     event.preventDefault();
+    var target = dropTarget(event);
+    highlight(target);
+    if (target) { event.dataTransfer.dropEffect = 'copy'; return; }
     event.dataTransfer.dropEffect = 'move';
     var over = event.target.closest('.memo');
     if (!over || over === dragged) return;
@@ -178,7 +275,17 @@
     over.parentElement.insertBefore(dragged, below ? nextRow(over) : over);
     resync();
   });
-  content.addEventListener('drop', function (event) { if (dragged) event.preventDefault(); });
+  content.addEventListener('drop', function (event) {
+    if (!dragged) return;
+    event.preventDefault();
+    var target = dropTarget(event);
+    var note = dragged;
+    highlight(null);
+    if (!target) return;  // an ordinary reorder drop; dragend saves the order it left
+    joining = true;
+    clearNotice();
+    groupFiles([target.closest('.memo').dataset.file, note.dataset.file]);
+  });
 
   // The transcriber's word timings, [[startSeconds, word], …], ride along on the row
   // so opening the editor costs no extra request. Older memos carry none.
@@ -236,6 +343,7 @@
     var name = memo.querySelector('input[name=name]');
     var route = memo.querySelector('input[name=route]');
     var handle = memo.querySelector('.num');
+    memo.querySelector('.pick').addEventListener('change', syncSelection);
     preview.addEventListener('click', function () { openEditor(memo); });
     preview.addEventListener('keydown', function (event) {
       if (event.key !== 'Enter' && event.key !== ' ') return;
@@ -254,6 +362,10 @@
     handle.addEventListener('dragend', function () {
       memo.classList.remove('dragging');
       dragged = null;
+      highlight(null);
+      // The dropped note is being folded into a group, so it is leaving the inbox: the
+      // rows it passed on the way there keep the order they already had on the server.
+      if (joining) { joining = false; return; }
       saveOrder();
     });
     memo.querySelector('.move').addEventListener('click', function () {

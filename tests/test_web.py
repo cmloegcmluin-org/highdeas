@@ -24,12 +24,20 @@ class FakeService:
         self.emptied = 0
         self.restored_all = 0
         self.reordered = []
+        self.grouped = []
+        self.group_error = None
 
     def refresh(self):
         self.refreshed += 1
 
     def reorder(self, audio_filenames):
         self.reordered.append(list(audio_filenames))
+
+    def group(self, audio_filenames):
+        if self.group_error:
+            raise ValueError(self.group_error)
+        self.grouped.append(list(audio_filenames))
+        return Memo(audio_filename=audio_filenames[0], transcript="- one\n- two", kind="group")
 
     def pending(self):
         return self._pending
@@ -128,6 +136,77 @@ def test_copy_button_confirms_a_copy_and_reports_a_failed_one(tmp_path):
     assert "classList.add('copied')" in js
     # …and a clipboard the browser won't hand over says so, rather than looking copied.
     assert "Couldn't copy" in js
+
+
+def test_index_gives_every_row_a_select_checkbox_under_a_select_all(tmp_path):
+    service = FakeService(pending=[
+        Memo(audio_filename="a.m4a", transcript="one"),
+        Memo(audio_filename="b.m4a", transcript="two"),
+    ])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data.decode()
+
+    # A thin leading column of checkboxes, headed by a select-all that ticks them together.
+    assert body.count('class="pick"') == 2
+    assert 'id="select-all"' in body
+    assert body.index('id="select-all"') < body.index('class="pick"')
+
+
+def test_index_badges_a_group_row_and_leaves_a_plain_note_unbadged(tmp_path):
+    service = FakeService(pending=[
+        Memo(audio_filename="a.m4a", transcript="a loose note"),
+        Memo(audio_filename="g.m4a", transcript="- one\n- two", kind="group"),
+    ])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data.decode()
+
+    # A thin column telling groups apart from loose notes, at a glance and to the client.
+    assert body.count('class="kind"') == 2
+    assert body.count('data-kind="group"') == 1
+    assert body.count('data-kind="note"') == 1
+
+
+def test_index_puts_the_group_button_over_the_group_column_and_starts_it_disabled(tmp_path):
+    service = FakeService(pending=[
+        Memo(audio_filename="a.m4a", transcript="one"),
+        Memo(audio_filename="b.m4a", transcript="two"),
+    ])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data.decode()
+
+    # Like Submit all and Trash all, it sits in the header of the column it acts on —
+    # here the group column, beside the checkboxes that feed it.
+    assert body.index('id="select-all"') < body.index('id="group-picked"') < body.index(">Audio<")
+    # Nothing is ticked on load, so there is nothing to group yet.
+    opening_tag = body[body.index('id="group-picked"'):]
+    assert "disabled" in opening_tag[:opening_tag.index(">")]
+
+
+def test_the_inbox_posts_its_ticked_notes_to_the_group_endpoint(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    js = asset(client, "inbox.js")
+
+    # Pins the seam between the page and the route: /group reads request.form.getlist("files").
+    assert "post('/group'" in js
+    assert "append('files'" in js
+    assert "getElementById('select-all')" in js
+
+
+def test_a_note_dragged_onto_a_group_joins_it_instead_of_reordering(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    js = asset(client, "inbox.js")
+    css = asset(client, "app.css")
+
+    # The row drag already reorders; dropping on a group's badge cell means "join this
+    # group" instead. Only that cell accepts the drop, and only from a loose note.
+    assert "dropTarget" in js
+    assert "'dropping'" in js
+    assert ".kind.dropping" in css
 
 
 def test_index_trash_all_asks_for_confirmation(tmp_path):
@@ -452,6 +531,34 @@ def test_submit_saves_edits_then_submits_and_returns_204(tmp_path):
     assert resp.status_code == 204
 
 
+def test_group_route_consolidates_the_posted_notes_and_reports_the_survivor(tmp_path):
+    service = FakeService()
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    resp = client.post("/group", data={"files": ["a.m4a", "b.m4a"]})
+
+    assert service.grouped == [["a.m4a", "b.m4a"]]
+    # The client needs the surviving row and the fields it now holds to patch the page in
+    # place, rather than reloading. The name comes back too: promoting a note to a group
+    # folds its name into the first bullet and clears it, and a stale name left in the row
+    # would be auto-saved straight back.
+    assert resp.status_code == 200
+    assert resp.get_json() == {"target": "a.m4a", "transcript": "- one\n- two", "name": ""}
+
+
+def test_group_route_reports_a_selection_it_cannot_group(tmp_path):
+    service = FakeService()
+    service.group_error = "Two groups have no obvious survivor"
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    resp = client.post("/group", data={"files": ["g1.m4a", "g2.m4a"]})
+
+    # The button is disabled for these selections, but a stale page must not silently
+    # mangle notes — the server refuses and says why.
+    assert resp.status_code == 400
+    assert b"Two groups have no obvious survivor" in resp.data
+
+
 def test_submit_defaults_route_to_notesnook_when_toggle_off(tmp_path):
     service = FakeService()
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
@@ -618,6 +725,20 @@ def test_bin_shows_destination_icon_instead_of_status_word(tmp_path):
     assert b"Trashed" in body
     assert b"Sent to Notesnook" in body
     assert b"Sent to Google Drive" in body
+
+
+def test_bin_says_a_note_was_merged_into_a_group_rather_than_sent_to_notesnook(tmp_path):
+    service = FakeService(binned=[
+        Memo(audio_filename="m.m4a", status="grouped", route="notesnook", processed_at="2026-07-08T03:00"),
+    ])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/bin").data
+
+    # An absorbed note keeps its route field, so the "Where" column must read its status
+    # first — otherwise the bin claims a merged note was sent to Notesnook.
+    assert b"Merged into a group" in body
+    assert b"Sent to Notesnook" not in body
 
 
 def test_bin_row_offers_restore_and_confirmed_permanent_delete(tmp_path):
