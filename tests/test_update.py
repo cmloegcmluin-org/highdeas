@@ -183,3 +183,16 @@ def test_a_launcher_script_run_relaunches_through_the_launcher():
     # imports nothing and dies without a console to say so — the launch-update
     # that "opened then closed itself".
     assert command == [r"C:\repo\.venv\Scripts\pythonw.exe", r"C:\repo\run_highdeas.py"]
+
+
+def test_a_respawn_sheds_dotenv_values_so_fresh_edits_take_effect():
+    from highdeas.update import respawn_environment
+
+    child = respawn_environment(
+        {"PYTHONPATH": "src", "NOTESNOOK_INBOX_API_KEY": "stale-key", "PATH": "/bin"},
+        dotenv_keys=["NOTESNOOK_INBOX_API_KEY", "HIGHDEAS_STATE_DIR"])
+
+    # load_dotenv never overrides an existing variable, so a .env value that
+    # rides the respawn shadows any fresh edit — an updated API key would
+    # stay old until a cold start. Launcher-owned variables ride on.
+    assert child == {"PYTHONPATH": "src", "PATH": "/bin"}

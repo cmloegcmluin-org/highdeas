@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 # Keep git from flashing a console window on Windows — the checker runs every
 # few minutes from a windowless (pythonw) process. A no-op (0) elsewhere.
@@ -31,16 +32,35 @@ def relaunch_command(executable=None, argv=None):
     return [executable, *argv]
 
 
-def _relaunch():
+def respawn_environment(environ, dotenv_keys):
+    """The child's environment: everything inherited except what .env put
+    there. load_dotenv never overrides an existing variable, so a .env value
+    that rides the respawn shadows any fresh edit to the file — an updated
+    API key would silently stay old until a cold start. Launcher-owned
+    variables (PYTHONPATH, the Mac shell's port) ride on untouched."""
+    dropped = set(dotenv_keys)
+    return {key: value for key, value in environ.items() if key not in dropped}
+
+
+def _relaunch(repo=None):
     """Become the freshly-pulled code. On Windows, exec is spawn-and-exit
     with rough edges (thread contexts, window sessions) — do the spawn
     explicitly and leave; elsewhere, a true exec keeps the pid, which the
     Mac shell relies on to keep tracking its engine child."""
     command = relaunch_command()
+    environment = dict(os.environ)
+    if repo is not None:
+        try:
+            from dotenv import dotenv_values
+
+            environment = respawn_environment(
+                os.environ, dotenv_values(Path(repo) / ".env").keys())
+        except Exception:  # noqa: BLE001 — a broken .env must not block the update
+            pass
     if sys.platform == "win32":
-        subprocess.Popen(command, close_fds=True)
+        subprocess.Popen(command, close_fds=True, env=environment)
         os._exit(0)
-    os.execv(command[0], command)
+    os.execve(command[0], command, environment)
 
 
 class UpdateChecker:
@@ -49,7 +69,7 @@ class UpdateChecker:
     throttle, and a raced double-fetch is merely wasteful."""
 
     def __init__(self, repo_root, *, runner=subprocess.run, min_fetch_gap=600,
-                 clock=time.monotonic, respawn=_relaunch):
+                 clock=time.monotonic, respawn=None):
         self._repo = str(repo_root)
         self._run = runner
         self._min_fetch_gap = min_fetch_gap
@@ -91,7 +111,10 @@ class UpdateChecker:
 
     def respawn(self):
         """Replace this process with a fresh launch of the pulled code."""
-        self._respawn()
+        if self._respawn is not None:
+            self._respawn()
+        else:
+            _relaunch(self._repo)
 
     def update(self):
         """Pull and relaunch in one stroke. Callers answering an HTTP request
