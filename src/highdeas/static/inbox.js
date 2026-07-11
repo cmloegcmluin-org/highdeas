@@ -792,39 +792,32 @@
 
   setTimeout(poll, POLL_MS);
 
-  // The app watches main from a distance: when /version says this run is
-  // behind, the header grows an "Update & restart" button. Clicking pulls the
-  // new code and relaunches — this window dies mid-request, on purpose, and
-  // the reopened one is the update. A refusal (diverged checkout) is worth
-  // words; a dead request after a 204 is the success case.
+  // The app keeps itself current: when new code lands on main, the page
+  // pulls-and-relaunches — but only once the user has left the window alone
+  // for a minute (or it's hidden). Never mid-thought: a restart under a
+  // half-typed name would cost more than any update is worth. Launch itself
+  // also fast-forwards (app._become_current), so this only covers code that
+  // lands while a window sits open.
   var VERSION_POLL_MS = 5 * 60 * 1000;
-  var updateBtn = document.getElementById('update');
+  var IDLE_BEFORE_UPDATE_MS = 60 * 1000;
+  var lastTouch = Date.now();
+  ['pointerdown', 'keydown', 'wheel'].forEach(function (kind) {
+    document.addEventListener(kind, function () { lastTouch = Date.now(); }, true);
+  });
 
-  function checkVersion() {
-    if (!updateBtn) return;
+  function maybeSelfUpdate() {
     fetch('/version', { cache: 'no-store' })
       .then(function (r) { return r.json(); })
-      .then(function (v) { updateBtn.hidden = !(v && v.behind > 0); })
+      .then(function (v) {
+        if (!(v && v.behind > 0)) return;
+        if (!document.hidden && Date.now() - lastTouch < IDLE_BEFORE_UPDATE_MS) return;
+        notify('Updating Highdeas to the latest…');
+        post('/update').catch(function () {});
+      })
       .catch(function () {});
   }
 
-  if (updateBtn) {
-    updateBtn.addEventListener('click', function () {
-      if (updateBtn.disabled) return;
-      updateBtn.disabled = true;
-      updateBtn.textContent = 'Updating…';
-      post('/update').then(function (r) {
-        if (!r.ok) return r.text().then(function (t) { throw new Error(t); });
-        updateBtn.textContent = 'Restarting…';
-      }).catch(function (err) {
-        notify('The update was refused — the app is unchanged.' + describe(err));
-        updateBtn.disabled = false;
-        updateBtn.textContent = 'Update & restart';
-      });
-    });
-    setTimeout(checkVersion, 10 * 1000);
-    setInterval(checkVersion, VERSION_POLL_MS);
-  }
+  setInterval(maybeSelfUpdate, VERSION_POLL_MS);
 
   // Manual "check now": the same inbox rescan the poll runs, on demand. A local check
   // returns almost instantly, so hold the button's arrows spinning for a beat — even

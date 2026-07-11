@@ -93,3 +93,54 @@ def test_a_diverged_checkout_refuses_to_update_and_does_not_relaunch(tmp_path):
         checker.update()
 
     assert spawned == []
+
+
+# --- becoming current at launch ----------------------------------------------
+
+
+class FakeChecker:
+    def __init__(self, behind=0, refuse=False):
+        self._behind = behind
+        self._refuse = refuse
+        self.pulled = 0
+        self.respawned = 0
+
+    def status(self):
+        return {"behind": self._behind}
+
+    def pull(self):
+        if self._refuse:
+            raise RuntimeError("cannot fast-forward")
+        self.pulled += 1
+
+    def respawn(self):
+        self.respawned += 1
+
+
+def test_launch_becomes_current_when_behind():
+    from highdeas.app import _become_current
+    checker = FakeChecker(behind=3)
+
+    _become_current(checker)
+
+    assert checker.pulled == 1
+    assert checker.respawned == 1
+
+
+def test_launch_proceeds_untouched_when_current():
+    from highdeas.app import _become_current
+    checker = FakeChecker(behind=0)
+
+    _become_current(checker)
+
+    assert checker.pulled == 0
+    assert checker.respawned == 0
+
+
+def test_a_diverged_checkout_launches_what_it_has():
+    from highdeas.app import _become_current
+    checker = FakeChecker(behind=2, refuse=True)
+
+    _become_current(checker)  # must not raise, must not respawn
+
+    assert checker.respawned == 0

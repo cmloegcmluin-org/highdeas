@@ -187,8 +187,25 @@ def _chrome_launcher():
     return launch
 
 
+def _become_current(checker=None):
+    """Launch on today's code: if main moved since this checkout last pulled,
+    fast-forward and re-exec before anything else loads. Offline reads as
+    current; a diverged checkout launches what it has (the runtime checker
+    keeps watching and the page will say so). No loop risk: the re-exec'd
+    process finds itself at origin/main and sails through."""
+    checker = checker or UpdateChecker(PROJECT_ROOT)
+    if checker.status()["behind"] <= 0:
+        return
+    try:
+        checker.pull()
+    except RuntimeError:
+        return
+    checker.respawn()
+
+
 def main():
     _set_windows_app_id()
+    _become_current()
     app, service = build_app()
     _ingest_continuously(service)
     _start_upload_listener(build_upload_app(service))
