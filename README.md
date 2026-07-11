@@ -139,6 +139,23 @@ Only `POST /upload` is reachable from the network — the inbox page and its
 submit/delete routes stay loopback-only. Recordings made away from home simply wait
 in the app's retry queue until the phone is back on the home Wi-Fi.
 
+### The app itself
+
+SwiftUI, in `ios/` (`Highdeas.xcodeproj`; the pure logic — queue state machine,
+multipart request building — lives in the `HighdeasKit` package with its own tests,
+`swift test`). One screen: a record button that keeps recording while the screen is
+locked, and a list of recordings still on the phone. Each recording auto-pushes the
+moment it stops and is deleted from the phone only when the server confirms custody
+(any 2xx); until then it stays in the list, playable with a scrub slider. Settings
+(gear) holds the server URL and token.
+
+Building it onto the iPhone needs a Mac with Xcode, the phone in Developer Mode
+(Settings → Privacy & Security), and the Apple Developer Program membership
+(renews each July): open the project, plug the phone in, press Run — or run
+`ios/resign.sh` for the same thing headlessly. Development installs live until the
+provisioning profile expires (a year), so this is an annual (or new-phone) chore,
+not a weekly one.
+
 ## Configuration
 
 Everything but the keys for the destinations you use is optional. Set these in `.env`.

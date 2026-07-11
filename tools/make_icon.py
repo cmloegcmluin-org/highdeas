@@ -1,9 +1,14 @@
-"""Generate ``highdeas.ico`` — a white microphone on a green cannabis leaf.
+"""Generate the Highdeas app icons — a white microphone on a green cannabis leaf.
 
-This draws the "Highdeas" app icon: a stylized seven-point cannabis leaf
+This draws the "Highdeas" emblem: a stylized seven-point cannabis leaf
 (green leaflets radiating from a common centre) with a white microphone glyph
-centred on top. The result is written to the repository root as a multi-size
-Windows ICO (16, 32, 48, 64, 128, 256).
+centred on top. Two outputs, one source of truth:
+
+- ``highdeas.ico`` at the repository root — multi-size Windows ICO
+  (16, 32, 48, 64, 128, 256), emblem on transparency.
+- ``ios/Highdeas/Assets.xcassets/AppIcon.appiconset/AppIcon.png`` — the iOS
+  app icon: the same emblem on an opaque dark-slate square (iOS rejects
+  alpha and rounds its own corners), 1024x1024.
 
 The whole emblem is rendered once on a large supersampled canvas and then
 downscaled with LANCZOS to each icon size, so every frame is smoothly
@@ -171,9 +176,15 @@ def draw_mic(draw: ImageDraw.ImageDraw) -> None:
 # Fraction of the canvas edge the emblem should span after centring.
 FILL = 0.90
 
+# The iOS icon is a full-bleed square that iOS masks to its own rounded rect,
+# so the emblem sits smaller on a solid ground. The slate matches the desktop
+# splash screen (and survives both light and dark home screens).
+IOS_BG = (15, 23, 42)
+IOS_FILL = 0.74
 
-def render_master() -> Image.Image:
-    """Render the full emblem, then scale it to ``FILL`` and centre it.
+
+def render_master(fill: float = FILL) -> Image.Image:
+    """Render the full emblem, then scale it to ``fill`` and centre it.
 
     Centring from the actual pixel bounds (rather than trusting the hand-tuned
     layout constants) keeps the emblem balanced in the frame and fills it
@@ -188,7 +199,7 @@ def render_master() -> Image.Image:
     bbox = img.getbbox()
     cropped = img.crop(bbox)
     w, h = cropped.size
-    scale = (FILL * S) / max(w, h)
+    scale = (fill * S) / max(w, h)
     scaled = cropped.resize((round(w * scale), round(h * scale)), Image.Resampling.LANCZOS)
 
     centered = Image.new("RGBA", (S, S), (0, 0, 0, 0))
@@ -218,6 +229,14 @@ def main() -> None:
         append_images=frames[:-1],
     )
     print(f"wrote {out_path} with sizes {ICON_SIZES}")
+
+    ios_emblem = render_master(fill=IOS_FILL)
+    ios = Image.new("RGB", (S, S), IOS_BG)
+    ios.paste(ios_emblem, mask=ios_emblem)
+    ios_path = root / "ios/Highdeas/Assets.xcassets/AppIcon.appiconset/AppIcon.png"
+    ios_path.parent.mkdir(parents=True, exist_ok=True)
+    ios.save(ios_path, format="PNG")
+    print(f"wrote {ios_path} ({S}x{S}, opaque)")
 
 
 if __name__ == "__main__":

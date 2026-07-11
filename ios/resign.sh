@@ -1,13 +1,15 @@
 #!/bin/zsh
-# The weekly one-action refresh for free "Personal Team" signing, whose installs
-# expire after 7 days: rebuild, re-sign, reinstall onto the iPhone.
+# One-action rebuild + reinstall onto the iPhone. Under the paid Developer
+# Program membership (since 2026-07-10) installs last until the provisioning
+# profile expires — about a year — so this is for app updates, profile renewal,
+# or a new phone, not the weekly ritual it was under free signing.
 #
 #   ./resign.sh                 # iPhone plugged in (or paired over Wi-Fi)
 #   DEVICE=<udid> ./resign.sh   # pick a device explicitly
 #
-# First-time setup happens in Xcode once, not here: sign into your Apple ID
-# (Settings → Accounts), pick your Personal Team on the Highdeas target, and
-# run it onto the phone so iOS learns to trust the certificate.
+# First-time setup happens in Xcode once, not here: sign into the Apple ID
+# (Settings → Accounts), pick the team on the Highdeas target, and let it
+# create the certificate and register the device.
 set -euo pipefail
 cd "$(dirname "$0")"
 
