@@ -995,9 +995,9 @@ def test_refresh_can_wait_for_the_running_scan_instead_of_skipping(tmp_path):
     service = InboxService(
         inbox_dir=inbox, store=store, transcriber=SlowTranscriber(),
         bin_dir=tmp_path / "bin",
-        find_new=lambda d, known: [NewRecording(p, p.name)
+        find_new=lambda d, known: [NewRecording(p, f"{p.stem}-cccccccccccc.m4a")
                                    for p in sorted(Path(d).glob("*.m4a"))
-                                   if p.name not in known],
+                                   if f"{p.stem}-cccccccccccc.m4a" not in known],
         clock=lambda: "2026-07-10T00:00",
         recorded_time=lambda path: "2026-07-10T00:00",
     )
@@ -1012,4 +1012,59 @@ def test_refresh_can_wait_for_the_running_scan_instead_of_skipping(tmp_path):
     first.join(timeout=5)
     waiter.join(timeout=5)
 
-    assert {m.audio_filename for m in store.list_pending()} == {"a.m4a", "b.m4a"}
+    assert {m.audio_filename for m in store.list_pending()} == {
+        "a-cccccccccccc.m4a", "b-cccccccccccc.m4a"}
+
+
+def _keyed_service(tmp_path, store, *, settle=2):
+    """A service whose inbox offers one already-keyed recording — the shape a
+    peer machine's audio has when it syncs in ahead of its state file."""
+    inbox = tmp_path / "inbox"
+    inbox.mkdir(exist_ok=True)
+    keyed = inbox / "voice-8-abcdefabcdef.m4a"
+    keyed.write_bytes(b"AUDIO")
+    return InboxService(
+        inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
+        bin_dir=tmp_path / "bin",
+        find_new=lambda d, known: (
+            [NewRecording(keyed, keyed.name)] if keyed.name not in known else []),
+        clock=lambda: "2026-07-11T00:00", recorded_time=lambda path: "2026-07-11T00:00",
+        sync_settle_scans=settle,
+    )
+
+
+def test_an_already_keyed_stranger_waits_for_its_state_to_sync_in(tmp_path):
+    # Another machine's memo: its audio synced here first. Adopting it now
+    # would write a default re-transcription that wins the sync conflict over
+    # the rich memo about to arrive — the user's edits, clobbered.
+    store = MemoStore(tmp_path / "memos.db")
+    service = _keyed_service(tmp_path, store, settle=2)
+
+    service.refresh()
+    service.refresh()
+
+    assert store.known_filenames() == set()
+
+
+def test_the_wait_ends_if_no_state_ever_comes(tmp_path):
+    # The same shape is left by a crash between rename and upsert on THIS
+    # machine — after the settle window it must still become a memo.
+    store = MemoStore(tmp_path / "memos.db")
+    service = _keyed_service(tmp_path, store, settle=2)
+
+    service.refresh()
+    service.refresh()
+    service.refresh()
+
+    assert store.known_filenames() == {"voice-8-abcdefabcdef.m4a"}
+
+
+def test_an_upload_this_machine_received_is_adopted_at_once(tmp_path):
+    # The upload endpoint lands files already keyed; its refresh names the
+    # key so the settle wait never delays a phone push.
+    store = MemoStore(tmp_path / "memos.db")
+    service = _keyed_service(tmp_path, store, settle=5)
+
+    service.refresh(adopt_now="voice-8-abcdefabcdef.m4a")
+
+    assert store.known_filenames() == {"voice-8-abcdefabcdef.m4a"}

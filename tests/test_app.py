@@ -221,8 +221,9 @@ class FakeUploadService:
     def knows(self, audio_filename):
         return self._knows
 
-    def refresh(self, wait=False):
+    def refresh(self, wait=False, adopt_now=None):
         self.waited = wait
+        self.adopted_now = adopt_now
         self.refreshed.set()
 
 
@@ -254,6 +255,9 @@ def test_build_upload_app_accepts_a_recording_and_kicks_off_ingest(tmp_path, mon
     # in-flight scan predates this file, and a skipped trigger never recurs.
     assert service.refreshed.wait(timeout=2)
     assert service.waited is True
+    # The refresh names the key it just landed, so the wait-for-state settle
+    # (for audio synced in from the other machine) never delays a phone push.
+    assert service.adopted_now == response.get_json()["stored"]
 
 
 def test_build_upload_app_confirms_an_already_processed_recording_without_reingesting(

@@ -54,9 +54,15 @@ on both desks; act on a memo wherever you're sitting.
   rather than merging. Per-memo granularity makes conflicts rare and small, but
   ingest must ignore (or better, surface) conflict files rather than adopt them
   as new recordings.
-- **Double transcription**: both machines can ingest the same new recording
-  before sync converges. Content keys make this converge to one memo; the loser
-  wasted CPU, nothing more. Acceptable.
+- **Audio syncing in ahead of its state file** — sharper than first thought:
+  the receiving machine would adopt the already-keyed audio as a brand-new
+  memo, and its default re-transcription then *wins the sync conflict* over
+  the rich, possibly-edited memo about to arrive. Guarded (2026-07-11): an
+  already-keyed recording unknown to the store waits `sync_settle_scans`
+  scans (~a minute) for its state before being adopted anyway — the fallback
+  covers crash orphans; uploads the local listener lands are exempt via
+  `refresh(adopt_now=...)`, so a phone push never waits. Plain double-ingest
+  of a genuinely raw recording still just converges by content key.
 - **Windows paths in defaults** (`DEFAULT_INBOX`, `DEFAULT_CHROME`,
   `DEFAULT_DRIVE_BASE` in `app.py`) — platform-gate them; `.env` carries the
   real values on each machine.

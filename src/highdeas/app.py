@@ -153,11 +153,11 @@ def build_upload_app(service):
         # Adoption shouldn't wait for the scanner's next pass — but
         # transcription is slow, so refresh off the request thread and let
         # the 2xx return the moment the file is in place.
-        on_received=lambda key: _refresh_when_free(service),
+        on_received=lambda key: _refresh_when_free(service, adopt_now=key),
     )
 
 
-def _refresh_when_free(service):
+def _refresh_when_free(service, adopt_now=None):
     """Refresh off the request thread, *waiting* for any scan already running:
     during a burst of uploads the in-flight scan snapshotted the inbox before
     this recording landed, and the upload's trigger fires exactly once — a
@@ -165,7 +165,7 @@ def _refresh_when_free(service):
     pass. Swallow errors like the scanner does."""
     def run():
         try:
-            service.refresh(wait=True)
+            service.refresh(wait=True, adopt_now=adopt_now)
         except Exception as exc:  # noqa: BLE001 — a bad recording must not kill the thread
             print(f"Post-upload refresh failed ({exc}).")
 

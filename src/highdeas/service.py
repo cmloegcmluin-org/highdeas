@@ -77,7 +77,8 @@ class InboxService:
     def __init__(self, *, inbox_dir, store, transcriber, bin_dir,
                  find_new=find_new_recordings, route=_no_router, clock=_now,
                  recorded_time=recording_time, join_audio=audio.join,
-                 audio_length=audio.duration, sleep=time.sleep):
+                 audio_length=audio.duration, sleep=time.sleep,
+                 sync_settle_scans=12):
         self._inbox_dir = inbox_dir
         self._store = store
         self._transcriber = transcriber
@@ -90,8 +91,13 @@ class InboxService:
         self._audio_length = audio_length
         self._sleep = sleep
         self._refresh_lock = threading.Lock()
+        # How many scans an already-keyed stranger waits for its state file to
+        # sync in before being adopted anyway (~a minute at the scanner's pace),
+        # and the per-name count of scans waited so far.
+        self._sync_settle_scans = sync_settle_scans
+        self._deferred_scans = {}
 
-    def refresh(self, wait=False):
+    def refresh(self, wait=False, adopt_now=None):
         """Ingest and transcribe any waiting recordings, skipping when a refresh is
         already running. The app's own scan, the client poll, and a second browser
         tab can all land here at once; letting two scans race on the same inbox would
@@ -100,15 +106,39 @@ class InboxService:
 
         `wait=True` queues behind the running scan and then scans again, for the
         one caller with no next poll: the upload endpoint fires once per landed
-        recording, and the in-flight scan's snapshot predates that file."""
+        recording, and the in-flight scan's snapshot predates that file.
+        `adopt_now` names an upload that just landed on THIS machine, exempting
+        it from the wait-for-state settle (see _should_wait_for_state)."""
         if not self._refresh_lock.acquire(blocking=wait):
             return
         try:
-            self._ingest_waiting_recordings()
+            self._ingest_waiting_recordings(adopt_now)
         finally:
             self._refresh_lock.release()
 
-    def _ingest_waiting_recordings(self):
+    def _should_wait_for_state(self, recording, adopt_now):
+        """Whether to leave an already-keyed stranger un-adopted this scan.
+
+        A recording whose filename already carries a content key but which the
+        store doesn't know is usually another machine's memo whose audio synced
+        in ahead of its state file. Adopting it now would write a default
+        re-transcription that beats the rich memo in the sync-conflict lottery
+        — the user's edits, clobbered by a blank. So it waits a few scans for
+        its state to arrive. Not forever: a crash between rename and upsert on
+        this machine leaves the same shape, and after the settle window it is
+        still somebody's memo. Uploads land already keyed too, but their
+        refresh names them via `adopt_now` — a phone push never waits."""
+        keyed_already = recording.source.name == recording.name
+        if not keyed_already or recording.name == adopt_now:
+            return False
+        waited = self._deferred_scans.get(recording.name, 0) + 1
+        if waited > self._sync_settle_scans:
+            self._deferred_scans.pop(recording.name, None)
+            return False
+        self._deferred_scans[recording.name] = waited
+        return True
+
+    def _ingest_waiting_recordings(self, adopt_now=None):
         self.purge_expired()
         # A pending memo's audio already lives in the inbox under its own name, so
         # never re-ingest it. find_new keys by content: a memo stored under a raw
@@ -118,8 +148,12 @@ class InboxService:
         # Restore now re-keys incoming files, but a legacy raw-named memo left
         # sitting pending in the inbox never passes through restore; guard it here.
         pending = {memo.audio_filename for memo in self._store.list_pending()}
+        offered = set()
         for recording in self._find_new(self._inbox_dir, self._store.known_filenames()):
             if recording.source.name in pending:
+                continue
+            offered.add(recording.name)
+            if self._should_wait_for_state(recording, adopt_now):
                 continue
             try:
                 adopted = self._adopt(recording)
@@ -138,6 +172,10 @@ class InboxService:
                 # decoded. Skip it and press on; the next refresh retries it (its content
                 # key still isn't in the store, so nothing is lost).
                 print(f"Highdeas: skipping {recording.name} this pass ({exc}).")
+        # A stranger whose state file arrived stops being offered by find_new;
+        # its wait-count would otherwise linger forever.
+        self._deferred_scans = {name: count for name, count in self._deferred_scans.items()
+                                if name in offered}
 
     def pending(self):
         return self._store.list_pending()
