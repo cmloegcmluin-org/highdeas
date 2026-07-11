@@ -309,7 +309,7 @@ def _open_when_ready(window, url, wait_until_ready):
 def _dress_mac_dock():
     """Put the leaf on the running app's Dock tile on macOS.
 
-    A venv python re-execs through the Python framework's own app bundle for
+    The committed Dock-tile artwork (same squircle as the pinned launcher, so open and closed tiles match). A venv python re-execs through the Python framework's own app bundle for
     GUI work, so the running process would otherwise wear Python's rocket icon
     no matter how it was launched (the pinnable Highdeas.app launcher only
     dresses the *tile that launches it* — see tools/make_mac_app.sh). Purely
@@ -319,7 +319,7 @@ def _dress_mac_dock():
     try:
         from AppKit import NSApplication, NSImage
 
-        icon = PROJECT_ROOT / "ios/Highdeas/Assets.xcassets/AppIcon.appiconset/AppIcon.png"
+        icon = PROJECT_ROOT / "highdeas-dock.png"
         if icon.is_file():
             NSApplication.sharedApplication().setApplicationIconImage_(
                 NSImage.alloc().initWithContentsOfFile_(str(icon)))

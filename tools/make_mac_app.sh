@@ -7,7 +7,8 @@
 # The bundle's executable exec's the repo venv's python, so the running app
 # keeps the bundle's identity: the Dock shows the Highdeas name and leaf icon,
 # not "Python". Rebuild after moving the repo or changing the icon. Requires
-# the repo venv (with Pillow, for the icon render) and Xcode CLT's iconutil.
+# Xcode CLT's iconutil and sips; the tile artwork is the committed
+# highdeas-dock.png (regenerate with tools/make_icon.py).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
