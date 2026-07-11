@@ -1,3 +1,4 @@
+import time
 from datetime import datetime
 
 from highdeas.store import Memo
@@ -1726,3 +1727,72 @@ def test_pages_reserve_the_scrollbar_gutter_so_they_dont_shift(tmp_path):
 
     # One stylesheet for both pages, so flipping between them doesn't shift sideways.
     assert "scrollbar-gutter: stable" in asset(client, "app.css")
+
+
+# --- the updater's endpoints -------------------------------------------------
+
+
+class FakeUpdates:
+    def __init__(self, behind=0, refuse=False):
+        self._behind = behind
+        self._refuse = refuse
+        self.pulled = 0
+        self.respawned = 0
+
+    def status(self):
+        return {"behind": self._behind}
+
+    def pull(self):
+        if self._refuse:
+            raise RuntimeError("cannot fast-forward")
+        self.pulled += 1
+
+    def respawn(self):
+        self.respawned += 1
+
+
+def _update_app(updates):
+    return create_app(FakeService(), inbox_dir="inbox", bin_dir="bin",
+                      updates=updates, update_respawn_delay=0).test_client()
+
+
+def test_version_reports_how_far_behind_the_app_is():
+    client = _update_app(FakeUpdates(behind=4))
+
+    response = client.get("/version")
+
+    assert response.status_code == 200
+    assert response.get_json() == {"behind": 4}
+
+
+def test_version_is_quietly_current_without_an_updater():
+    client = create_app(FakeService(), inbox_dir="inbox", bin_dir="bin").test_client()
+
+    assert client.get("/version").get_json() == {"behind": 0}
+
+
+def test_update_pulls_answers_then_relaunches():
+    # The response must reach the page before the process replaces itself,
+    # or a successful update reads as a failed request.
+    updates = FakeUpdates(behind=2)
+    client = _update_app(updates)
+
+    response = client.post("/update")
+
+    assert response.status_code == 204
+    assert updates.pulled == 1
+    deadline = time.time() + 2
+    while updates.respawned == 0 and time.time() < deadline:
+        time.sleep(0.02)
+    assert updates.respawned == 1
+
+
+def test_a_refused_update_reports_and_stays_alive():
+    updates = FakeUpdates(refuse=True)
+    client = _update_app(updates)
+
+    response = client.post("/update")
+
+    assert response.status_code == 502
+    assert b"cannot fast-forward" in response.data
+    assert updates.respawned == 0

@@ -792,6 +792,40 @@
 
   setTimeout(poll, POLL_MS);
 
+  // The app watches main from a distance: when /version says this run is
+  // behind, the header grows an "Update & restart" button. Clicking pulls the
+  // new code and relaunches — this window dies mid-request, on purpose, and
+  // the reopened one is the update. A refusal (diverged checkout) is worth
+  // words; a dead request after a 204 is the success case.
+  var VERSION_POLL_MS = 5 * 60 * 1000;
+  var updateBtn = document.getElementById('update');
+
+  function checkVersion() {
+    if (!updateBtn) return;
+    fetch('/version')
+      .then(function (r) { return r.json(); })
+      .then(function (v) { updateBtn.hidden = !(v && v.behind > 0); })
+      .catch(function () {});
+  }
+
+  if (updateBtn) {
+    updateBtn.addEventListener('click', function () {
+      if (updateBtn.disabled) return;
+      updateBtn.disabled = true;
+      updateBtn.textContent = 'Updating…';
+      post('/update').then(function (r) {
+        if (!r.ok) return r.text().then(function (t) { throw new Error(t); });
+        updateBtn.textContent = 'Restarting…';
+      }).catch(function (err) {
+        notify('The update was refused — the app is unchanged.' + describe(err));
+        updateBtn.disabled = false;
+        updateBtn.textContent = 'Update & restart';
+      });
+    });
+    setTimeout(checkVersion, 10 * 1000);
+    setInterval(checkVersion, VERSION_POLL_MS);
+  }
+
   // Manual "check now": the same inbox rescan the poll runs, on demand. A local check
   // returns almost instantly, so hold the button's arrows spinning for a beat — even
   // when nothing new turns up — so the click visibly does something and can't

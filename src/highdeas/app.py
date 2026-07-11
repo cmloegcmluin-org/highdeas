@@ -15,6 +15,7 @@ from highdeas.routers import AsanaRouter, DriveMusicRouter, NotesnookRouter, Rou
 from highdeas.service import InboxService
 from highdeas.store import FolderStore, MemoStore, adopt_legacy_db
 from highdeas.transcribe import Transcriber
+from highdeas.update import UpdateChecker
 from highdeas.upload import create_upload_app
 from highdeas.web import create_app
 from highdeas.window_state import WindowGeometryTracker, load_geometry
@@ -120,7 +121,8 @@ def build_app():
         route=Router(notesnook=notesnook, drive=drive, asana=asana),
     )
     app = create_app(service, inbox_dir=inbox_dir, bin_dir=bin_dir,
-                     open_link=_chrome_launcher(), asana_parents=asana_parents)
+                     open_link=_chrome_launcher(), asana_parents=asana_parents,
+                     updates=UpdateChecker(PROJECT_ROOT))
     return app, service
 
 

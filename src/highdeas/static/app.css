@@ -330,3 +330,8 @@ h1 { font-size: 1.35rem; margin: 0; }
 /* Both answers wear the app's outline chrome — the dialog is the emphasis, not the
    button. OK reddens on hover when what it agrees to cannot be undone. */
 .ask-btn { padding: 7px 18px; }
+
+/* The "new code landed on main" button: quietly hidden until /version says
+   the running app is behind, dressed to be noticed without shouting. */
+.update { background: #14532d; border-color: #22c55e; color: #dcfce7; }
+.update:hover { background: #166534; }

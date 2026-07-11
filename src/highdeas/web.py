@@ -3,6 +3,7 @@
 The pages themselves live in `templates/`, their behaviour in `static/`; this
 module is the routes and the glue that binds them to the templates.
 """
+import threading
 from datetime import datetime
 from urllib.parse import quote
 
@@ -47,7 +48,8 @@ def _submitted_fields():
     }
 
 
-def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=(), now=datetime.now):
+def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=(), now=datetime.now,
+               updates=None, update_respawn_delay=0.7):
     app = Flask(__name__)
     app.jinja_env.filters["when"] = _format_when
     # The bin's ages are read against the wall clock, so the clock is injectable.
@@ -87,6 +89,26 @@ def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=(), no
         service.refresh()
         return render_template("rows.html", memos=service.pending(),
                                asana_parents=asana_parents)
+
+    @app.get("/version")
+    def version():
+        """How far behind origin/main this running app is — the page shows an
+        "Update & restart" button when the answer isn't zero."""
+        return updates.status() if updates is not None else {"behind": 0}
+
+    @app.post("/update")
+    def update():
+        """Fast-forward the checkout and relaunch into it. The pull happens
+        before the response (a refusal must reach the user as words), the
+        respawn after it (a success must not read as a dead request)."""
+        if updates is None:
+            return ("This run has no updater.", 501)
+        try:
+            updates.pull()
+        except RuntimeError as exc:
+            return (f"Couldn't update: {exc}", 502)
+        threading.Timer(update_respawn_delay, updates.respawn).start()
+        return ("", 204)
 
     @app.get("/audio/<path:filename>")
     def audio(filename):

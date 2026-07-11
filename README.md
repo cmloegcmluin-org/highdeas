@@ -86,6 +86,10 @@ Pin the shortcut **file**, not the running window — pinning the live window ca
 generic `pythonw` icon that won't relaunch Highdeas. If one is stuck there, unpin it and
 pin `Highdeas.lnk` instead.
 
+**Staying current:** the app watches `origin/main` from a distance; when new code
+lands, an **Update & restart** button appears in the inbox header — one click pulls
+and relaunches. (An offline machine never nags; a diverged checkout refuses with words.)
+
 **On the Mac:** run `tools/make_mac_app.sh` once — it builds `/Applications/Highdeas.app`
 (leaf icon and all) pointed at this repo's venv. Open it, then right-click its Dock tile →
 Options → **Keep in Dock**. Rebuild after moving the repo or changing the icon. (While
