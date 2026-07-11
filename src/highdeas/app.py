@@ -301,8 +301,30 @@ def _open_window(webview, state_path):
 def _open_when_ready(window, url, wait_until_ready):
     """Wait for the local server, then swap the splash for the real app. The model
     load and backlog transcription happen in the background, never on this path."""
+    _dress_mac_dock()
     wait_until_ready()
     window.load_url(url)
+
+
+def _dress_mac_dock():
+    """Put the leaf on the running app's Dock tile on macOS.
+
+    A venv python re-execs through the Python framework's own app bundle for
+    GUI work, so the running process would otherwise wear Python's rocket icon
+    no matter how it was launched (the pinnable Highdeas.app launcher only
+    dresses the *tile that launches it* — see tools/make_mac_app.sh). Purely
+    cosmetic, so any failure is swallowed; a no-op off macOS."""
+    if sys.platform != "darwin":
+        return
+    try:
+        from AppKit import NSApplication, NSImage
+
+        icon = PROJECT_ROOT / "ios/Highdeas/Assets.xcassets/AppIcon.appiconset/AppIcon.png"
+        if icon.is_file():
+            NSApplication.sharedApplication().setApplicationIconImage_(
+                NSImage.alloc().initWithContentsOfFile_(str(icon)))
+    except Exception:  # noqa: BLE001 — cosmetics must never break the launch
+        pass
 
 
 def _run_browser(app):

@@ -86,6 +86,12 @@ Pin the shortcut **file**, not the running window — pinning the live window ca
 generic `pythonw` icon that won't relaunch Highdeas. If one is stuck there, unpin it and
 pin `Highdeas.lnk` instead.
 
+**On the Mac:** run `tools/make_mac_app.sh` once — it builds `~/Applications/Highdeas.app`
+(leaf icon and all) pointed at this repo's venv. Open it, then right-click its Dock tile →
+Options → **Keep in Dock**. Rebuild after moving the repo or changing the icon. (While
+running, macOS routes GUI Python through its own framework app; Highdeas dresses the
+running tile with its icon at launch.)
+
 **Or just run it.** Double-click **`Run Highdeas.bat`**, or run
 `.venv/Scripts/python -m highdeas.app`. It opens in its own window; the first memo takes
 ~15s while the transcription model loads — in the background, so the window still opens
