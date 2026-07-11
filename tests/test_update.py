@@ -22,6 +22,7 @@ class FakeGit:
 
     def __call__(self, cmd, **kwargs):
         self.calls.append(cmd)
+        self.kwargs = kwargs
         sub = cmd[3]  # ["git", "-C", <repo>, <subcommand>, ...]
         if sub == "fetch":
             return SimpleNamespace(returncode=1 if self._fetch_fails else 0, stdout="", stderr="")
@@ -48,6 +49,17 @@ def test_status_reports_how_far_behind_origin_main_the_checkout_is(tmp_path):
 
     assert checker.status() == {"behind": 3}
     assert git.of("fetch") and git.of("rev-list")
+
+
+def test_git_runs_without_flashing_a_console_window(tmp_path):
+    # On Windows a console child of a windowless (pythonw) app pops a console
+    # window for every call — the updater checks every few minutes.
+    import subprocess
+    git = FakeGit()
+
+    _checker(git).status()
+
+    assert git.kwargs.get("creationflags") == getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 def test_fetches_are_throttled_but_the_count_stays_fresh(tmp_path):

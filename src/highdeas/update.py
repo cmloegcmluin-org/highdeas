@@ -10,6 +10,10 @@ import subprocess
 import sys
 import time
 
+# Keep git from flashing a console window on Windows — the checker runs every
+# few minutes from a windowless (pythonw) process. A no-op (0) elsewhere.
+_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 
 def _relaunch():
     """Become the freshly-pulled code: replace this process image with a new
@@ -36,7 +40,7 @@ class UpdateChecker:
 
     def _git(self, *args):
         return self._run(["git", "-C", self._repo, *args],
-                         capture_output=True, text=True)
+                         capture_output=True, text=True, creationflags=_NO_WINDOW)
 
     def status(self):
         """How far behind origin/main this checkout is, as {'behind': N}.
