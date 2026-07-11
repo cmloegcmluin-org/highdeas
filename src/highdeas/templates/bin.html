@@ -24,8 +24,8 @@
     <div class="head">Transcript</div>
     <div class="head">Name</div>
     <div class="head">Destination</div>
-    <div class="head"><form method="post" action="/restore-all" data-confirm="Restore all {{ memos|length }} item{{ 's' if memos|length != 1 else '' }} to the inbox?"><button type="submit" class="btn icon" title="Restore all" aria-label="Restore all">{{ restore() }}</button></form></div>
-    <div class="head"><form method="post" action="/empty-bin" data-confirm="Permanently delete all {{ memos|length }} item{{ 's' if memos|length != 1 else '' }}? This cannot be undone." data-danger><button type="submit" class="btn icon danger" title="Empty bin" aria-label="Empty bin">{{ trash() }}</button></form></div>
+    <div class="head"><form method="post" action="/restore-all" data-confirm="Restore all {{ memos|length }} item{{ 's' if memos|length != 1 else '' }} to the inbox?"><button type="submit" id="restore-all" class="btn icon" title="Restore all" aria-label="Restore all">{{ restore() }}</button></form></div>
+    <div class="head"><form method="post" action="/empty-bin" data-confirm="Permanently delete all {{ memos|length }} item{{ 's' if memos|length != 1 else '' }}? This cannot be undone." data-danger><button type="submit" id="empty-bin" class="btn icon danger" title="Empty bin" aria-label="Empty bin">{{ trash() }}</button></form></div>
   </div>
 {% endblock %}
 
@@ -57,8 +57,8 @@
         {%- else %}<span class="icon" title="Sent to Notesnook" aria-label="Sent to Notesnook">{{ notesnook() }}</span>
         {%- endif %}
         {%- endif %}</div>
-      <div><form method="post" action="/restore/{{ m.audio_filename }}"><button type="submit" class="btn icon" title="Restore" aria-label="Restore">{{ restore() }}</button></form></div>
-      <div><form method="post" action="/purge/{{ m.audio_filename }}" data-confirm="Permanently delete this recording? This cannot be undone." data-danger><button type="submit" class="btn icon danger" title="Delete" aria-label="Delete">{{ trash() }}</button></form></div>
+      <div><form method="post" action="/restore/{{ m.audio_filename }}"><button type="submit" class="btn icon restore" title="Restore" aria-label="Restore">{{ restore() }}</button></form></div>
+      <div><form method="post" action="/purge/{{ m.audio_filename }}" data-confirm="Permanently delete this recording? This cannot be undone." data-danger><button type="submit" class="btn icon purge danger" title="Delete" aria-label="Delete">{{ trash() }}</button></form></div>
     </div>
     {% endfor %}
   </div>

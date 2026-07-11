@@ -641,10 +641,10 @@ def test_every_button_that_is_only_a_glyph_is_the_same_square(tmp_path):
     assert 'class="btn icon move"' in inbox
     assert 'class="btn icon go"' in inbox
     assert 'class="btn icon del danger"' in inbox
-    assert 'class="btn icon" title="Restore all"' in binned
-    assert 'class="btn icon danger" title="Empty bin"' in binned
-    assert 'class="btn icon" title="Restore"' in binned
-    assert 'class="btn icon danger" title="Delete"' in binned
+    assert 'id="restore-all" class="btn icon" title="Restore all"' in binned
+    assert 'id="empty-bin" class="btn icon danger" title="Empty bin"' in binned
+    assert 'class="btn icon restore" title="Restore"' in binned
+    assert 'class="btn icon purge danger" title="Delete"' in binned
     # No glyph asks for a size of its own any more: .icon svg draws every one of them, and
     # a head no longer needs a chrome of its own to sit in.
     assert ".topbtn svg" not in css and ".head-btn" not in css
@@ -1566,12 +1566,29 @@ def test_the_bins_columns_of_buttons_and_their_bulk_heads_wear_the_same_glyphs(t
     # glyph. Restore's arrow doubles back, Delete's is the bin the inbox trashes into.
     assert 'class="btn icon" title="Restore all" aria-label="Restore all"><svg' in body
     assert 'class="btn icon danger" title="Empty bin" aria-label="Empty bin"><svg' in body
-    assert 'class="btn icon" title="Restore" aria-label="Restore"><svg' in body
-    assert 'class="btn icon danger" title="Delete" aria-label="Delete"><svg' in body
+    assert 'class="btn icon restore" title="Restore" aria-label="Restore"><svg' in body
+    assert 'class="btn icon purge danger" title="Delete" aria-label="Delete"><svg' in body
     for word in (">Restore all<", ">Empty bin<", ">Restore<", ">Delete<"):
         assert word not in body, word
     # The words are gone from the buttons, not from the page: each confirm still says them.
     assert "Restore all 1 item to the inbox?" in body
+
+
+def test_hovering_a_bulk_head_lights_the_whole_column_it_presses(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    css = asset(client, "app.css")
+
+    # Hovering a column-head "all" button answers with its blast radius: every row
+    # button it would press wears its own hover chrome. :hover can't reach from the
+    # frozen header into the rows, so the rule runs from body with :has() — which
+    # also covers rows the live poll splices in later, with no JS to re-wire. A
+    # button with nothing to do (disabled, mid-send) stays out of the preview, just
+    # as it sits out the ordinary hover.
+    assert "body:has(#submit-all:not(:disabled):hover) .memo .go:not(:disabled)" in css
+    assert "body:has(#trash-all:not(:disabled):hover) .memo .del:not(:disabled)" in css
+    assert "body:has(#restore-all:not(:disabled):hover) .row .restore:not(:disabled)" in css
+    assert "body:has(#empty-bin:not(:disabled):hover) .row .purge:not(:disabled)" in css
 
 
 def test_bin_back_control_is_a_button_not_a_text_link(tmp_path):

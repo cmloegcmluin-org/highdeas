@@ -37,6 +37,14 @@ h1 { font-size: 1.35rem; margin: 0; }
        transition: color .15s, border-color .15s, opacity .15s; }
 .btn:not(:disabled):hover { border-color: #3b82f6; color: #3b82f6; }
 .btn.danger:not(:disabled):hover { border-color: #e5484d; color: #e5484d; }
+/* Hovering a column-head "all" button answers with its blast radius: every row
+   button it would press lights the same hover chrome. :hover can't reach from the
+   frozen header into the rows, but :has() from body can — and it also catches rows
+   the live poll splices in later, which a JS class-toggle would have to re-wire. */
+body:has(#submit-all:not(:disabled):hover) .memo .go:not(:disabled),
+body:has(#restore-all:not(:disabled):hover) .row .restore:not(:disabled) { border-color: #3b82f6; color: #3b82f6; }
+body:has(#trash-all:not(:disabled):hover) .memo .del:not(:disabled),
+body:has(#empty-bin:not(:disabled):hover) .row .purge:not(:disabled) { border-color: #e5484d; color: #e5484d; }
 /* The app's one fade, and the only thing it ever means: this button has nothing to do.
    A check already in flight, an undo with nothing left to walk back, a Group with
    nothing ticked to fold, a chevron with no text to move. Every other button — in a
