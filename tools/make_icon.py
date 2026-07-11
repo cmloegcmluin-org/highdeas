@@ -9,9 +9,11 @@ centred on top. Two outputs, one source of truth:
 - ``ios/Highdeas/Assets.xcassets/AppIcon.appiconset/AppIcon.png`` — the iOS
   app icon: the same emblem on an opaque dark-slate square (iOS rejects
   alpha and rounds its own corners), 1024x1024.
-The macOS launcher (tools/make_mac_app.sh) consumes the iOS square directly:
-macOS 26 gives every legacy icon its own standard backplate treatment, so the
-right move is one full-bleed square and no cleverness.
+- ``tools/Highdeas.icon/Assets/leaf.png`` — the emblem layer of the macOS
+  Icon Composer document (the hand-written ``icon.json`` beside it supplies
+  the slate fill). tools/make_mac_app.sh compiles the document with actool
+  into the modern format, so macOS renders the Dock tile natively — same
+  squircle treatment pinned, launching, and running.
 
 The whole emblem is rendered once on a large supersampled canvas and then
 downscaled with LANCZOS to each icon size, so every frame is smoothly
@@ -232,6 +234,11 @@ def main() -> None:
         append_images=frames[:-1],
     )
     print(f"wrote {out_path} with sizes {ICON_SIZES}")
+
+    layer_path = root / "tools/Highdeas.icon/Assets/leaf.png"
+    layer_path.parent.mkdir(parents=True, exist_ok=True)
+    render_master(fill=IOS_FILL).save(layer_path, format="PNG")
+    print(f"wrote {layer_path} (macOS icon layer)")
 
     ios_emblem = render_master(fill=IOS_FILL)
     ios = Image.new("RGB", (S, S), IOS_BG)

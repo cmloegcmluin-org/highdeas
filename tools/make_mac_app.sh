@@ -1,14 +1,15 @@
 #!/bin/zsh
-# Assemble ~/Applications/Highdeas.app — the Dock-pinnable macOS launcher.
+# Assemble /Applications/Highdeas.app — the Dock-pinnable macOS launcher.
 #
 #   tools/make_mac_app.sh                 # app launches THIS repo's venv
 #   REPO=/path/to/highdeas tools/make_mac_app.sh
+#   APP_DIR=~/Applications tools/make_mac_app.sh
 #
 # The bundle's executable exec's the repo venv's python, so the running app
-# keeps the bundle's identity: the Dock shows the Highdeas name and leaf icon,
-# not "Python". Rebuild after moving the repo or changing the icon. Requires
-# Xcode CLT's iconutil and sips; the tile artwork is the committed
-# highdeas-dock.png (regenerate with tools/make_icon.py).
+# keeps the bundle's identity. The icon ships in the modern layered format
+# (tools/Highdeas.icon, compiled here with actool), so macOS renders the tile
+# natively — the same treatment pinned, launching, and running. Requires full
+# Xcode (for actool). Rebuild after moving the repo or changing the icon.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
@@ -19,45 +20,19 @@ mkdir -p "$APP_DIR"
 APP="$APP_DIR/Highdeas.app"
 [[ -x "$REPO/.venv/bin/python" ]] || { echo "No venv at $REPO/.venv — create it first (see README)." >&2; exit 1; }
 
-# The icon renders with whatever venv runs this script (it needs Pillow, a
-# tooling-only dep — `pip install pillow` here if missing); the launcher it
-# builds targets $REPO's venv, which needs no Pillow.
-PYTHON="$HERE/.venv/bin/python"
-"$PYTHON" -c "import PIL" 2>/dev/null || { echo "Pillow missing: $PYTHON -m pip install pillow" >&2; exit 1; }
+# --- icon: compile the Icon Composer document into the modern format ---------
+ICONWORK="$(mktemp -d)"
+xcrun actool "$HERE/tools/Highdeas.icon" --compile "$ICONWORK" \
+  --platform macosx --minimum-deployment-target 26.0 \
+  --app-icon Highdeas --output-partial-info-plist "$ICONWORK/partial.plist" \
+  --output-format human-readable-text > /dev/null
+[[ -f "$ICONWORK/Assets.car" && -f "$ICONWORK/Highdeas.icns" ]] || {
+  echo "actool did not produce the icon (full Xcode required)." >&2; exit 1; }
 
-# --- icon: the shared emblem, on macOS's rounded-rect tile shape -------------
-ICONSET="$(mktemp -d)/Highdeas.iconset"
-mkdir -p "$ICONSET"
-"$PYTHON" - "$REPO" "$ICONSET" << 'EOF'
-import sys
-from pathlib import Path
-from PIL import Image, ImageDraw
-
-repo, iconset = Path(sys.argv[1]), Path(sys.argv[2])
-square = Image.open(repo / "ios/Highdeas/Assets.xcassets/AppIcon.appiconset/AppIcon.png")
-
-# macOS tiles are rounded rects on transparency, drawn at ~80% of the canvas
-# with the OS-standard corner radius (~22.37% of the tile edge).
-S = 1024
-tile = round(0.80 * S)
-radius = round(0.2237 * tile)
-mask = Image.new("L", (tile, tile), 0)
-ImageDraw.Draw(mask).rounded_rectangle([0, 0, tile - 1, tile - 1], radius=radius, fill=255)
-canvas = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-scaled = square.resize((tile, tile), Image.Resampling.LANCZOS).convert("RGBA")
-canvas.paste(scaled, ((S - tile) // 2, (S - tile) // 2), mask)
-
-for size in (16, 32, 128, 256, 512):
-    for scale in (1, 2):
-        px = size * scale
-        name = f"icon_{size}x{size}" + ("@2x" if scale == 2 else "") + ".png"
-        canvas.resize((px, px), Image.Resampling.LANCZOS).save(iconset / name)
-EOF
-
-# --- bundle ------------------------------------------------------------------
+# --- bundle -------------------------------------------------------------------
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/Highdeas.icns"
+cp "$ICONWORK/Assets.car" "$ICONWORK/Highdeas.icns" "$APP/Contents/Resources/"
 
 cat > "$APP/Contents/Info.plist" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -70,13 +45,14 @@ cat > "$APP/Contents/Info.plist" << EOF
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleExecutable</key><string>Highdeas</string>
   <key>CFBundleIconFile</key><string>Highdeas</string>
+  <key>CFBundleIconName</key><string>Highdeas</string>
   <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
 EOF
 
 cat > "$APP/Contents/MacOS/Highdeas" << EOF
 #!/bin/zsh
-# exec keeps the bundle's identity on the python process: Dock shows Highdeas.
+# exec keeps the bundle's identity on the python process.
 cd "$REPO"
 exec "$REPO/.venv/bin/python" -m highdeas.app
 EOF
