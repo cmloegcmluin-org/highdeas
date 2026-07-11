@@ -693,10 +693,20 @@
   // Run an action over the rows one at a time — not a 20-wide burst at the local
   // server and Notesnook — tallying failures so the outcome is reported once at the end.
   function runEach(memos, action) {
+    // Count failures AND keep the first real reason: "3 couldn't be sent"
+    // with the cause hidden turns a bad API key into a network goose chase.
     var failures = 0;
+    var firstReason = '';
     return memos.reduce(function (chain, memo) {
-      return chain.then(function () { return action(memo).catch(function () { failures += 1; }); });
-    }, Promise.resolve()).then(function () { return failures; });
+      return chain.then(function () {
+        return action(memo).catch(function (err) {
+          failures += 1;
+          if (!firstReason && err && err.message) firstReason = err.message;
+        });
+      });
+    }, Promise.resolve()).then(function () {
+      return { failures: failures, reason: firstReason };
+    });
   }
 
   var submitAll = document.getElementById('submit-all');
@@ -704,9 +714,10 @@
     var memos = rows();
     if (!memos.length) return;
     clearNotice();
-    runEach(memos, submitRow).then(function (failures) {
-      if (failures) notify(failures + ' of ' + memos.length + ' note' + (memos.length === 1 ? '' : 's') +
-        " couldn't be sent and are still in your inbox. Check that Notesnook is reachable, then try again.");
+    runEach(memos, submitRow).then(function (result) {
+      if (result.failures) notify(result.failures + ' of ' + memos.length + ' note' + (memos.length === 1 ? '' : 's') +
+        " couldn't be sent and are still in your inbox." +
+        (result.reason ? ' ' + result.reason : ''));
     });
   });
   var trashAll = document.getElementById('trash-all');
@@ -717,9 +728,10 @@
     window.HighdeasAsk(question, true).then(function (yes) {
       if (!yes) return;
       clearNotice();
-      runEach(memos, trashRow).then(function (failures) {
-        if (failures) notify(failures + ' of ' + memos.length +
-          " couldn't be moved to the bin and are still in your inbox.");
+      runEach(memos, trashRow).then(function (result) {
+        if (result.failures) notify(result.failures + ' of ' + memos.length +
+          " couldn't be moved to the bin and are still in your inbox." +
+          (result.reason ? ' ' + result.reason : ''));
       });
     });
   });
