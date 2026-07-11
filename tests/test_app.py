@@ -461,3 +461,12 @@ def test_build_app_and_upload_app_read_defaults_through_the_platform(monkeypatch
 
     assert response.status_code == 201
     assert list(inbox.iterdir())
+
+
+def test_the_splash_wears_the_apps_own_system_colors():
+    # The page paints with the system Canvas (adapting to light/dark); a
+    # hardcoded slate splash reads as a different app for the first second.
+    from highdeas.app import _SPLASH_HTML
+    assert "color-scheme: light dark" in _SPLASH_HTML
+    assert "background: Canvas" in _SPLASH_HTML
+    assert "#0f172a" not in _SPLASH_HTML

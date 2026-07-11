@@ -74,19 +74,22 @@ APP_ICON = PROJECT_ROOT / "highdeas.ico"
 WINDOW_STATE = PROJECT_ROOT / "window.json"
 
 # Shown instantly in the native window for the brief moment before the local server
-# accepts connections, so the user never stares at a blank frame. Self-contained; the
-# dark slate matches the window background below so there's no white flash on open.
+# accepts connections, so the user never stares at a blank frame. Painted with the
+# same system colors the app's pages use (app.css: color-scheme + Canvas), so the
+# splash reads as the app warming up, not as a different app passing through.
 _SPLASH_HTML = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><style>
+  :root { color-scheme: light dark; }
   html, body { height: 100%; margin: 0; }
   body { display: flex; align-items: center; justify-content: center;
-         background: #0f172a; color: #e2e8f0;
+         background: Canvas; color: CanvasText;
          font-family: -apple-system, "Segoe UI", system-ui, sans-serif; }
   .box { text-align: center; }
   .name { font-size: 1.9rem; font-weight: 650; letter-spacing: .01em; }
   .sub { margin-top: .55rem; font-size: .85rem; opacity: .6; }
   .spin { width: 34px; height: 34px; margin: 1.5rem auto 0; border-radius: 50%;
-          border: 3px solid rgba(148, 163, 184, .25); border-top-color: #22c55e;
+          border: 3px solid color-mix(in srgb, CanvasText 25%, transparent);
+          border-top-color: #22c55e;
           animation: spin .8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 </style></head>
@@ -96,6 +99,26 @@ _SPLASH_HTML = """<!doctype html>
   <div class="sub">Loading…</div>
 </div></body></html>
 """
+
+
+def _system_prefers_dark():
+    """Whether the OS is in dark mode, for the one paint the web engine can't
+    make: the window's own background in the instant before the splash HTML
+    renders. Wrong answers cost a brief flash, so any failure means False."""
+    try:
+        if sys.platform == "darwin":
+            style = subprocess.run(["defaults", "read", "-g", "AppleInterfaceStyle"],
+                                   capture_output=True, text=True)
+            return style.stdout.strip() == "Dark"
+        if sys.platform == "win32":
+            import winreg
+
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                                 r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
+            return winreg.QueryValueEx(key, "AppsUseLightTheme")[0] == 0
+    except Exception:  # noqa: BLE001 — cosmetics: default to light
+        pass
+    return False
 
 
 def build_app():
@@ -310,7 +333,9 @@ def _open_window(webview, state_path):
     state — and keep following it so the next launch can do the same."""
     geometry = load_geometry(state_path).reachable_on(webview.screens)
     window = webview.create_window(
-        APP_NAME, html=_SPLASH_HTML, background_color="#0f172a", **geometry.window_kwargs(),
+        APP_NAME, html=_SPLASH_HTML,
+        background_color="#202020" if _system_prefers_dark() else "#ffffff",
+        **geometry.window_kwargs(),
     )
     WindowGeometryTracker(state_path, geometry).attach(window)
     return window
