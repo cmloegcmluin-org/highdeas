@@ -802,7 +802,7 @@
 
   function checkVersion() {
     if (!updateBtn) return;
-    fetch('/version')
+    fetch('/version', { cache: 'no-store' })
       .then(function (r) { return r.json(); })
       .then(function (v) { updateBtn.hidden = !(v && v.behind > 0); })
       .catch(function () {});

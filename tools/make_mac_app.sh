@@ -59,4 +59,31 @@ exec "$REPO/.venv/bin/python" -m highdeas.app
 EOF
 chmod +x "$APP/Contents/MacOS/Highdeas"
 
+# --- bounce fix: the launch animation reads the .icns file, not the treated
+# pipeline. Bake the system's own treated rendering of this bundle back into
+# the icns, so every consumer of the fallback shows the same squircle.
+"$REPO/.venv/bin/python" - "$APP" << 'PYEOF'
+import sys, subprocess, tempfile
+from pathlib import Path
+from AppKit import NSWorkspace, NSBitmapImageRep, NSPNGFileType, NSMakeRect, NSImage, NSGraphicsContext, NSCompositingOperationCopy
+
+app = sys.argv[1]
+icon = NSWorkspace.sharedWorkspace().iconForFile_(app)
+work = Path(tempfile.mkdtemp()) / "Highdeas.iconset"
+work.mkdir()
+for size in (16, 32, 128, 256, 512):
+    for scale in (1, 2):
+        px = size * scale
+        rep = NSBitmapImageRep.alloc().initWithBitmapDataPlanes_pixelsWide_pixelsHigh_bitsPerSample_samplesPerPixel_hasAlpha_isPlanar_colorSpaceName_bytesPerRow_bitsPerPixel_(
+            None, px, px, 8, 4, True, False, "NSCalibratedRGBColorSpace", 0, 0)
+        ctx = NSGraphicsContext.graphicsContextWithBitmapImageRep_(rep)
+        NSGraphicsContext.setCurrentContext_(ctx)
+        icon.drawInRect_fromRect_operation_fraction_(NSMakeRect(0, 0, px, px), NSMakeRect(0, 0, 0, 0), NSCompositingOperationCopy, 1.0)
+        ctx.flushGraphics()
+        name = f"icon_{size}x{size}" + ("@2x" if scale == 2 else "") + ".png"
+        rep.representationUsingType_properties_(NSPNGFileType, None).writeToFile_atomically_(str(work / name), True)
+subprocess.run(["iconutil", "-c", "icns", str(work), "-o", f"{app}/Contents/Resources/Highdeas.icns"], check=True)
+print("baked treated icns")
+PYEOF
+
 echo "built $APP -> $REPO"

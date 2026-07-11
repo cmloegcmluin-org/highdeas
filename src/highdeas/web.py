@@ -93,8 +93,13 @@ def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=(), no
     @app.get("/version")
     def version():
         """How far behind origin/main this running app is — the page shows an
-        "Update & restart" button when the answer isn't zero."""
-        return updates.status() if updates is not None else {"behind": 0}
+        "Update & restart" button when the answer isn't zero. Never cacheable:
+        a cached "behind" from before an update would resurrect the button
+        forever after every restart."""
+        payload = updates.status() if updates is not None else {"behind": 0}
+        response = app.make_response(payload)
+        response.headers["Cache-Control"] = "no-store"
+        return response
 
     @app.post("/update")
     def update():
