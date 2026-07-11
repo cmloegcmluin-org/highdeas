@@ -205,7 +205,6 @@ def _become_current(checker=None):
 
 def main():
     _set_windows_app_id()
-    _become_current()
     app, service = build_app()
     _ingest_continuously(service)
     _start_upload_listener(build_upload_app(service))
@@ -317,9 +316,13 @@ def _open_window(webview, state_path):
     return window
 
 
-def _open_when_ready(window, url, wait_until_ready):
-    """Wait for the local server, then swap the splash for the real app. The model
-    load and backlog transcription happen in the background, never on this path."""
+def _open_when_ready(window, url, wait_until_ready, become_current=None):
+    """The splash is already on screen when this runs: first the launch update
+    (behind "Loading…" — the user's click must answer immediately, never sit
+    invisible through a git fetch), then wait for the local server, then swap
+    the splash for the real app. The model load and backlog transcription
+    happen in the background, never on this path."""
+    (become_current or _become_current)()
     _match_mac_dock_tile()
     wait_until_ready()
     window.load_url(url)
@@ -353,6 +356,7 @@ def _match_mac_dock_tile():
 
 
 def _run_browser(app):
+    _become_current()
     port = int(os.environ.get("HIGHDEAS_PORT", "5000"))
     if os.environ.get("HIGHDEAS_OPEN_BROWSER", "1") == "1":
         threading.Timer(1.5, lambda: webbrowser.open(f"http://127.0.0.1:{port}/")).start()

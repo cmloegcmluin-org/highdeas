@@ -21,18 +21,21 @@ from highdeas.store import Memo, MemoStore
 from highdeas.window_state import WindowGeometry, load_geometry, save_geometry
 
 
-def test_open_when_ready_shows_the_app_only_after_the_server_is_serving():
+def test_open_when_ready_updates_then_waits_then_loads():
     events = []
 
     class FakeWindow:
         def load_url(self, url):
             events.append(("load", url))
 
-    _open_when_ready(FakeWindow(), "http://127.0.0.1:9/", lambda: events.append(("waited",)))
+    _open_when_ready(FakeWindow(), "http://127.0.0.1:9/", lambda: events.append(("waited",)),
+                     become_current=lambda: events.append(("updated",)))
 
-    # Wait for the server, then swap the splash for the real page — the open never
-    # blocks on warming the model or transcribing the backlog.
-    assert events == [("waited",), ("load", "http://127.0.0.1:9/")]
+    # The splash is already on screen when this runs, so the launch update
+    # happens behind "Loading…" instead of before any window exists — the
+    # user's click always answers immediately. Then wait for the server, then
+    # swap the splash for the real page.
+    assert events == [("updated",), ("waited",), ("load", "http://127.0.0.1:9/")]
 
 
 def _fake_webview(fake_window, screens=()):
