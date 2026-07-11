@@ -66,6 +66,71 @@ class FakeWindow:
         self.events.closing.fire()
 
 
+class FakeCocoaWindow:
+    """The slice of pywebview's Cocoa window the geometry tracker touches.
+
+    Modeled on a live probe of pywebview 6.2.1 on macOS (2026-07-10):
+    ``moved``/``resized``/``closing`` fire (with float coordinates);
+    ``maximized``/``minimized``/``restored`` exist but never fire, even across
+    a programmatic zoom; ``native`` is an NSWindow answering ``isZoomed()``,
+    ``isMiniaturized()``, and ``styleMask()`` — and the frame is already in
+    its new state by the time the events fire.
+    """
+
+    _FULLSCREEN_MASK = 1 << 14  # NSWindowStyleMaskFullScreen
+
+    def __init__(self, width=1360, height=900, x=0, y=0):
+        self.events = SimpleNamespace(
+            resized=_Event(), moved=_Event(), maximized=_Event(),
+            minimized=_Event(), restored=_Event(), closing=_Event(),
+        )
+        self._zoomed = False
+        self._miniaturized = False
+        self._fullscreen = False
+        self.native = SimpleNamespace(
+            isZoomed=lambda: self._zoomed,
+            isMiniaturized=lambda: self._miniaturized,
+            styleMask=lambda: self._FULLSCREEN_MASK if self._fullscreen else 0,
+        )
+        self._normal = (x, y, width, height)
+
+    def move(self, x, y):
+        self._normal = (x, y, *self._normal[2:])
+        self.events.moved.fire(float(x), float(y))
+
+    def resize(self, width, height):
+        self._normal = (*self._normal[:2], width, height)
+        self.events.resized.fire(float(width), float(height))
+
+    def zoom(self):
+        """The green button (or window.maximize()): frame fills the screen's
+        visible area. No maximized event — only moved/resized."""
+        self._zoomed = True
+        self.events.moved.fire(0.0, 25.0)
+        self.events.resized.fire(1637.0, 930.0)
+
+    def unzoom(self):
+        self._zoomed = False
+        x, y, width, height = self._normal
+        self.events.moved.fire(float(x), float(y))
+        self.events.resized.fire(float(width), float(height))
+
+    def enter_fullscreen(self):
+        self._fullscreen = True
+        self.events.resized.fire(1710.0, 1112.0)
+
+    def miniaturize(self):
+        self._miniaturized = True
+
+    def close(self):
+        self.events.closing.fire()
+
+
 @pytest.fixture
 def fake_window():
     return FakeWindow()
+
+
+@pytest.fixture
+def fake_cocoa_window():
+    return FakeCocoaWindow()

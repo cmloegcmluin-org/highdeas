@@ -171,3 +171,86 @@ def test_a_maximized_window_closed_from_the_taskbar_still_reopens_maximized(tmp_
     window.close()
 
     assert _reopened(tmp_path).maximized is True
+
+
+# --- Cocoa (macOS) — no maximized/restored events; the window is asked directly ---
+
+
+def test_cocoa_moves_and_resizes_are_remembered(tmp_path, fake_cocoa_window):
+    path = tmp_path / "window.json"
+    save_geometry(path, WindowGeometry(maximized=False))
+    tracker = WindowGeometryTracker(path, load_geometry(path))
+    tracker.attach(fake_cocoa_window)
+
+    fake_cocoa_window.move(80, 80)
+    fake_cocoa_window.resize(900, 620)
+    fake_cocoa_window.close()
+
+    saved = load_geometry(path)
+    assert (saved.x, saved.y, saved.width, saved.height) == (80, 80, 900, 620)
+    assert saved.maximized is False
+
+
+def test_cocoa_zoomed_close_reopens_maximized_with_the_prezoom_size(tmp_path, fake_cocoa_window):
+    # Zooming fires only moved/resized — never a maximized event — and the
+    # frame is already screen-sized when they fire. The screen-sized frame
+    # must not be recorded as the window's "normal" geometry.
+    path = tmp_path / "window.json"
+    save_geometry(path, WindowGeometry(maximized=False))
+    tracker = WindowGeometryTracker(path, load_geometry(path))
+    tracker.attach(fake_cocoa_window)
+
+    fake_cocoa_window.move(80, 80)
+    fake_cocoa_window.resize(900, 620)
+    fake_cocoa_window.zoom()
+    fake_cocoa_window.close()
+
+    saved = load_geometry(path)
+    assert saved.maximized is True
+    assert (saved.width, saved.height) == (900, 620)
+
+
+def test_cocoa_unzooming_goes_back_to_tracking_the_normal_frame(tmp_path, fake_cocoa_window):
+    path = tmp_path / "window.json"
+    save_geometry(path, WindowGeometry(maximized=True))
+    tracker = WindowGeometryTracker(path, load_geometry(path))
+    tracker.attach(fake_cocoa_window)
+
+    fake_cocoa_window.zoom()
+    fake_cocoa_window.unzoom()
+    fake_cocoa_window.move(120, 90)
+    fake_cocoa_window.close()
+
+    saved = load_geometry(path)
+    assert saved.maximized is False
+    assert (saved.x, saved.y) == (120, 90)
+
+
+def test_cocoa_fullscreen_counts_as_maximized_not_as_a_screen_sized_normal_window(
+        tmp_path, fake_cocoa_window):
+    path = tmp_path / "window.json"
+    save_geometry(path, WindowGeometry(width=900, height=620, maximized=False))
+    tracker = WindowGeometryTracker(path, load_geometry(path))
+    tracker.attach(fake_cocoa_window)
+
+    fake_cocoa_window.enter_fullscreen()
+    fake_cocoa_window.close()
+
+    saved = load_geometry(path)
+    assert saved.maximized is True
+    assert (saved.width, saved.height) == (900, 620)
+
+
+def test_cocoa_close_while_miniaturized_keeps_the_last_known_state(tmp_path, fake_cocoa_window):
+    # A miniaturized window's frame says nothing about how it should reopen;
+    # the state it held before going to the Dock is what gets remembered.
+    path = tmp_path / "window.json"
+    save_geometry(path, WindowGeometry(maximized=False))
+    tracker = WindowGeometryTracker(path, load_geometry(path))
+    tracker.attach(fake_cocoa_window)
+
+    fake_cocoa_window.zoom()
+    fake_cocoa_window.miniaturize()
+    fake_cocoa_window.close()
+
+    assert load_geometry(path).maximized is True

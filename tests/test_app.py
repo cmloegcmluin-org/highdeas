@@ -87,8 +87,8 @@ def test_open_window_tracks_the_window_so_the_next_launch_reopens_maximized(tmp_
     webview, _ = _fake_webview(fake_window)
 
     _open_window(webview, path)
-    fake_window.events.maximized.fire()
-    fake_window.events.closing.fire()
+    fake_window.maximize()
+    fake_window.close()
 
     assert load_geometry(path).maximized is True
 

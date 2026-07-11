@@ -62,6 +62,30 @@ def save_geometry(path, geometry):
     tmp.replace(path)
 
 
+def _window_state_of(window):
+    """The native window's state right now: "normal", "maximized", "minimized",
+    "fullscreen" — or None for a backend this code doesn't know.
+
+    The native window is asked directly rather than inferring from events, for
+    two reasons. On winforms, pywebview emits ``moved`` *before* ``maximized``/
+    ``minimized`` and dispatches every event on its own thread — a flag those
+    events set is always a step behind, while the native window already holds
+    the new state when ``moved`` fires. On Cocoa it's starker: pywebview never
+    fires ``maximized``/``restored`` at all (probed live, 2026-07-10), so the
+    NSWindow is the only witness."""
+    native = getattr(window, "native", None)
+    state = getattr(native, "WindowState", None)
+    if state is not None:  # winforms: a .NET enum stringifying to the state name
+        return str(state).lower()
+    if callable(getattr(native, "isZoomed", None)):  # Cocoa: an NSWindow
+        if native.isMiniaturized():
+            return "minimized"
+        if native.styleMask() & (1 << 14):  # NSWindowStyleMaskFullScreen
+            return "fullscreen"
+        return "maximized" if native.isZoomed() else "normal"
+    return None
+
+
 class WindowGeometryTracker:
     """Follow a pywebview window's geometry and save it when the window closes."""
 
@@ -78,25 +102,31 @@ class WindowGeometryTracker:
         window.events.restored += self._restored
         window.events.closing += self._closing
 
-    def _is_normal(self):
-        """Whether the window is reporting the geometry worth remembering.
-
-        A maximized window reports the whole screen at (-8, -8) and a minimized one is
-        parked at (-32000, -32000), so only a Normal window's geometry may be recorded.
-        The native window is asked directly rather than inferred from the maximized and
-        minimized events, because pywebview emits ``moved`` *before* either of them and
-        dispatches every event on its own thread — a flag those events set is always a
-        step behind. The native window already holds the new state when ``moved`` fires.
-        """
-        return str(self._window.native.WindowState) == "Normal"
-
     def _resized(self, width, height):
-        if self._is_normal():
-            self._geometry = replace(self._geometry, width=width, height=height)
+        self._observe(size=(int(width), int(height)))
 
     def _moved(self, x, y):
-        if self._is_normal():
-            self._geometry = replace(self._geometry, x=x, y=y)
+        self._observe(position=(int(x), int(y)))
+
+    def _observe(self, position=None, size=None):
+        """Record what a moved/resized event reveals — asked alongside the
+        native state, that's more than the event itself says. Only a normal
+        window's frame is worth remembering (maximized reports the whole
+        screen at (-8, -8); minimized is parked at (-32000, -32000)). And
+        since Cocoa never announces zooming, these events double as the
+        moment to notice the maximized flag changed."""
+        state = _window_state_of(self._window)
+        if state in ("maximized", "fullscreen"):
+            self._geometry = replace(self._geometry, maximized=True)
+            return
+        if state == "minimized":
+            return
+        updates = {"maximized": False} if state == "normal" else {}
+        if position is not None:
+            updates["x"], updates["y"] = position
+        if size is not None:
+            updates["width"], updates["height"] = size
+        self._geometry = replace(self._geometry, **updates)
 
     def _maximized(self):
         self._geometry = replace(self._geometry, maximized=True)
@@ -107,4 +137,12 @@ class WindowGeometryTracker:
         self._geometry = replace(self._geometry, maximized=False)
 
     def _closing(self):
+        # One last word from the native window: a state the events never
+        # narrated (a Cocoa zoom) still gets remembered. A minimized window's
+        # frame says nothing about how it should reopen — keep what's tracked.
+        state = _window_state_of(self._window)
+        if state in ("maximized", "fullscreen"):
+            self._geometry = replace(self._geometry, maximized=True)
+        elif state == "normal":
+            self._geometry = replace(self._geometry, maximized=False)
         save_geometry(self._path, self._geometry)
