@@ -34,23 +34,31 @@ class FakeWindow:
         )
         self.native = SimpleNamespace(WindowState="Normal")
         self._normal = (x, y, width, height)
+        self._set_frame(x, y, width, height)
+
+    def _set_frame(self, x, y, width, height):
+        self.x, self.y, self.width, self.height = x, y, width, height
 
     def move(self, x, y):
         self._normal = (x, y, *self._normal[2:])
+        self._set_frame(x, y, *self._normal[2:])
         self.events.moved.fire(x, y)
 
     def resize(self, width, height):
         self._normal = (*self._normal[:2], width, height)
+        self._set_frame(*self._normal[:2], width, height)
         self.events.resized.fire(width, height)
 
     def maximize(self):
         self.native.WindowState = "Maximized"
+        self._set_frame(-8, -8, 2576, 1408)
         self.events.moved.fire(-8, -8)
         self.events.maximized.fire()
         self.events.resized.fire(2576, 1408)
 
     def minimize(self):
         self.native.WindowState = "Minimized"
+        self._set_frame(-32000, -32000, 160, 33)
         self.events.moved.fire(-32000, -32000)
         self.events.minimized.fire()
         self.events.resized.fire(160, 33)
@@ -58,6 +66,7 @@ class FakeWindow:
     def restore(self):
         x, y, width, height = self._normal
         self.native.WindowState = "Normal"
+        self._set_frame(x, y, width, height)
         self.events.moved.fire(x, y)
         self.events.restored.fire()
         self.events.resized.fire(width, height)
@@ -93,25 +102,40 @@ class FakeCocoaWindow:
             styleMask=lambda: self._FULLSCREEN_MASK if self._fullscreen else 0,
         )
         self._normal = (x, y, width, height)
+        self._set_frame(x, y, width, height)
+
+    def _set_frame(self, x, y, width, height):
+        self.x, self.y, self.width, self.height = x, y, width, height
 
     def move(self, x, y):
         self._normal = (x, y, *self._normal[2:])
+        self._set_frame(x, y, *self._normal[2:])
         self.events.moved.fire(float(x), float(y))
+
+    def drag_silently(self, x, y):
+        """A USER title-bar drag: the frame moves, and — probed live on
+        pywebview 6.2.1 — no moved event fires at all. Only programmatic
+        move() announces itself on Cocoa."""
+        self._normal = (x, y, *self._normal[2:])
+        self._set_frame(x, y, *self._normal[2:])
 
     def resize(self, width, height):
         self._normal = (*self._normal[:2], width, height)
+        self._set_frame(*self._normal[:2], width, height)
         self.events.resized.fire(float(width), float(height))
 
     def zoom(self):
         """The green button (or window.maximize()): frame fills the screen's
         visible area. No maximized event — only moved/resized."""
         self._zoomed = True
+        self._set_frame(0, 25, 1637, 930)
         self.events.moved.fire(0.0, 25.0)
         self.events.resized.fire(1637.0, 930.0)
 
     def unzoom(self):
         self._zoomed = False
         x, y, width, height = self._normal
+        self._set_frame(x, y, width, height)
         self.events.moved.fire(float(x), float(y))
         self.events.resized.fire(float(width), float(height))
 

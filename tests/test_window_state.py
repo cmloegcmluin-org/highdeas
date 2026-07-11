@@ -254,3 +254,42 @@ def test_cocoa_close_while_miniaturized_keeps_the_last_known_state(tmp_path, fak
     fake_cocoa_window.close()
 
     assert load_geometry(path).maximized is True
+
+
+def test_cocoa_remembers_where_the_user_dragged_even_though_no_event_told_it(
+        tmp_path, fake_cocoa_window):
+    # pywebview's Cocoa backend never fires `moved` for a user's title-bar
+    # drag (probed live) — only programmatic moves announce themselves. The
+    # close-time snapshot of the real frame is what makes "reopen where I
+    # left it" true on the Mac.
+    path = tmp_path / "window.json"
+    save_geometry(path, WindowGeometry(maximized=False))
+    tracker = WindowGeometryTracker(path, load_geometry(path))
+    tracker.attach(fake_cocoa_window)
+
+    fake_cocoa_window.resize(818, 930)
+    fake_cocoa_window.drag_silently(0, 25)  # user parks it at the left edge
+    fake_cocoa_window.close()
+
+    saved = load_geometry(path)
+    assert (saved.x, saved.y) == (0, 25)
+    assert (saved.width, saved.height) == (818, 930)
+
+
+def test_a_zoomed_close_still_keeps_the_last_known_normal_size(tmp_path, fake_cocoa_window):
+    # Close-while-zoomed: the zoomed frame must not be snapshotted as the
+    # normal geometry. (A drag done *before* zooming is still lost — Cocoa
+    # never told us about it and the pre-zoom frame isn't retrievable — but
+    # the size survives and maximized is remembered.)
+    path = tmp_path / "window.json"
+    save_geometry(path, WindowGeometry(maximized=False))
+    tracker = WindowGeometryTracker(path, load_geometry(path))
+    tracker.attach(fake_cocoa_window)
+
+    fake_cocoa_window.resize(818, 930)
+    fake_cocoa_window.zoom()
+    fake_cocoa_window.close()
+
+    saved = load_geometry(path)
+    assert saved.maximized is True
+    assert (saved.width, saved.height) == (818, 930)

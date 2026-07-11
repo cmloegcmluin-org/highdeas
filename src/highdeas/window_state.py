@@ -144,5 +144,21 @@ class WindowGeometryTracker:
         if state in ("maximized", "fullscreen"):
             self._geometry = replace(self._geometry, maximized=True)
         elif state == "normal":
-            self._geometry = replace(self._geometry, maximized=False)
+            self._geometry = replace(self._geometry, maximized=False, **self._frame())
         save_geometry(self._path, self._geometry)
+
+    def _frame(self):
+        """The window's frame, straight from the window itself.
+
+        Cocoa never fires `moved` for a user's title-bar drag (probed live —
+        only programmatic moves announce themselves), so the event trail's
+        x/y can be stale at whatever spot the window was first placed. The
+        close-time snapshot is what makes "reopen where I left it" true.
+        Only called on a normal window: a maximized or minimized frame is
+        the screen or the parking lot, not a home. Empty for a window that
+        doesn't expose its frame."""
+        frame = {name: getattr(self._window, name, None)
+                 for name in ("x", "y", "width", "height")}
+        if any(value is None for value in frame.values()):
+            return {}
+        return {name: int(value) for name, value in frame.items()}

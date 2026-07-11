@@ -78,9 +78,10 @@ def test_open_window_forgets_a_position_no_connected_monitor_covers(tmp_path, fa
 
     (_, kwargs), = calls
     assert (kwargs["x"], kwargs["y"]) == (None, None)
-    # ...and the stranded position is not written back when the window closes.
-    fake_window.events.closing.fire()
-    assert (load_geometry(path).x, load_geometry(path).y) == (None, None)
+    # ...and closing writes back where the window actually landed — never the
+    # stranded coordinates it was rescued from.
+    fake_window.close()
+    assert (load_geometry(path).x, load_geometry(path).y) == (0, 0)
 
 
 def test_open_window_tracks_the_window_so_the_next_launch_reopens_maximized(tmp_path, fake_window):
