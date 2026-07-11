@@ -1,4 +1,5 @@
 import io
+import json
 import threading
 import time
 from datetime import datetime
@@ -156,9 +157,35 @@ def test_default_bin_dir_sits_beside_the_inbox(tmp_path):
     assert result.parent == inbox.parent
 
 
+def test_build_app_prefers_the_folder_store_and_migrates_the_db_once(tmp_path, monkeypatch):
+    # HIGHDEAS_STATE_DIR is the no-special-machine switch: state moves from the
+    # local SQLite file to per-memo JSONs in a folder a sync engine carries.
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    state = tmp_path / "state"
+    db = tmp_path / "memos.db"
+    MemoStore(db).upsert(Memo(audio_filename="old.m4a", transcript="pc era", status="pending"))
+    monkeypatch.setenv("HIGHDEAS_INBOX_DIR", str(inbox))
+    monkeypatch.setenv("HIGHDEAS_BIN_DIR", str(tmp_path / "bin"))
+    monkeypatch.setenv("HIGHDEAS_DB", str(db))
+    monkeypatch.setenv("HIGHDEAS_STATE_DIR", str(state))
+
+    app, service = build_app()
+
+    # The single-machine DB crossed into per-memo files...
+    assert (state / "old.m4a.json").exists()
+    # ...and the folder is live truth: an edit landing in it (as if synced in
+    # from the other machine) is what the service reads back.
+    data = json.loads((state / "old.m4a.json").read_text())
+    data["name"] = "renamed on the other machine"
+    (state / "old.m4a.json").write_text(json.dumps(data))
+    assert [m.name for m in service.pending()] == ["renamed on the other machine"]
+
+
 def test_build_app_reads_every_folder_from_the_environment(tmp_path, monkeypatch):
     inbox, bin_dir, drive = tmp_path / "inbox", tmp_path / "bin", tmp_path / "drive"
     inbox.mkdir()
+    monkeypatch.delenv("HIGHDEAS_STATE_DIR", raising=False)
     db_path = tmp_path / "memos.db"
     monkeypatch.setenv("HIGHDEAS_INBOX_DIR", str(inbox))
     monkeypatch.setenv("HIGHDEAS_BIN_DIR", str(bin_dir))

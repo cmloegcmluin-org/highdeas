@@ -174,7 +174,8 @@ Everything but the keys for the destinations you use is optional. Set these in `
 | `HIGHDEAS_INBOX_DIR` | iCloud `Shortcuts/Highdeas` | Folder the iOS Shortcut drops recordings into. |
 | `HIGHDEAS_DRIVE_BASE` | `G:\My Drive\voice memos (top level)` | Where music-routed audio is filed. |
 | `HIGHDEAS_BIN_DIR` | `Highdeas Bin` beside the inbox | Where retired recordings wait (recoverable for 90 days). |
-| `HIGHDEAS_DB` | `memos.db` in this folder | SQLite store of memo state. |
+| `HIGHDEAS_DB` | `memos.db` in this folder | SQLite store of memo state (single-machine mode). |
+| `HIGHDEAS_STATE_DIR` | — | Set to a synced folder to keep memo state as per-memo files shared between machines; the local DB migrates across on first boot. |
 | `HIGHDEAS_CHROME_EXE` / `HIGHDEAS_CHROME_PROFILE` | system Chrome / `Default` | Chrome + profile used to open Drive and Asana links. |
 | `HIGHDEAS_DESKTOP` | `1` | `1` = native window, `0` = plain browser. |
 | `HIGHDEAS_PORT` | `5000` | Local port in browser mode. |

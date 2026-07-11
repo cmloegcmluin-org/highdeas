@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 
 from highdeas.routers import AsanaRouter, DriveMusicRouter, NotesnookRouter, Router, parse_asana_parents
 from highdeas.service import InboxService
-from highdeas.store import MemoStore
+from highdeas.store import FolderStore, MemoStore, adopt_legacy_db
 from highdeas.transcribe import Transcriber
 from highdeas.upload import create_upload_app
 from highdeas.web import create_app
@@ -102,6 +102,7 @@ def build_app():
     inbox_dir = os.environ.get("HIGHDEAS_INBOX_DIR", platform_defaults().inbox)
     db_path = os.environ.get("HIGHDEAS_DB", str(PROJECT_ROOT / "memos.db"))
     bin_dir = os.environ.get("HIGHDEAS_BIN_DIR", default_bin_dir(inbox_dir))
+    store = _build_store(db_path)
     drive_base = os.environ.get("HIGHDEAS_DRIVE_BASE", platform_defaults().drive_base)
     notesnook = NotesnookRouter(os.environ.get("NOTESNOOK_INBOX_API_KEY", ""))
     drive = DriveMusicRouter(inbox_dir, drive_base)
@@ -113,7 +114,7 @@ def build_app():
     transcriber = Transcriber()
     service = InboxService(
         inbox_dir=inbox_dir,
-        store=MemoStore(db_path),
+        store=store,
         transcriber=transcriber,
         bin_dir=bin_dir,
         route=Router(notesnook=notesnook, drive=drive, asana=asana),
@@ -121,6 +122,21 @@ def build_app():
     app = create_app(service, inbox_dir=inbox_dir, bin_dir=bin_dir,
                      open_link=_chrome_launcher(), asana_parents=asana_parents)
     return app, service
+
+
+def _build_store(db_path):
+    """The memo store this machine runs on. HIGHDEAS_STATE_DIR is the
+    no-special-machine switch: set, state lives as per-memo files in a folder
+    a sync engine shares between machines (any memos in the old local DB are
+    carried across on first boot); unset, the single-machine SQLite remains."""
+    state_dir = os.environ.get("HIGHDEAS_STATE_DIR", "")
+    if not state_dir:
+        return MemoStore(db_path)
+    store = FolderStore(state_dir)
+    adopted = adopt_legacy_db(db_path, store)
+    if adopted:
+        print(f"Adopted {adopted} memos from {db_path} into {state_dir}.")
+    return store
 
 
 def build_upload_app(service):

@@ -4,7 +4,7 @@ import threading
 
 import pytest
 
-from highdeas.store import FolderStore, Memo, MemoStore
+from highdeas.store import FolderStore, Memo, MemoStore, adopt_legacy_db
 
 
 @pytest.fixture(params=["sqlite", "folder"])
@@ -230,3 +230,43 @@ def test_folder_store_ignores_fields_from_a_newer_version(tmp_path):
     path.write_text(json.dumps(data))
 
     assert store.get("a.m4a").name == "kept"
+
+
+# --- Migrating a single-machine memos.db into the shared folder ---
+
+
+def test_adopt_legacy_db_carries_every_memo_across_once(tmp_path):
+    db = tmp_path / "memos.db"
+    old = MemoStore(db)
+    old.upsert(Memo(audio_filename="a.m4a", transcript="t", status="pending"))
+    old.upsert(Memo(audio_filename="b.m4a", name="sent", status="processed",
+                    processed_at="2026-07-09T10:00"))
+    folder = FolderStore(tmp_path / "state")
+
+    adopted = adopt_legacy_db(db, folder)
+
+    assert adopted == 2
+    assert folder.known_filenames() == {"a.m4a", "b.m4a"}
+    assert folder.get("b.m4a").processed_at == "2026-07-09T10:00"
+
+
+def test_adopt_legacy_db_never_touches_a_folder_that_already_has_memos(tmp_path):
+    # The migration happens exactly once. After it, the folder is the truth —
+    # a later boot re-reading the stale DB would resurrect edits and deletions.
+    db = tmp_path / "memos.db"
+    MemoStore(db).upsert(Memo(audio_filename="a.m4a", name="stale"))
+    folder = FolderStore(tmp_path / "state")
+    adopt_legacy_db(db, folder)
+    folder.update("a.m4a", name="edited since")
+
+    adopted = adopt_legacy_db(db, folder)
+
+    assert adopted == 0
+    assert folder.get("a.m4a").name == "edited since"
+
+
+def test_adopt_legacy_db_is_a_noop_without_a_db(tmp_path):
+    folder = FolderStore(tmp_path / "state")
+
+    assert adopt_legacy_db(tmp_path / "never-existed.db", folder) == 0
+    assert folder.known_filenames() == set()

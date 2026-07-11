@@ -159,6 +159,21 @@ class MemoStore:
             self._conn.commit()
 
 
+def adopt_legacy_db(db_path, folder_store):
+    """Carry every memo from a single-machine memos.db into the folder store,
+    exactly once: only when the folder holds no memos yet. After that the
+    folder is the truth — re-reading the stale DB would resurrect edits and
+    deletions. The DB file is left in place, unread from then on, as its own
+    backup. Returns how many memos crossed."""
+    if not Path(db_path).exists() or folder_store.known_filenames():
+        return 0
+    legacy = MemoStore(db_path)
+    memos = [*legacy.list_pending(), *legacy.list_retired()]
+    for memo in memos:
+        folder_store.upsert(memo)
+    return len(memos)
+
+
 def _pending_order(memo):
     """The inbox order (see MemoStore.list_pending): dragged memos lead by
     position; the rest follow by recorded time, then ingest time."""
