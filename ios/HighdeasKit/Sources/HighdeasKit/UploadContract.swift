@@ -22,6 +22,15 @@ public struct UploadEndpoint: Equatable, Sendable {
     public var uploadURL: URL {
         baseURL.appending(path: "upload")
     }
+
+    /// The Settings field holds one machine per line; every valid line becomes
+    /// an endpoint. All of them share one token — the same value lives in both
+    /// machines' .env files by design.
+    public static func list(from serverURLs: String, token: String) -> [UploadEndpoint] {
+        serverURLs.split(whereSeparator: \.isNewline).compactMap {
+            UploadEndpoint(serverURL: String($0), token: token)
+        }
+    }
 }
 
 /// What one finished upload attempt means for the queue.

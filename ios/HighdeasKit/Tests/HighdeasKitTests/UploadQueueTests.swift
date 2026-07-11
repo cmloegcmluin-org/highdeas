@@ -98,3 +98,97 @@ private let t0 = Date(timeIntervalSince1970: 1_780_000_000)
         #expect(UploadQueue.backoff(afterAttempts: 50) == 300)  // no overflow
     }
 }
+
+// MARK: - Fan-out: one recording pushed to every machine at once
+
+@Suite struct FanOutTests {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    private func queued(_ name: String = "a.m4a", expecting peers: Int) -> UploadQueue {
+        var queue = UploadQueue()
+        queue.enqueue(name)
+        queue.markInFlight(name, expecting: peers)
+        return queue
+    }
+
+    @Test func aFlightStaysInFlightUntilEveryPeerHasAnswered() {
+        var queue = queued(expecting: 2)
+
+        queue.resolve("a.m4a", .retriable, at: now)
+
+        // One dead machine must not unlock a re-push while the other's task
+        // is still grinding in the system's background retry.
+        #expect(queue.next(at: .distantFuture) == nil)
+        #expect(queue.pending.first?.inFlight == true)
+    }
+
+    @Test func aFlightFailsOnlyWhenTheLastPeerFails() {
+        var queue = queued(expecting: 2)
+
+        queue.resolve("a.m4a", .retriable, at: now)
+        queue.resolve("a.m4a", .retriable, at: now)
+
+        let entry = queue.pending.first
+        #expect(entry?.inFlight == false)
+        #expect(entry?.attempts == 1)  // one flight, not one per peer
+        #expect(entry?.notBefore ?? .distantPast > now)
+    }
+
+    @Test func theFirstConfirmationWinsImmediately() {
+        var queue = queued(expecting: 2)
+
+        queue.resolve("a.m4a", .confirmed, at: now)
+
+        #expect(queue.pending.isEmpty)
+    }
+
+    @Test func aLateOutcomeAfterConfirmationIsANoOp() {
+        var queue = queued(expecting: 2)
+        queue.resolve("a.m4a", .confirmed, at: now)
+
+        queue.resolve("a.m4a", .retriable, at: now)
+
+        #expect(queue.pending.isEmpty)
+    }
+
+    @Test func aRefusalIsRememberedEvenWhenTheOtherPeerMerelyFailed() {
+        // One machine 401s (config problem worth words), the other is off.
+        var queue = queued(expecting: 2)
+
+        queue.resolve("a.m4a", .blocked("The server rejected the upload token — check Settings."), at: now)
+        queue.resolve("a.m4a", .retriable, at: now)
+
+        let entry = queue.pending.first
+        #expect(entry?.blockedReason?.contains("token") == true)
+        #expect(entry?.notBefore == now.addingTimeInterval(UploadQueue.maximumBackoff))
+    }
+
+    @Test func singlePeerFlightsBehaveAsTheyAlwaysHave() {
+        var queue = queued(expecting: 1)
+
+        queue.resolve("a.m4a", .retriable, at: now)
+
+        let entry = queue.pending.first
+        #expect(entry?.inFlight == false)
+        #expect(entry?.attempts == 1)
+    }
+}
+
+// MARK: - Parsing the Settings screen's list of machines
+
+@Suite struct EndpointListTests {
+    @Test func oneEndpointPerLineTrimmedAndValidated() {
+        let endpoints = UploadEndpoint.list(
+            from: " http://192.168.1.23:5055 \n\nhttp://mac.tail1234.ts.net:5055\nnot a url\n",
+            token: "tok")
+
+        #expect(endpoints.map(\.uploadURL.absoluteString) == [
+            "http://192.168.1.23:5055/upload",
+            "http://mac.tail1234.ts.net:5055/upload",
+        ])
+    }
+
+    @Test func anEmptyTokenMeansNoEndpointsAtAll() {
+        #expect(UploadEndpoint.list(from: "http://192.168.1.23:5055", token: " ").isEmpty)
+    }
+}

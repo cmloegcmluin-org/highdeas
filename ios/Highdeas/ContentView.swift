@@ -22,7 +22,7 @@ struct ContentView: View {
             .navigationTitle("Highdeas")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    if model.endpoint == nil {
+                    if model.endpoints.isEmpty {
                         Label("Server not configured", systemImage: "exclamationmark.triangle")
                             .labelStyle(.iconOnly)
                             .foregroundStyle(.orange)
@@ -194,14 +194,15 @@ private struct SettingsView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("http://192.168.1.23:5055", text: $model.serverURL)
+                    TextField("http://192.168.1.23:5055", text: $model.serverURLs, axis: .vertical)
+                        .lineLimit(1...4)
                         .keyboardType(.URL)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
                 } header: {
-                    Text("Server URL")
+                    Text("Server URLs — one per line")
                 } footer: {
-                    Text("The PC's LAN address and upload port — see the Highdeas README.")
+                    Text("Every machine that runs Highdeas (LAN or Tailscale address). Recordings push to all of them; the shared store keeps just one copy.")
                 }
                 Section {
                     TextField("Upload token", text: $model.uploadToken)
@@ -212,7 +213,7 @@ private struct SettingsView: View {
                 } footer: {
                     Text("Must match HIGHDEAS_UPLOAD_TOKEN in the PC's .env.")
                 }
-                if model.endpoint == nil {
+                if model.endpoints.isEmpty {
                     Text("Recordings will wait on the phone until both fields are set.")
                         .font(.footnote)
                         .foregroundStyle(.orange)

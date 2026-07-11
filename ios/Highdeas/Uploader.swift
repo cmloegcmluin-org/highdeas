@@ -27,11 +27,14 @@ final class Uploader: NSObject, URLSessionDataDelegate {
         do {
             try FileManager.default.createDirectory(
                 at: bodiesDirectory, withIntermediateDirectories: true)
-            let body = bodiesDirectory.appending(path: recording.lastPathComponent + ".body")
+            // One body file per task: a fan-out pushes the same recording to
+            // several machines at once, and they must not share staging.
+            let bodyName = recording.lastPathComponent + "." + UUID().uuidString + ".body"
+            let body = bodiesDirectory.appending(path: bodyName)
             try MultipartUpload.writeBody(of: recording, boundary: boundary, to: body)
             let task = session.uploadTask(
                 with: MultipartUpload.request(to: endpoint, boundary: boundary), fromFile: body)
-            task.taskDescription = recording.lastPathComponent
+            task.taskDescription = recording.lastPathComponent + "|" + bodyName
             task.resume()
         } catch {
             report(recording.lastPathComponent, .retriable)
@@ -40,11 +43,14 @@ final class Uploader: NSObject, URLSessionDataDelegate {
 
     nonisolated func urlSession(_ session: URLSession, task: URLSessionTask,
                                 didCompleteWithError error: Error?) {
-        guard let fileName = task.taskDescription else { return }
+        guard let description = task.taskDescription else { return }
+        let parts = description.split(separator: "|", maxSplits: 1).map(String.init)
+        let fileName = parts[0]
         let status = (task.response as? HTTPURLResponse)?.statusCode
         let outcome = error == nil ? UploadOutcome(statusCode: status) : UploadOutcome.retriable
-        try? FileManager.default.removeItem(
-            at: bodiesDirectory.appending(path: fileName + ".body"))
+        if parts.count == 2 {
+            try? FileManager.default.removeItem(at: bodiesDirectory.appending(path: parts[1]))
+        }
         report(fileName, outcome)
     }
 

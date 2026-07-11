@@ -14,16 +14,23 @@ public struct PendingUpload: Equatable, Identifiable, Sendable {
     /// Shown on the row; a blocked upload still retries, slowly, so fixing
     /// the token in Settings heals the queue without any per-row action.
     public var blockedReason: String?
+    /// Fan-out bookkeeping: how many machines this flight is still waiting
+    /// on, and the refusal to surface if the flight ends without a 2xx.
+    public var outcomesAwaited: Int
+    public var refusalDuringFlight: String?
 
     public var id: String { fileName }
 
     public init(fileName: String, attempts: Int = 0, notBefore: Date = .distantPast,
-                inFlight: Bool = false, blockedReason: String? = nil) {
+                inFlight: Bool = false, blockedReason: String? = nil,
+                outcomesAwaited: Int = 0, refusalDuringFlight: String? = nil) {
         self.fileName = fileName
         self.attempts = attempts
         self.notBefore = notBefore
         self.inFlight = inFlight
         self.blockedReason = blockedReason
+        self.outcomesAwaited = outcomesAwaited
+        self.refusalDuringFlight = refusalDuringFlight
     }
 }
 
@@ -58,8 +65,38 @@ public struct UploadQueue: Equatable, Sendable {
         pending.first { !$0.inFlight && $0.notBefore <= now }
     }
 
-    public mutating func markInFlight(_ fileName: String) {
-        update(fileName) { $0.inFlight = true }
+    /// A flight begins: the recording is being pushed to `expecting` machines
+    /// at once (every configured peer — the shared store dedupes, so whichever
+    /// machine answers second just says "already have it").
+    public mutating func markInFlight(_ fileName: String, expecting: Int = 1) {
+        update(fileName) {
+            $0.inFlight = true
+            $0.outcomesAwaited = expecting
+            $0.refusalDuringFlight = nil
+        }
+    }
+
+    /// One machine's answer arrives. The first confirmation wins immediately;
+    /// failure is declared only when the last machine has answered — one dead
+    /// peer's fast refusal must not unlock a re-push while another's task is
+    /// still grinding through the system's background retry.
+    public mutating func resolve(_ fileName: String, _ outcome: UploadOutcome, at now: Date) {
+        guard let index = pending.firstIndex(where: { $0.fileName == fileName }) else { return }
+        switch outcome {
+        case .confirmed:
+            confirmSent(fileName)
+        case .blocked(let reason):
+            pending[index].refusalDuringFlight = reason
+            fallthrough
+        case .retriable:
+            pending[index].outcomesAwaited -= 1
+            guard pending[index].outcomesAwaited <= 0 else { return }
+            if let reason = pending[index].refusalDuringFlight {
+                block(fileName, reason: reason, at: now)
+            } else {
+                retryLater(fileName, at: now)
+            }
+        }
     }
 
     /// The server confirmed receipt (2xx): the entry leaves the queue. The

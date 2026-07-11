@@ -39,12 +39,17 @@ on both desks; act on a memo wherever you're sitting.
    makes cross-machine double-ingest converge. Design the bin as part of this.
 3. **Syncthing rollout** — install on both machines, share the folder, move
    inbox+bin+state into it, point both apps there.
-4. **Phone: multi-peer push + Tailscale** — the iOS app takes a list of server
-   URLs and pushes to whichever answers first (the endpoint's content-key dedupe
-   already makes double-delivery harmless — verified). Tailscale on phone + both
-   machines; the app's ATS currently allows plain HTTP to local addresses only,
-   so scope an exception to `ts.net` hostnames (or serve HTTPS via
-   `tailscale cert`). Same `HIGHDEAS_UPLOAD_TOKEN` on both machines.
+4. **Phone: multi-peer push + Tailscale** — SHIPPED 2026-07-11 (app side).
+   The Settings screen holds one server URL per line; a recording fans out to
+   every machine simultaneously (sequential failover would hang on the
+   background session's system retry — a dead peer's task never yields).
+   First 2xx wins; failure is declared only when the last peer answers, so a
+   fast refusal can't unlock re-push loops. The shared store makes the fan-out
+   converge to one memo (verified: two servers, one store — 201+201 same-content
+   race on both-up; single-201 delivery with one dead). ATS carries a `ts.net`
+   exception, so Tailscale addresses work as plain lines in Settings the day
+   Tailscale is installed on the machines and phone — the remaining, purely
+   operational leg.
 
 ## Hazards, named early
 

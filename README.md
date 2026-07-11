@@ -149,7 +149,12 @@ home Wi-Fi — no iCloud mirror, no hours-late sync. One-time setup on the PC:
    Wi-Fi/Ethernet adapter (e.g. `192.168.1.23`). Consider reserving that address for
    the PC in your router's DHCP settings so it doesn't drift.
 4. **Point the phone at it:** in the app's settings screen enter the server URL
-   `http://<that address>:5055` and the same token.
+   `http://<that address>:5055` and the same token. The field takes **one URL per
+   line** — list every machine that runs Highdeas (the Mac too, once its `.env`
+   carries the same `HIGHDEAS_UPLOAD_TOKEN`). Recordings push to all of them at
+   once; whichever machines are awake accept, the shared store keeps one copy,
+   and a machine that is off simply misses a delivery it will receive by sync.
+   Tailscale addresses (`http://<machine>.ts.net:5055`) work as lines too.
 
 Only `POST /upload` is reachable from the network — the inbox page and its
 submit/delete routes stay loopback-only. Recordings made away from home simply wait

@@ -32,7 +32,7 @@ final class CaptureModel: ObservableObject {
     /// button that silently does nothing (denied microphone, audio-session
     /// failure) reads as a lost memo.
     @Published var recordingProblem: String?
-    @AppStorage("serverURL") var serverURL: String = "" { didSet { wake() } }
+    @AppStorage("serverURLs") var serverURLs: String = "" { didSet { wake() } }
     @AppStorage("uploadToken") var uploadToken: String = "" { didSet { wake() } }
 
     let recorder = Recorder()
@@ -46,13 +46,22 @@ final class CaptureModel: ObservableObject {
     let recordingsDirectory: URL
     private let activeDirectory: URL
 
-    var endpoint: UploadEndpoint? {
-        UploadEndpoint(serverURL: serverURL, token: uploadToken)
+    /// Every machine the phone delivers to — one per Settings line. They all
+    /// share one store (Syncthing) and one token, so pushing to all of them
+    /// at once is safe: the first 2xx wins, the rest answer "already have it".
+    var endpoints: [UploadEndpoint] {
+        UploadEndpoint.list(from: serverURLs, token: uploadToken)
     }
 
     init(under root: URL = .documentsDirectory) {
         recordingsDirectory = root.appending(path: "Recordings", directoryHint: .isDirectory)
         activeDirectory = root.appending(path: "Recording-in-progress", directoryHint: .isDirectory)
+        // One-time migration: the single-server era stored one URL under
+        // "serverURL"; carry it into the list so an updated app keeps pushing.
+        if serverURLs.isEmpty,
+           let old = UserDefaults.standard.string(forKey: "serverURL"), !old.isEmpty {
+            serverURLs = old
+        }
         recorder.onFinished = { [weak self] url in self?.adopt(url) }
         uploader.onOutcome = { [weak self] fileName, outcome in
             self?.handle(fileName, outcome)
@@ -122,25 +131,25 @@ final class CaptureModel: ObservableObject {
     }
 
     private func pumpQueue(now: Date = Date()) {
-        guard let endpoint else { return }
+        let peers = endpoints
+        guard !peers.isEmpty else { return }
         while let ready = queue.next(at: now) {
-            queue.markInFlight(ready.fileName)
-            uploader.push(recordingsDirectory.appending(path: ready.fileName), to: endpoint)
+            queue.markInFlight(ready.fileName, expecting: peers.count)
+            for peer in peers {
+                uploader.push(recordingsDirectory.appending(path: ready.fileName), to: peer)
+            }
         }
     }
 
     private func handle(_ fileName: String, _ outcome: UploadOutcome) {
-        switch outcome {
-        case .confirmed:
-            // Remove the entry first, then the file: a crash in between costs
-            // one duplicate upload (the server dedupes), never a lost memo.
-            queue.confirmSent(fileName)
+        // The queue arbitrates the fan-out: first confirmation wins, failure
+        // waits for the last machine to answer.
+        queue.resolve(fileName, outcome, at: Date())
+        if case .confirmed = outcome {
+            // Entry first, file second: a crash in between costs one duplicate
+            // upload (the server dedupes), never a lost memo.
             try? FileManager.default.removeItem(
                 at: recordingsDirectory.appending(path: fileName))
-        case .blocked(let reason):
-            queue.block(fileName, reason: reason, at: Date())
-        case .retriable:
-            queue.retryLater(fileName, at: Date())
         }
         wake()
     }
