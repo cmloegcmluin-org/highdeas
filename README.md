@@ -181,9 +181,13 @@ Everything but the keys for the destinations you use is optional. Set these in `
 
 ## Not yet wired
 
-- The iOS capture app itself (`ios/`) — the server side of it (`POST /upload`, the
-  LAN listener, the setup steps above) is in; the app is being built against it.
-  Scope and decisions live in `docs/ios-app-handoff.md`.
+- The desktop app on the Mac laptop, as a full peer: ingest/transcribe/route on the
+  Mac too, with inbox+bin+DB moved into a folder both machines sync (decided with
+  Douglas 2026-07-10, deferred to its own session). The landmine to design around:
+  SQLite inside a sync folder corrupts under concurrent writers — needs a
+  single-writer rule or per-memo state files. Also entails porting the native
+  window off its winforms-specific bits (`window_state.py` reads
+  `window.native.WindowState`).
 - Grouping a multi-clip memo into one shared numbered doc.
 - A single-file standalone `.exe`. The taskbar shortcut still launches through the
   project's `.venv` (`pythonw run_highdeas.py`), so this folder and its virtualenv need
