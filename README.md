@@ -212,6 +212,13 @@ Everything but the keys for the destinations you use is optional. Set these in `
   reads `window.native.WindowState`). Do NOT route recordings through an
   iCloud-synced folder instead — the Windows leg of iCloud sync is the
   sometimes-hours-late link this project exists to remove.
+- The Mac Dock tile's launch bounce briefly flashes the untreated icon. Every
+  static state is consistent (system-treated, one artwork source), but the
+  bounce animation reads a pipeline a script-launched bundle can't reach. The
+  real fix is a native shell: a small Swift app owning a WKWebView onto the
+  same local server, running the Python engine as its child — first-class
+  treatment in every animation because it genuinely is a native app. Its own
+  session; obsoletes pywebview on the Mac.
 - Grouping a multi-clip memo into one shared numbered doc.
 - A single-file standalone `.exe`. The taskbar shortcut still launches through the
   project's `.venv` (`pythonw run_highdeas.py`), so this folder and its virtualenv need
