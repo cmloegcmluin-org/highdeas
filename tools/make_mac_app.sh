@@ -12,7 +12,10 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 REPO="${REPO:-$HERE}"
-APP="$HOME/Applications/Highdeas.app"
+APP_DIR="${APP_DIR:-/Applications}"
+[[ -w "$APP_DIR" ]] || APP_DIR="$HOME/Applications"
+mkdir -p "$APP_DIR"
+APP="$APP_DIR/Highdeas.app"
 [[ -x "$REPO/.venv/bin/python" ]] || { echo "No venv at $REPO/.venv — create it first (see README)." >&2; exit 1; }
 
 # The icon renders with whatever venv runs this script (it needs Pillow, a
