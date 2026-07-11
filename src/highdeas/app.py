@@ -302,15 +302,37 @@ def _open_window(webview, state_path):
 
 def _open_when_ready(window, url, wait_until_ready):
     """Wait for the local server, then swap the splash for the real app. The model
-    load and backlog transcription happen in the background, never on this path.
-
-    No runtime Dock painting on macOS: hand-painted icons bypass the system's
-    standard icon treatment (macOS 26 places every legacy icon on its own
-    backplate), so a painted open-state tile can never match the pinned or
-    launching tile. The bundle's icns — a full-bleed square the system styles
-    its own way, in every state — is the whole icon story (tools/make_mac_app.sh)."""
+    load and backlog transcription happen in the background, never on this path."""
+    _match_mac_dock_tile()
     wait_until_ready()
     window.load_url(url)
+
+
+def _match_mac_dock_tile():
+    """Make the running Dock tile identical to the pinned one on macOS.
+
+    The pinned tile is the system's own treated rendering of the app bundle's
+    icon (macOS 26 squircle and all). The running tile of a script-launched
+    process never routes through that pipeline — probed exhaustively: modern
+    icon format, LaunchServices re-registration, cache flushes — so instead of
+    hand artwork (which can only ever *approximate* the treatment), ask the
+    system to render the bundle's icon and wear exactly that. Main thread, or
+    AppKit corrupts the alpha. Cosmetic: every failure is swallowed."""
+    if sys.platform != "darwin":
+        return
+    try:
+        from AppKit import NSApplication, NSWorkspace
+
+        for bundle in ("/Applications/Highdeas.app",
+                       str(Path.home() / "Applications/Highdeas.app")):
+            if Path(bundle).is_dir():
+                icon = NSWorkspace.sharedWorkspace().iconForFile_(bundle)
+                icon.setSize_((1024, 1024))
+                NSApplication.sharedApplication().performSelectorOnMainThread_withObject_waitUntilDone_(
+                    "setApplicationIconImage:", icon, False)
+                return
+    except Exception:  # noqa: BLE001 — cosmetics must never break the launch
+        pass
 
 
 def _run_browser(app):
