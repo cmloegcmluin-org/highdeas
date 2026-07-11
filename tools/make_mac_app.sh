@@ -41,7 +41,8 @@ cat > "$APP/Contents/Info.plist" << EOF
   <key>CFBundleName</key><string>Highdeas</string>
   <key>CFBundleDisplayName</key><string>Highdeas</string>
   <key>CFBundleIdentifier</key><string>com.cmloegcmluin.highdeas.mac</string>
-  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleVersion</key><string>$(date +%s)</string>
+  <key>LSMinimumSystemVersion</key><string>26.0</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleExecutable</key><string>Highdeas</string>
   <key>CFBundleIconFile</key><string>Highdeas</string>
