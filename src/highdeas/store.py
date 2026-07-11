@@ -1,7 +1,16 @@
-"""SQLite-backed store for memo state (transcript, name, route, status)."""
+"""Stores for memo state (transcript, name, route, status).
+
+Two implementations of one contract. `MemoStore` keeps everything in a local
+SQLite file — right for a single machine. `FolderStore` keeps one JSON file
+per memo in a folder a sync engine (Syncthing) carries between machines —
+the no-special-machine store (docs/mac-peer.md): SQLite corrupts when two
+writers meet through a sync folder; per-memo files make the unit of conflict
+a single memo, and last writer wins."""
+import json
 import sqlite3
 import threading
-from dataclasses import dataclass, fields
+from dataclasses import asdict, dataclass, fields
+from pathlib import Path
 
 
 @dataclass
@@ -148,3 +157,116 @@ class MemoStore:
         with self._lock:
             self._conn.execute("DELETE FROM memos WHERE audio_filename = ?", (audio_filename,))
             self._conn.commit()
+
+
+def _pending_order(memo):
+    """The inbox order (see MemoStore.list_pending): dragged memos lead by
+    position; the rest follow by recorded time, then ingest time."""
+    return (memo.position is None,
+            memo.position if memo.position is not None else 0,
+            memo.recorded_at, memo.created_at)
+
+
+class FolderStore:
+    """One JSON file per memo, in a folder built to be synced between machines.
+
+    Every write goes to a temp name and renames into place, so no reader — on
+    this machine or the other one, mid-sync — ever sees half a memo. Every
+    query reads the folder fresh: the other machine may have changed it since
+    the last look, and the folder is the source of truth."""
+
+    def __init__(self, state_dir):
+        self._dir = Path(state_dir)
+        self._dir.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.Lock()
+
+    def _path(self, audio_filename):
+        return self._dir / f"{audio_filename}.json"
+
+    def _write(self, memo):
+        path = self._path(memo.audio_filename)
+        tmp = path.with_name(path.name + ".tmp")  # *.json.tmp: no reader globs it
+        tmp.write_text(json.dumps(asdict(memo), ensure_ascii=False, indent=1),
+                       encoding="utf-8")
+        tmp.replace(path)
+
+    def _read(self, path):
+        """The memo in `path`, or None for anything that isn't one of ours:
+        a file the sync engine hasn't finished delivering, a foreign JSON, a
+        memo from a newer version (its extra fields are dropped, mirroring the
+        SQLite store's forward-only column migration), or a sync-conflict copy
+        — whose stem no longer matches its content, and whose adoption would
+        resurrect the losing write as a phantom twin."""
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        if not isinstance(data, dict) or "audio_filename" not in data:
+            return None
+        known = {f.name for f in fields(Memo)}
+        memo = Memo(**{k: v for k, v in data.items() if k in known})
+        if path.name != f"{memo.audio_filename}.json":
+            return None
+        return memo
+
+    def _all(self):
+        return [memo for path in sorted(self._dir.glob("*.json"))
+                if (memo := self._read(path)) is not None]
+
+    def upsert(self, memo):
+        with self._lock:
+            self._write(memo)
+
+    def get(self, audio_filename):
+        with self._lock:
+            path = self._path(audio_filename)
+            return self._read(path) if path.exists() else None
+
+    def known_filenames(self):
+        with self._lock:
+            return {memo.audio_filename for memo in self._all()}
+
+    def list_pending(self):
+        with self._lock:
+            pending = [m for m in self._all() if m.status == "pending"]
+        return sorted(pending, key=_pending_order)
+
+    def list_retired(self):
+        with self._lock:
+            return [m for m in self._all() if m.status != "pending"]
+
+    def reorder(self, audio_filenames):
+        with self._lock:
+            for position, name in enumerate(audio_filenames):
+                path = self._path(name)
+                memo = self._read(path) if path.exists() else None
+                if memo is not None:
+                    memo.position = position
+                    self._write(memo)
+
+    def update(self, audio_filename, **changes):
+        with self._lock:
+            path = self._path(audio_filename)
+            memo = self._read(path) if path.exists() else None
+            if memo is None:
+                return
+            for key, value in changes.items():
+                setattr(memo, key, value)
+            self._write(memo)
+
+    def rekey(self, old_filename, new_filename):
+        """Move a memo to a new audio_filename, keeping the rest. New file
+        lands before the old one goes, so a crash in between duplicates a
+        memo (harmless, converges) rather than losing one."""
+        with self._lock:
+            path = self._path(old_filename)
+            memo = self._read(path) if path.exists() else None
+            if memo is None:
+                return
+            memo.audio_filename = new_filename
+            self._write(memo)
+            path.unlink(missing_ok=True)
+
+    def remove(self, audio_filename):
+        with self._lock:
+            self._path(audio_filename).unlink(missing_ok=True)
