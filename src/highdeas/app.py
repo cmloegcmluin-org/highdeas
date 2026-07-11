@@ -2,9 +2,11 @@
 import os
 import socket
 import subprocess
+import sys
 import threading
 import time
 import webbrowser
+from dataclasses import dataclass
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -17,10 +19,36 @@ from highdeas.upload import create_upload_app
 from highdeas.web import create_app
 from highdeas.window_state import WindowGeometryTracker, load_geometry
 
-DEFAULT_INBOX = r"C:\Users\Douglas\iCloudDrive\iCloud~is~workflow~my~workflows\Highdeas"
-DEFAULT_DRIVE_BASE = r"G:\My Drive\voice memos (top level)"
-DEFAULT_CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+@dataclass(frozen=True)
+class PlatformDefaults:
+    """Fallback paths when `.env` doesn't say — different realities per OS."""
+    inbox: str
+    chrome: str
+    drive_base: str
+
+
+def platform_defaults(platform=None):
+    """The default paths for this OS. The env always wins; these only answer
+    when `.env` is silent. Windows keeps the paths the app grew up with; on
+    macOS the Shortcut's iCloud container and Chrome's bundle binary live in
+    their Apple-decreed places (Drive's mount varies per account, so its
+    default is merely somewhere sane under HOME)."""
+    if (platform or sys.platform) == "darwin":
+        home = Path(os.environ.get("HOME", Path.home()))
+        return PlatformDefaults(
+            inbox=str(home / "Library/Mobile Documents/iCloud~is~workflow~my~workflows"
+                             "/Documents/Highdeas"),
+            chrome="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            drive_base=str(home / "Google Drive/voice memos (top level)"),
+        )
+    return PlatformDefaults(
+        inbox=r"C:\Users\Douglas\iCloudDrive\iCloud~is~workflow~my~workflows\Highdeas",
+        chrome=r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        drive_base=r"G:\My Drive\voice memos (top level)",
+    )
 
 
 def default_bin_dir(inbox_dir):
@@ -71,10 +99,10 @@ _SPLASH_HTML = """<!doctype html>
 
 def build_app():
     load_dotenv(PROJECT_ROOT / ".env")
-    inbox_dir = os.environ.get("HIGHDEAS_INBOX_DIR", DEFAULT_INBOX)
+    inbox_dir = os.environ.get("HIGHDEAS_INBOX_DIR", platform_defaults().inbox)
     db_path = os.environ.get("HIGHDEAS_DB", str(PROJECT_ROOT / "memos.db"))
     bin_dir = os.environ.get("HIGHDEAS_BIN_DIR", default_bin_dir(inbox_dir))
-    drive_base = os.environ.get("HIGHDEAS_DRIVE_BASE", DEFAULT_DRIVE_BASE)
+    drive_base = os.environ.get("HIGHDEAS_DRIVE_BASE", platform_defaults().drive_base)
     notesnook = NotesnookRouter(os.environ.get("NOTESNOOK_INBOX_API_KEY", ""))
     drive = DriveMusicRouter(inbox_dir, drive_base)
     asana_parents = parse_asana_parents(os.environ.get("ASANA_PARENT_TASKS", ""))
@@ -103,7 +131,7 @@ def build_upload_app(service):
     if not token:
         return None
     return create_upload_app(
-        inbox_dir=os.environ.get("HIGHDEAS_INBOX_DIR", DEFAULT_INBOX),
+        inbox_dir=os.environ.get("HIGHDEAS_INBOX_DIR", platform_defaults().inbox),
         token=token,
         is_known=service.knows,
         # Adoption shouldn't wait for the scanner's next pass — but
@@ -132,7 +160,7 @@ def _chrome_launcher():
     """Return a callable that opens a URL in a specific Chrome profile. Drive is
     signed into the wanted Google account only in that profile, and a link can't
     choose one, so launch Chrome directly with --profile-directory."""
-    chrome = os.environ.get("HIGHDEAS_CHROME_EXE", DEFAULT_CHROME)
+    chrome = os.environ.get("HIGHDEAS_CHROME_EXE", platform_defaults().chrome)
     profile = os.environ.get("HIGHDEAS_CHROME_PROFILE", "Default")
 
     def launch(url):

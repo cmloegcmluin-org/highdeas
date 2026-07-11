@@ -12,6 +12,7 @@ from highdeas.app import (
     _run_browser,
     _start_upload_listener,
     build_app,
+    platform_defaults,
     build_upload_app,
     default_bin_dir,
 )
@@ -384,3 +385,44 @@ def test_set_windows_app_id_uses_the_app_id_the_shortcut_carries(monkeypatch):
     # taskbar silently regresses to pythonw.exe's generic python icon.
     assert calls == ["Douglas.Highdeas"]
     assert app_mod.APP_ID == "Douglas.Highdeas"
+
+
+def test_platform_defaults_windows_keeps_the_original_paths():
+    defaults = platform_defaults("win32")
+
+    assert defaults.inbox == r"C:\Users\Douglas\iCloudDrive\iCloud~is~workflow~my~workflows\Highdeas"
+    assert defaults.chrome == r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+    assert defaults.drive_base == r"G:\My Drive\voice memos (top level)"
+
+
+def test_platform_defaults_mac_points_at_mac_realities(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    defaults = platform_defaults("darwin")
+
+    # The Shortcut's iCloud container as macOS mounts it, and Chrome's binary
+    # inside its app bundle. Drive's mount varies per account; .env carries
+    # the real value — the default just has to be somewhere sane under HOME.
+    assert defaults.inbox == str(
+        tmp_path / "Library/Mobile Documents/iCloud~is~workflow~my~workflows/Documents/Highdeas")
+    assert defaults.chrome == "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    assert defaults.drive_base.startswith(str(tmp_path))
+
+
+def test_build_app_and_upload_app_read_defaults_through_the_platform(monkeypatch, tmp_path):
+    # Whatever the platform, the env always wins — pin that the refactor kept
+    # the environment override path intact end to end.
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    monkeypatch.setenv("HIGHDEAS_INBOX_DIR", str(inbox))
+    monkeypatch.setenv("HIGHDEAS_UPLOAD_TOKEN", "tok")
+
+    app = build_upload_app(FakeUploadService())
+    response = app.test_client().post(
+        "/upload",
+        data={"audio": (io.BytesIO(b"RIFFxxxxWAVE"), "take.wav")},
+        headers={"Authorization": "Bearer tok"},
+    )
+
+    assert response.status_code == 201
+    assert list(inbox.iterdir())
