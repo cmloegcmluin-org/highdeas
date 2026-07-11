@@ -126,9 +126,15 @@ home Wi-Fi — no iCloud mirror, no hours-late sync. One-time setup on the PC:
          -Action Allow -Protocol TCP -LocalPort 5055 -Profile Private
 
    (Use your `HIGHDEAS_UPLOAD_PORT` if you changed it. `-Profile Private` keeps the
-   rule off public networks — which means your home Wi-Fi must be classified
-   **Private**: Settings → Network & Internet → your network → Network profile type.
-   Windows often defaults it to Public, and then this rule never matches.)
+   rule off public networks — which means the network the PC actually uses must be
+   classified **Private**. The profile lives on whichever adapter connects the PC —
+   **Ethernet or Wi-Fi**: Settings → Network & Internet → Ethernet (or Wi-Fi → the
+   network's properties) → Network profile type. Windows often defaults it to
+   Public, and then this rule never matches. On a shared building network the
+   per-unit password usually isolates your devices from the neighbors', and the
+   token guards the endpoint regardless — but if uploads still can't get through
+   after this, the building is likely blocking device-to-device traffic entirely,
+   and a Tailscale tunnel between phone and PC is the way around it.)
 3. **Find the PC's LAN address:** `ipconfig`, then the *IPv4 Address* of the active
    Wi-Fi/Ethernet adapter (e.g. `192.168.1.23`). Consider reserving that address for
    the PC in your router's DHCP settings so it doesn't drift.
