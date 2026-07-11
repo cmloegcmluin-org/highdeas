@@ -128,7 +128,7 @@ clients; fixing it would mean changing the fingerprint scheme itself.
   rather than the app's own backoff countdown, and when the server returns the upload
   delivers itself with no user action. That's the mission behavior (memos arrive on
   their own); just don't expect the app-level retry states to narrate it.
-- Settings: server URL + token, plain editable fields.
+- Settings: server URLs (one machine per line — the fan-out era) + token.
 - Tests: XCTest the pure logic (queue state machine, request building). The
   audio/hardware layer is verified on the device — don't fake-TDD it.
 
