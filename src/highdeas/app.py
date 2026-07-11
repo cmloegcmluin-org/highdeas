@@ -300,34 +300,15 @@ def _open_window(webview, state_path):
 
 def _open_when_ready(window, url, wait_until_ready):
     """Wait for the local server, then swap the splash for the real app. The model
-    load and backlog transcription happen in the background, never on this path."""
-    _dress_mac_dock()
+    load and backlog transcription happen in the background, never on this path.
+
+    No runtime Dock painting on macOS: hand-painted icons bypass the system's
+    standard icon treatment (macOS 26 places every legacy icon on its own
+    backplate), so a painted open-state tile can never match the pinned or
+    launching tile. The bundle's icns — a full-bleed square the system styles
+    its own way, in every state — is the whole icon story (tools/make_mac_app.sh)."""
     wait_until_ready()
     window.load_url(url)
-
-
-def _dress_mac_dock():
-    """Put the leaf on the running app's Dock tile on macOS.
-
-    The committed Dock-tile artwork (same squircle as the pinned launcher, so open and closed tiles match). A venv python re-execs through the Python framework's own app bundle for
-    GUI work, so the running process would otherwise wear Python's rocket icon
-    no matter how it was launched (the pinnable Highdeas.app launcher only
-    dresses the *tile that launches it* — see tools/make_mac_app.sh). Purely
-    cosmetic, so any failure is swallowed; a no-op off macOS."""
-    if sys.platform != "darwin":
-        return
-    try:
-        from AppKit import NSApplication, NSImage
-
-        icon = PROJECT_ROOT / "highdeas-dock.png"
-        if icon.is_file():
-            # This runs on a pywebview worker thread; AppKit renders an alpha
-            # image corruptly (a black tile) unless the paint happens on the
-            # main thread's run loop.
-            NSApplication.sharedApplication().performSelectorOnMainThread_withObject_waitUntilDone_(
-                "setApplicationIconImage:", NSImage.alloc().initWithContentsOfFile_(str(icon)), False)
-    except Exception:  # noqa: BLE001 — cosmetics must never break the launch
-        pass
 
 
 def _run_browser(app):

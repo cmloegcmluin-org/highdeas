@@ -9,10 +9,9 @@ centred on top. Two outputs, one source of truth:
 - ``ios/Highdeas/Assets.xcassets/AppIcon.appiconset/AppIcon.png`` — the iOS
   app icon: the same emblem on an opaque dark-slate square (iOS rejects
   alpha and rounds its own corners), 1024x1024.
-- ``highdeas-dock.png`` at the repository root — the macOS Dock tile: the
-  slate square pre-rounded to the system squircle on transparency, so the
-  pinned launcher tile and the running app's runtime icon look identical
-  (tools/make_mac_app.sh and app._dress_mac_dock both consume it).
+The macOS launcher (tools/make_mac_app.sh) consumes the iOS square directly:
+macOS 26 gives every legacy icon its own standard backplate treatment, so the
+right move is one full-bleed square and no cleverness.
 
 The whole emblem is rendered once on a large supersampled canvas and then
 downscaled with LANCZOS to each icon size, so every frame is smoothly
@@ -242,18 +241,6 @@ def main() -> None:
     ios.save(ios_path, format="PNG")
     print(f"wrote {ios_path} ({S}x{S}, opaque)")
 
-    # macOS tiles are rounded rects on transparency, ~80% of the canvas with
-    # the system's corner radius (~22.37% of the tile edge).
-    tile = round(0.80 * S)
-    radius = round(0.2237 * tile)
-    mask = Image.new("L", (tile, tile), 0)
-    ImageDraw.Draw(mask).rounded_rectangle([0, 0, tile - 1, tile - 1], radius=radius, fill=255)
-    dock = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-    dock.paste(ios.resize((tile, tile), Image.Resampling.LANCZOS).convert("RGBA"),
-               ((S - tile) // 2, (S - tile) // 2), mask)
-    dock_path = root / "highdeas-dock.png"
-    dock.save(dock_path, format="PNG")
-    print(f"wrote {dock_path} (macOS Dock tile)")
 
 
 if __name__ == "__main__":
