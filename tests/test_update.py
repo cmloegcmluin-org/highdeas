@@ -156,3 +156,30 @@ def test_a_diverged_checkout_launches_what_it_has():
     _become_current(checker)  # must not raise, must not respawn
 
     assert checker.respawned == 0
+
+
+# --- the relaunch command mirrors how the app was actually started ------------
+
+
+def test_a_module_run_relaunches_as_a_module_run():
+    from highdeas.update import relaunch_command
+
+    command = relaunch_command(executable="/venv/bin/python",
+                               argv=["/repo/src/highdeas/app.py"])
+
+    # python -m rewrites argv[0] to the module file; echoing that back would
+    # run app.py as a loose script and lose the package context.
+    assert command == ["/venv/bin/python", "-m", "highdeas.app"]
+
+
+def test_a_launcher_script_run_relaunches_through_the_launcher():
+    from highdeas.update import relaunch_command
+
+    command = relaunch_command(executable=r"C:\repo\.venv\Scripts\pythonw.exe",
+                               argv=[r"C:\repo\run_highdeas.py"])
+
+    # The PC's taskbar shortcut runs pythonw run_highdeas.py, and that script
+    # is what puts src on the path. A child spawned as `-m highdeas.app`
+    # imports nothing and dies without a console to say so — the launch-update
+    # that "opened then closed itself".
+    assert command == [r"C:\repo\.venv\Scripts\pythonw.exe", r"C:\repo\run_highdeas.py"]

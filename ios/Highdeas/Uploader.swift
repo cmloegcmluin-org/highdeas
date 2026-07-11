@@ -7,6 +7,10 @@ import HighdeasKit
 /// rules live in HighdeasKit, not here.
 final class Uploader: NSObject, URLSessionDataDelegate {
     var onOutcome: (@MainActor (String, UploadOutcome) -> Void)?
+    /// The system's "wake finished" handler, parked here between
+    /// handleEventsForBackgroundURLSession and the session draining its
+    /// queued delegate events.
+    var backgroundCompletionHandler: (() -> Void)?
 
     private lazy var session: URLSession = {
         let config = URLSessionConfiguration.background(
@@ -14,6 +18,21 @@ final class Uploader: NSObject, URLSessionDataDelegate {
         config.isDiscretionary = false
         return URLSession(configuration: config, delegate: self, delegateQueue: nil)
     }()
+
+    /// Reattach to the background session by its identifier. Outcomes that
+    /// arrived while the app was gone are delivered only to a session object
+    /// that exists — a lazily-created one that waits for the next push would
+    /// leave a confirmed upload stuck reading "Uploading…" forever.
+    func reconnect() {
+        _ = session
+    }
+
+    nonisolated func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
+        DispatchQueue.main.async {
+            self.backgroundCompletionHandler?()
+            self.backgroundCompletionHandler = nil
+        }
+    }
 
     /// Assembled multipart bodies wait here while URLSession streams them;
     /// Caches is right because losing one only costs a retry.

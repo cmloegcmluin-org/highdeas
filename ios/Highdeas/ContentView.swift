@@ -107,6 +107,9 @@ private struct StateLine: View {
         case .uploading:
             Label("Uploading…", systemImage: "arrow.up.circle")
                 .font(.caption).foregroundStyle(.blue)
+        case .stillTrying:
+            Label("Still trying — no machine has answered", systemImage: "wifi.exclamationmark")
+                .font(.caption).foregroundStyle(.orange)
         case .queued:
             Label("Queued", systemImage: "clock")
                 .font(.caption).foregroundStyle(.secondary)

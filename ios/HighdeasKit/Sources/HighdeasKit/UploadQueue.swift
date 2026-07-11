@@ -15,15 +15,19 @@ public struct PendingUpload: Equatable, Identifiable, Sendable {
     /// the token in Settings heals the queue without any per-row action.
     public var blockedReason: String?
     /// Fan-out bookkeeping: how many machines this flight is still waiting
-    /// on, and the refusal to surface if the flight ends without a 2xx.
+    /// on, the refusal to surface if the flight ends without a 2xx, and when
+    /// the flight began — so the UI can stop saying "Uploading…" about a
+    /// flight nothing has answered in minutes.
     public var outcomesAwaited: Int
     public var refusalDuringFlight: String?
+    public var flightStartedAt: Date?
 
     public var id: String { fileName }
 
     public init(fileName: String, attempts: Int = 0, notBefore: Date = .distantPast,
                 inFlight: Bool = false, blockedReason: String? = nil,
-                outcomesAwaited: Int = 0, refusalDuringFlight: String? = nil) {
+                outcomesAwaited: Int = 0, refusalDuringFlight: String? = nil,
+                flightStartedAt: Date? = nil) {
         self.fileName = fileName
         self.attempts = attempts
         self.notBefore = notBefore
@@ -31,6 +35,7 @@ public struct PendingUpload: Equatable, Identifiable, Sendable {
         self.blockedReason = blockedReason
         self.outcomesAwaited = outcomesAwaited
         self.refusalDuringFlight = refusalDuringFlight
+        self.flightStartedAt = flightStartedAt
     }
 }
 
@@ -68,11 +73,12 @@ public struct UploadQueue: Equatable, Sendable {
     /// A flight begins: the recording is being pushed to `expecting` machines
     /// at once (every configured peer — the shared store dedupes, so whichever
     /// machine answers second just says "already have it").
-    public mutating func markInFlight(_ fileName: String, expecting: Int = 1) {
+    public mutating func markInFlight(_ fileName: String, expecting: Int = 1, at now: Date = Date()) {
         update(fileName) {
             $0.inFlight = true
             $0.outcomesAwaited = expecting
             $0.refusalDuringFlight = nil
+            $0.flightStartedAt = now
         }
     }
 
@@ -112,6 +118,7 @@ public struct UploadQueue: Equatable, Sendable {
             $0.attempts += 1
             $0.inFlight = false
             $0.blockedReason = nil
+            $0.flightStartedAt = nil
             $0.notBefore = now.addingTimeInterval(Self.backoff(afterAttempts: $0.attempts))
         }
     }
@@ -124,6 +131,7 @@ public struct UploadQueue: Equatable, Sendable {
             $0.attempts += 1
             $0.inFlight = false
             $0.blockedReason = reason
+            $0.flightStartedAt = nil
             $0.notBefore = now.addingTimeInterval(Self.maximumBackoff)
         }
     }

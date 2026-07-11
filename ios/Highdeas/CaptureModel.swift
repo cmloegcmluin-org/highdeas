@@ -9,6 +9,7 @@ struct RecordingItem: Identifiable, Equatable {
     enum State: Equatable {
         case recording
         case uploading
+        case stillTrying
         case queued
         case waiting(until: Date)
         case blocked(String)
@@ -36,7 +37,7 @@ final class CaptureModel: ObservableObject {
     @AppStorage("uploadToken") var uploadToken: String = "" { didSet { wake() } }
 
     let recorder = Recorder()
-    private let uploader = Uploader()
+    let uploader = Uploader()
     private var queue = UploadQueue()
     private var pump: Timer?
 
@@ -67,7 +68,9 @@ final class CaptureModel: ObservableObject {
             self?.handle(fileName, outcome)
         }
         adoptLeftovers()
+        uploader.reconnect()  // collect outcomes that arrived while the app was gone
         wake()
+        nudgeLocalNetwork()
         // A slow heartbeat retries what backoff has released and refreshes
         // the countdowns; the real triggers are stop, foreground, and outcome.
         pump = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
@@ -87,6 +90,16 @@ final class CaptureModel: ObservableObject {
             }
             rebuildItems()
         }
+    }
+
+    /// iOS grants LAN access per-app, and a *background* session's traffic
+    /// can be silently denied without the permission prompt ever appearing.
+    /// One tiny foreground request makes the system ask properly.
+    func nudgeLocalNetwork() {
+        guard let first = endpoints.first else { return }
+        var request = URLRequest(url: first.baseURL)
+        request.timeoutInterval = 2
+        URLSession.shared.dataTask(with: request).resume()
     }
 
     /// Sync with the disk and push whatever is ready. Safe to call often.
@@ -171,7 +184,15 @@ final class CaptureModel: ObservableObject {
     }
 
     private func state(of entry: PendingUpload) -> RecordingItem.State {
-        if entry.inFlight { return .uploading }
+        if entry.inFlight {
+            // A flight nothing has answered in minutes is stuck somewhere —
+            // machines asleep, or the phone lacks Local Network permission.
+            // "Uploading…" would be a lie; say what's actually happening.
+            if let started = entry.flightStartedAt, Date().timeIntervalSince(started) > 120 {
+                return .stillTrying
+            }
+            return .uploading
+        }
         if let reason = entry.blockedReason { return .blocked(reason) }
         if entry.notBefore > Date() { return .waiting(until: entry.notBefore) }
         return .queued

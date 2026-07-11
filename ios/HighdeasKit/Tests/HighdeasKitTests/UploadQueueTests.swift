@@ -192,3 +192,28 @@ private let t0 = Date(timeIntervalSince1970: 1_780_000_000)
         #expect(UploadEndpoint.list(from: "http://192.168.1.23:5055", token: " ").isEmpty)
     }
 }
+
+// MARK: - Telling the truth about a flight nothing has answered
+
+@Suite struct StaleFlightTests {
+    let start = Date(timeIntervalSince1970: 1_800_000_000)
+
+    @Test func aFlightRemembersWhenItBegan() {
+        var queue = UploadQueue()
+        queue.enqueue("a.m4a")
+
+        queue.markInFlight("a.m4a", expecting: 3, at: start)
+
+        #expect(queue.pending.first?.flightStartedAt == start)
+    }
+
+    @Test func resolvingClearsTheFlightClock() {
+        var queue = UploadQueue()
+        queue.enqueue("a.m4a")
+        queue.markInFlight("a.m4a", expecting: 1, at: start)
+
+        queue.resolve("a.m4a", .retriable, at: start.addingTimeInterval(5))
+
+        #expect(queue.pending.first?.flightStartedAt == nil)
+    }
+}

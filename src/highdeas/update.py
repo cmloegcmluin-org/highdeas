@@ -15,13 +15,32 @@ import time
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
+def relaunch_command(executable=None, argv=None):
+    """How to start this app again, faithful to how it was started.
+
+    A module run (`python -m highdeas.app`) shows app.py's file path as
+    argv[0]; replaying that as a loose script would lose the package context,
+    so it becomes `-m` again. Anything else — the PC's `pythonw
+    run_highdeas.py` taskbar launcher above all — is replayed verbatim: that
+    script is what puts src on the path, and a child that skips it dies on
+    its first import with no console to say why."""
+    executable = executable or sys.executable
+    argv = argv if argv is not None else sys.argv
+    if argv and argv[0].endswith("app.py"):
+        return [executable, "-m", "highdeas.app", *argv[1:]]
+    return [executable, *argv]
+
+
 def _relaunch():
-    """Become the freshly-pulled code: replace this process image with a new
-    `python -m highdeas.app`. Spelled `-m` rather than echoing sys.argv — a
-    module run's argv[0] is app.py's file path, which re-executed directly
-    would lose the package context. The environment (PYTHONPATH included, for
-    the .bat launcher's sake) rides along."""
-    os.execv(sys.executable, [sys.executable, "-m", "highdeas.app"])
+    """Become the freshly-pulled code. On Windows, exec is spawn-and-exit
+    with rough edges (thread contexts, window sessions) — do the spawn
+    explicitly and leave; elsewhere, a true exec keeps the pid, which the
+    Mac shell relies on to keep tracking its engine child."""
+    command = relaunch_command()
+    if sys.platform == "win32":
+        subprocess.Popen(command, close_fds=True)
+        os._exit(0)
+    os.execv(command[0], command)
 
 
 class UpdateChecker:
