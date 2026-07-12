@@ -1591,6 +1591,26 @@ def test_hovering_a_bulk_head_lights_the_whole_column_it_presses(tmp_path):
     assert "body:has(#empty-bin:not(:disabled):hover) .row .purge:not(:disabled)" in css
 
 
+def test_a_machine_that_cannot_hear_the_phone_says_so_on_every_page(tmp_path):
+    # The condition is invisible from the phone (its pushes just go
+    # unanswered) and from the console (pythonw has none) — the page is
+    # where this machine must say it. app.py plants the sentence in config
+    # when the upload listener dies or never starts.
+    app = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin"))
+    app.config["PHONE_UPLOADS_OFF"] = (
+        "Phone uploads are off: HIGHDEAS_UPLOAD_TOKEN is missing from the .env on this machine.")
+    client = app.test_client()
+
+    assert "Phone uploads are off" in client.get("/").data.decode()
+    assert "Phone uploads are off" in client.get("/bin").data.decode()
+
+
+def test_a_machine_hearing_the_phone_wears_no_warning(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    assert "Phone uploads are off" not in client.get("/").data.decode()
+
+
 def test_bin_back_control_is_a_button_not_a_text_link(tmp_path):
     # Same button chrome the inbox topbar uses, so "← Inbox" reads as a control
     # rather than as prose in the title bar.

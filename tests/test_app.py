@@ -303,6 +303,45 @@ def test_start_upload_listener_stays_dark_without_an_upload_app():
     _start_upload_listener(None)  # no token configured: nothing must listen
 
 
+def test_a_missing_token_is_announced_not_just_printed():
+    # pythonw has no console: print alone left a healthy-looking window with
+    # a silently deaf port. The announcement is what reaches the page.
+    said = []
+
+    _start_upload_listener(None, uploads_off=said.append)
+
+    assert said and "HIGHDEAS_UPLOAD_TOKEN" in said[0]
+
+
+def test_the_listener_outlives_a_bind_race_and_clears_its_warning(monkeypatch):
+    # The update respawn races the dying parent for the port: the child can
+    # try to bind while the parent still holds it. One lost race must not
+    # leave this machine deaf to the phone until the next cold start.
+    monkeypatch.setenv("HIGHDEAS_UPLOAD_PORT", "5155")
+    said = []
+    serving = threading.Event()
+    attempts = []
+
+    class FakeApp:
+        def run(self, **kwargs):
+            attempts.append(1)
+            if len(attempts) == 1:
+                raise OSError("Address already in use")
+            serving.set()
+            threading.Event().wait()  # block for the process lifetime, like a real server
+
+    _start_upload_listener(FakeApp(), uploads_off=said.append,
+                           retry_delay=0.05, all_clear_after=0.05)
+
+    assert serving.wait(timeout=2)
+    deadline = time.monotonic() + 2
+    while (not said or said[-1] is not None) and time.monotonic() < deadline:
+        time.sleep(0.01)
+    # The lost race was announced, and the win that followed withdrew it.
+    assert said[0] is not None and "5155" in said[0]
+    assert said[-1] is None
+
+
 def test_a_malformed_upload_port_disables_the_listener_not_the_app(monkeypatch, capsys):
     # Every other env misconfiguration in this app degrades gracefully; a
     # typo'd port must not take the window down with it (invisibly, under
@@ -353,7 +392,7 @@ def test_main_starts_the_upload_listener_before_the_blocking_ui(monkeypatch):
     monkeypatch.setattr(app_mod, "_ingest_continuously", lambda service: None)
     monkeypatch.setattr(app_mod, "build_upload_app", lambda service: ("UPLOAD-FOR", service))
     monkeypatch.setattr(app_mod, "_start_upload_listener",
-                        lambda app: order.append(("upload", app)))
+                        lambda app, uploads_off: order.append(("upload", app)))
     monkeypatch.setattr(app_mod, "_run_browser", lambda app: order.append(("ui", app)))
 
     app_mod.main()
@@ -361,6 +400,28 @@ def test_main_starts_the_upload_listener_before_the_blocking_ui(monkeypatch):
     # _run_browser (and the desktop path) block for the process lifetime, so
     # the listener must be up first — "after the UI" would mean never.
     assert order == [("upload", ("UPLOAD-FOR", "SERVICE")), ("ui", "APP")]
+
+
+def test_main_routes_a_dead_listener_onto_the_page(monkeypatch):
+    import highdeas.app as app_mod
+
+    class FakeFlask:
+        def __init__(self):
+            self.config = {}
+
+    web_app = FakeFlask()
+    monkeypatch.setenv("HIGHDEAS_DESKTOP", "0")
+    monkeypatch.setattr(app_mod, "_set_windows_app_id", lambda: None)
+    monkeypatch.setattr(app_mod, "build_app", lambda: (web_app, "SERVICE"))
+    monkeypatch.setattr(app_mod, "_ingest_continuously", lambda service: None)
+    monkeypatch.setattr(app_mod, "build_upload_app", lambda service: None)  # no token
+    monkeypatch.setattr(app_mod, "_run_browser", lambda app: None)
+
+    app_mod.main()
+
+    # The page is the one place this machine gets to say it can't hear the
+    # phone — pythonw has no console for the print to reach.
+    assert "HIGHDEAS_UPLOAD_TOKEN" in web_app.config["PHONE_UPLOADS_OFF"]
 
 
 def test_run_browser_serves_on_the_configured_port_without_opening_a_browser(monkeypatch):
@@ -381,10 +442,13 @@ def test_run_browser_serves_on_the_configured_port_without_opening_a_browser(mon
 def test_main_falls_back_to_the_browser_when_the_desktop_window_is_switched_off(monkeypatch):
     import highdeas.app as app_mod
     opened = []
+    # A config dict, not a bare string: main() plants the phone-uploads
+    # warning in app.config when the token is missing (as it is here).
+    web_app = SimpleNamespace(config={})
     monkeypatch.setenv("HIGHDEAS_DESKTOP", "0")
     monkeypatch.delenv("HIGHDEAS_UPLOAD_TOKEN", raising=False)
     monkeypatch.setattr(app_mod, "_set_windows_app_id", lambda: None)
-    monkeypatch.setattr(app_mod, "build_app", lambda: ("APP", "SERVICE"))
+    monkeypatch.setattr(app_mod, "build_app", lambda: (web_app, "SERVICE"))
     monkeypatch.setattr(app_mod, "_ingest_continuously", lambda service: None)
     monkeypatch.setattr(app_mod, "_run_desktop", lambda app: opened.append(("desktop", app)) or True)
     monkeypatch.setattr(app_mod, "_run_browser", lambda app: opened.append(("browser", app)))
@@ -393,7 +457,7 @@ def test_main_falls_back_to_the_browser_when_the_desktop_window_is_switched_off(
 
     # The documented escape hatch: HIGHDEAS_DESKTOP=0 must never reach the native window,
     # even though _run_desktop would have succeeded had it been asked.
-    assert opened == [("browser", "APP")]
+    assert opened == [("browser", web_app)]
 
 
 def test_set_windows_app_id_uses_the_app_id_the_shortcut_carries(monkeypatch):

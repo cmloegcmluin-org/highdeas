@@ -230,36 +230,73 @@ def main():
     _set_windows_app_id()
     app, service = build_app()
     _ingest_continuously(service)
-    _start_upload_listener(build_upload_app(service))
+
+    def uploads_off(reason):
+        """Put the dead listener on the page (and take it back off). print
+        alone vanishes under the pythonw taskbar launch: a healthy-looking
+        window with a silently deaf port once cost an afternoon of notes
+        stuck on the phone."""
+        _print_uploads_state(reason)
+        if reason:
+            app.config["PHONE_UPLOADS_OFF"] = reason
+        else:
+            app.config.pop("PHONE_UPLOADS_OFF", None)
+
+    _start_upload_listener(build_upload_app(service), uploads_off)
     if os.environ.get("HIGHDEAS_DESKTOP", "1") == "1" and _run_desktop(app):
         return
     _run_browser(app)
 
 
-def _start_upload_listener(upload_app):
+def _print_uploads_state(reason):
+    if reason:
+        print(reason)
+
+
+def _start_upload_listener(upload_app, uploads_off=_print_uploads_state,
+                           retry_delay=2.0, all_clear_after=2.0):
     """Serve the upload app to the LAN in a daemon thread, in both desktop and
     browser modes. Only the upload route is exposed on 0.0.0.0 — the inbox UI
     with its submit/delete routes stays loopback-only.
 
     Failures here disable phone uploads, never the app: a typo'd port or an
-    already-taken one must not kill a window the user is looking at (or,
-    under the pythonw taskbar launch, exit with no console at all)."""
+    already-taken one must not kill a window the user is looking at. But
+    they don't get to be silent either — every path that leaves this machine
+    deaf to the phone announces itself through `uploads_off(reason)`, and a
+    recovery withdraws the announcement with `uploads_off(None)`.
+
+    A failed bind retries rather than giving up: the update respawn races
+    the dying parent for the port, and one lost race must not leave the
+    machine deaf until the next cold start."""
     if upload_app is None:
+        uploads_off("Phone uploads are off: HIGHDEAS_UPLOAD_TOKEN is missing "
+                    "from the .env on this machine.")
         return
     raw_port = os.environ.get("HIGHDEAS_UPLOAD_PORT", "5055")
     try:
         port = int(raw_port)
     except ValueError:
-        print(f"HIGHDEAS_UPLOAD_PORT={raw_port!r} is not a port number; "
-              "phone uploads are off until it's fixed.")
+        uploads_off(f"Phone uploads are off: HIGHDEAS_UPLOAD_PORT={raw_port!r} "
+                    "is not a port number.")
         return
 
     def serve():
-        try:
-            upload_app.run(host="0.0.0.0", port=port, threaded=True, use_reloader=False)
-        except Exception as exc:  # noqa: BLE001 — surface the dead listener, keep the app alive
-            print(f"The upload listener could not serve on port {port} ({exc}); "
-                  "phone uploads are off for this run.")
+        delay = retry_delay
+        while True:
+            # A bind failure raises within milliseconds; a server that is
+            # still running when this timer fires has genuinely started.
+            all_clear = threading.Timer(all_clear_after, lambda: uploads_off(None))
+            all_clear.daemon = True
+            all_clear.start()
+            try:
+                upload_app.run(host="0.0.0.0", port=port, threaded=True, use_reloader=False)
+                return
+            except Exception as exc:  # noqa: BLE001 — announce the deaf port, keep the app alive
+                all_clear.cancel()
+                uploads_off("Phone uploads are off: the upload listener "
+                            f"would not serve on port {port} ({exc}). Retrying.")
+                time.sleep(delay)
+                delay = min(30.0, delay * 2)
 
     threading.Thread(target=serve, daemon=True, name="highdeas-upload").start()
 

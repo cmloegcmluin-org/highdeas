@@ -14,6 +14,13 @@
       <h1>{{ self.title() }} <span id="count">— {{ memos|length }} item{{ 's' if memos|length != 1 else '' }}</span></h1>
       {% block links %}{% endblock %}
     </div>
+    {#- The one condition the window can't otherwise show: the LAN listener
+        died or never started, so the phone's pushes go unanswered while
+        everything visible hums. app.py plants the sentence when it happens
+        and clears it on recovery; pythonw has no console for the print. -#}
+    {% if config.PHONE_UPLOADS_OFF %}
+    <div class="notice">{{ config.PHONE_UPLOADS_OFF }}</div>
+    {% endif %}
     {% block banners %}{% endblock %}
     {% if memos %}{% block headrow %}{% endblock %}{% endif %}
   </div>
