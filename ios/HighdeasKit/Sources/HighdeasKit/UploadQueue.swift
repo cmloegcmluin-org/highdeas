@@ -109,9 +109,15 @@ public struct UploadQueue: Equatable, Sendable {
         case .confirmed:
             confirmSent(fileName)
         case .blocked(let reason):
+            // A dead flight's echo (a cancelled task, a machine answering
+            // past the deadline) steers nothing: the entry's course was set
+            // when the flight was released. Only a confirmation is final
+            // wherever it comes from.
+            guard pending[index].inFlight else { return }
             pending[index].refusalDuringFlight = reason
             fallthrough
         case .retriable:
+            guard pending[index].inFlight else { return }
             pending[index].outcomesAwaited -= 1
             guard pending[index].outcomesAwaited <= 0 else { return }
             if let reason = pending[index].refusalDuringFlight {
@@ -120,6 +126,31 @@ public struct UploadQueue: Equatable, Sendable {
                 retryLater(fileName, at: now)
             }
         }
+    }
+
+    /// Declare lost any flight silent past `silentFor`, returning it to the
+    /// queue under ordinary backoff, and name the released files so the
+    /// caller can cancel their tasks. iOS holds a background transfer toward
+    /// an unreachable machine indefinitely without a word; treated as still
+    /// flying, such a note stays wedged until the next cold launch, because
+    /// the pump never re-pushes what is already in flight. A re-push is safe
+    /// even if the old transfer later lands — the server dedupes.
+    public mutating func releaseStaleFlights(
+            at now: Date, silentFor: TimeInterval = 120) -> [String] {
+        var released: [String] = []
+        for index in pending.indices where pending[index].inFlight {
+            guard let started = pending[index].flightStartedAt,
+                  now.timeIntervalSince(started) > silentFor else { continue }
+            pending[index].inFlight = false
+            pending[index].attempts += 1
+            pending[index].flightStartedAt = nil
+            pending[index].outcomesAwaited = 0
+            pending[index].refusalDuringFlight = nil
+            pending[index].notBefore = now.addingTimeInterval(
+                Self.backoff(afterAttempts: pending[index].attempts))
+            released.append(pending[index].fileName)
+        }
+        return released
     }
 
     /// The server confirmed receipt (2xx): the entry leaves the queue. The

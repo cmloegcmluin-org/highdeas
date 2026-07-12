@@ -271,3 +271,63 @@ private let t0 = Date(timeIntervalSince1970: 1_780_000_000)
         #expect(!entry(in: queue).awaitingMachine(at: start))
     }
 }
+
+// MARK: - Giving up on a flight the system has quietly parked
+
+/// iOS can hold a background transfer toward an unreachable machine forever
+/// without a word. Left alone, that wedges the note until the next cold
+/// launch: still "in flight", so the pump never re-pushes it. These pin the
+/// escape: a flight silent past the deadline returns to the queue under
+/// ordinary backoff, and only a confirmation may speak for it afterwards.
+@Suite struct StaleFlightReleaseTests {
+    let start = Date(timeIntervalSince1970: 1_800_000_000)
+
+    private func stuckQueue() -> UploadQueue {
+        var queue = UploadQueue()
+        queue.enqueue("a.m4a")
+        queue.markInFlight("a.m4a", expecting: 2, at: start)
+        return queue
+    }
+
+    @Test func aSilentFlightPastTheDeadlineReturnsToTheQueue() {
+        var queue = stuckQueue()
+
+        let released = queue.releaseStaleFlights(at: start.addingTimeInterval(121))
+
+        #expect(released == ["a.m4a"])
+        let entry = queue.pending[0]
+        #expect(!entry.inFlight)
+        #expect(entry.attempts == 1)
+        #expect(entry.notBefore == start.addingTimeInterval(121 + 5))
+        #expect(queue.next(at: start.addingTimeInterval(130))?.fileName == "a.m4a")
+    }
+
+    @Test func aWarmFlightIsLeftAlone() {
+        var queue = stuckQueue()
+
+        #expect(queue.releaseStaleFlights(at: start.addingTimeInterval(60)).isEmpty)
+        #expect(queue.pending[0].inFlight)
+    }
+
+    @Test func aDeadFlightsFailureEchoSteersNothing() {
+        var queue = stuckQueue()
+        _ = queue.releaseStaleFlights(at: start.addingTimeInterval(121))
+        let released = queue.pending[0]
+
+        // The cancelled tasks (and any machine answering after the deadline)
+        // still echo through the delegate; the entry's course is already set.
+        queue.resolve("a.m4a", .retriable, at: start.addingTimeInterval(122))
+        queue.resolve("a.m4a", .blocked("Server refused (401)."), at: start.addingTimeInterval(123))
+
+        #expect(queue.pending[0] == released)
+    }
+
+    @Test func aDeadFlightsLateConfirmationStillCounts() {
+        var queue = stuckQueue()
+        _ = queue.releaseStaleFlights(at: start.addingTimeInterval(121))
+
+        queue.resolve("a.m4a", .confirmed, at: start.addingTimeInterval(122))
+
+        #expect(queue.pending.isEmpty)
+    }
+}

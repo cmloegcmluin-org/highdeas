@@ -143,6 +143,13 @@ final class CaptureModel: ObservableObject {
     }
 
     private func pumpQueue(now: Date = Date()) {
+        // A flight iOS has quietly parked (background tasks toward machines
+        // it can't reach never call back) must not wedge a note until the
+        // next cold launch: past the deadline it rejoins the queue and its
+        // zombie tasks are cancelled. Then the ordinary push resumes.
+        for stale in queue.releaseStaleFlights(at: now) {
+            uploader.abandon(stale)
+        }
         let peers = endpoints
         guard !peers.isEmpty else { return }
         while let ready = queue.next(at: now) {

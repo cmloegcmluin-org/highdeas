@@ -60,6 +60,20 @@ final class Uploader: NSObject, URLSessionDataDelegate {
         }
     }
 
+    /// Cancel the tasks of a flight the queue has given up on, so an
+    /// afternoon of re-pushes can't pile up transfers the system is holding
+    /// for machines it can't reach. Each cancellation echoes back through
+    /// didCompleteWithError (cleaning up its body file on the way); the
+    /// queue ignores a dead flight's echoes.
+    func abandon(_ fileName: String) {
+        session.getAllTasks { tasks in
+            for task in tasks
+            where task.taskDescription?.hasPrefix(fileName + "|") == true {
+                task.cancel()
+            }
+        }
+    }
+
     nonisolated func urlSession(_ session: URLSession, task: URLSessionTask,
                                 didCompleteWithError error: Error?) {
         guard let description = task.taskDescription else { return }
