@@ -35,7 +35,7 @@ struct ContentView: View {
                 }
             }
             .safeAreaInset(edge: .bottom) {
-                RecordButton()
+                RecordButton(recorder: model.recorder)
             }
             .sheet(isPresented: $showSettings) {
                 SettingsView()
@@ -147,6 +147,11 @@ private struct ScrubBar: View {
 
 private struct RecordButton: View {
     @EnvironmentObject private var model: CaptureModel
+    /// Observed directly, not through the model: the recorder ticks
+    /// `elapsed` twice a second, but a nested ObservableObject's changes
+    /// never reach a view that only watches its owner — the clock sat
+    /// frozen until the model's 5-second heartbeat happened to repaint it.
+    @ObservedObject var recorder: Recorder
 
     var body: some View {
         VStack(spacing: 6) {
@@ -157,7 +162,7 @@ private struct RecordButton: View {
                     Circle()
                         .stroke(.red.opacity(0.4), lineWidth: 4)
                         .frame(width: 76, height: 76)
-                    if model.recorder.isRecording {
+                    if recorder.isRecording {
                         RoundedRectangle(cornerRadius: 8)
                             .fill(.red)
                             .frame(width: 34, height: 34)
@@ -169,11 +174,13 @@ private struct RecordButton: View {
                 }
             }
             .buttonStyle(.plain)
-            if model.recorder.isRecording {
-                Text(timeString(model.recorder.elapsed))
-                    .font(.callout.monospacedDigit())
-                    .foregroundStyle(.red)
-            }
+            // Always in the layout, visible only while recording: a line
+            // that appears and vanishes changes the bar's height and shoves
+            // the whole list up and down with it.
+            Text(timeString(recorder.elapsed))
+                .font(.callout.monospacedDigit())
+                .foregroundStyle(.red)
+                .opacity(recorder.isRecording ? 1 : 0)
         }
         // Room above as below: with no top inset the bar's edge ran exactly
         // through the button's halo, reading as a button bursting out of it.

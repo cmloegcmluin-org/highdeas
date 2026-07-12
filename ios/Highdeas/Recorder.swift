@@ -1,4 +1,5 @@
 import AVFoundation
+import UIKit
 
 /// Owns the microphone: one `AVAudioRecorder` writing AAC `.m4a`, the same
 /// container the old Shortcut produced, so the server's ingest facts hold.
@@ -42,6 +43,11 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         self.recorder = recorder
         isRecording = true
         elapsed = 0
+        // A long note outlives the screen's idle timer, and a phone that
+        // sleeps mid-recording comes back to a dark, ambiguous scene. Awake
+        // exactly while recording; finish() restores the timer whatever way
+        // the recording ends.
+        UIApplication.shared.isIdleTimerDisabled = true
         ticker = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.elapsed = self?.recorder?.currentTime ?? 0 }
         }
@@ -60,6 +66,7 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         guard recorder === finished else { return }
         recorder = nil
         isRecording = false
+        UIApplication.shared.isIdleTimerDisabled = false
         ticker?.invalidate()
         ticker = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
