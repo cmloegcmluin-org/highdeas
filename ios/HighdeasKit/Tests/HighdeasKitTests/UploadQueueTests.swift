@@ -217,3 +217,57 @@ private let t0 = Date(timeIntervalSince1970: 1_780_000_000)
         #expect(queue.pending.first?.flightStartedAt == nil)
     }
 }
+
+// MARK: - Knowing when no machine is around
+
+/// Recording an afternoon away from every machine is the app working as
+/// designed, not an incident. These pin down when an entry may say so:
+/// a flight gone unanswered for a short while, or a whole round already
+/// come back empty — but never a refusal, which is a person's problem to fix.
+@Suite struct AwaitingMachineTests {
+    let start = Date(timeIntervalSince1970: 1_800_000_000)
+
+    private func entry(in queue: UploadQueue) -> PendingUpload { queue.pending[0] }
+
+    @Test func aFreshFlightIsStillJustUploading() {
+        var queue = UploadQueue()
+        queue.enqueue("a.m4a")
+        queue.markInFlight("a.m4a", expecting: 2, at: start)
+
+        #expect(!entry(in: queue).awaitingMachine(at: start.addingTimeInterval(10)))
+    }
+
+    @Test func aFlightNothingAnswersGoesToAwaitingAMachine() {
+        var queue = UploadQueue()
+        queue.enqueue("a.m4a")
+        queue.markInFlight("a.m4a", expecting: 2, at: start)
+
+        #expect(entry(in: queue).awaitingMachine(at: start.addingTimeInterval(31)))
+    }
+
+    @Test func aRoundThatCameBackEmptyWaitsAsAwaitingAMachineNotAsACountdown() {
+        var queue = UploadQueue()
+        queue.enqueue("a.m4a")
+        queue.markInFlight("a.m4a", expecting: 2, at: start)
+        queue.resolve("a.m4a", .retriable, at: start.addingTimeInterval(1))
+        queue.resolve("a.m4a", .retriable, at: start.addingTimeInterval(2))
+
+        #expect(entry(in: queue).awaitingMachine(at: start.addingTimeInterval(3)))
+    }
+
+    @Test func aRefusalIsNotAMissingMachine() {
+        var queue = UploadQueue()
+        queue.enqueue("a.m4a")
+        queue.markInFlight("a.m4a", expecting: 1, at: start)
+        queue.resolve("a.m4a", .blocked("Server refused (401)."), at: start.addingTimeInterval(1))
+
+        #expect(!entry(in: queue).awaitingMachine(at: start.addingTimeInterval(60)))
+    }
+
+    @Test func aRecordingNeverYetTriedIsNotAwaitingAMachine() {
+        var queue = UploadQueue()
+        queue.enqueue("a.m4a")
+
+        #expect(!entry(in: queue).awaitingMachine(at: start))
+    }
+}

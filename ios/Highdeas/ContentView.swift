@@ -107,15 +107,12 @@ private struct StateLine: View {
         case .uploading:
             Label("Uploading…", systemImage: "arrow.up.circle")
                 .font(.caption).foregroundStyle(.blue)
-        case .stillTrying:
-            Label("Still trying — no machine has answered", systemImage: "wifi.exclamationmark")
-                .font(.caption).foregroundStyle(.orange)
+        case .awaitingMachine:
+            Label("Will sync next time Highdeas is open on a computer",
+                  systemImage: "arrow.up.circle.dotted")
+                .font(.caption).foregroundStyle(.secondary)
         case .queued:
             Label("Queued", systemImage: "clock")
-                .font(.caption).foregroundStyle(.secondary)
-        case .waiting(let until):
-            Label("Retrying \(until, format: .relative(presentation: .numeric))",
-                  systemImage: "clock.arrow.circlepath")
                 .font(.caption).foregroundStyle(.secondary)
         case .blocked(let reason):
             Label(reason, systemImage: "exclamationmark.triangle")

@@ -24,6 +24,23 @@ public struct PendingUpload: Equatable, Identifiable, Sendable {
 
     public var id: String { fileName }
 
+    /// Whether the queue has, in effect, learned that no machine is taking
+    /// uploads right now: the current flight has gone unanswered for
+    /// `silentFor` seconds, or a whole round already came back with nobody
+    /// confirming and the entry is waiting out its backoff. Being away from
+    /// every machine for an afternoon is the app working as designed, so the
+    /// row wants to say "will sync later" calmly rather than count retries —
+    /// and only this bookkeeping knows that from a flight that's still warm.
+    /// A refusal is neither: a machine answered, and what it said is a
+    /// problem someone has to fix, so it stays a loud state of its own.
+    public func awaitingMachine(at now: Date, silentFor: TimeInterval = 30) -> Bool {
+        if inFlight {
+            guard let started = flightStartedAt else { return false }
+            return now.timeIntervalSince(started) > silentFor
+        }
+        return blockedReason == nil && attempts > 0
+    }
+
     public init(fileName: String, attempts: Int = 0, notBefore: Date = .distantPast,
                 inFlight: Bool = false, blockedReason: String? = nil,
                 outcomesAwaited: Int = 0, refusalDuringFlight: String? = nil,

@@ -9,9 +9,8 @@ struct RecordingItem: Identifiable, Equatable {
     enum State: Equatable {
         case recording
         case uploading
-        case stillTrying
+        case awaitingMachine
         case queued
-        case waiting(until: Date)
         case blocked(String)
     }
 
@@ -184,17 +183,12 @@ final class CaptureModel: ObservableObject {
     }
 
     private func state(of entry: PendingUpload) -> RecordingItem.State {
-        if entry.inFlight {
-            // A flight nothing has answered in minutes is stuck somewhere —
-            // machines asleep, or the phone lacks Local Network permission.
-            // "Uploading…" would be a lie; say what's actually happening.
-            if let started = entry.flightStartedAt, Date().timeIntervalSince(started) > 120 {
-                return .stillTrying
-            }
-            return .uploading
-        }
+        // No machine around — a silent flight, or a round nobody confirmed —
+        // is an ordinary afternoon out, not an incident: one calm state
+        // instead of an alarm and a retry countdown. Refusals stay loud.
+        if entry.awaitingMachine(at: Date()) { return .awaitingMachine }
+        if entry.inFlight { return .uploading }
         if let reason = entry.blockedReason { return .blocked(reason) }
-        if entry.notBefore > Date() { return .waiting(until: entry.notBefore) }
         return .queued
     }
 
