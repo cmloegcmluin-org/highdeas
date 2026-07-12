@@ -234,7 +234,7 @@ private let t0 = Date(timeIntervalSince1970: 1_780_000_000)
         queue.enqueue("a.m4a")
         queue.markInFlight("a.m4a", expecting: 2, at: start)
 
-        #expect(!entry(in: queue).awaitingMachine(at: start.addingTimeInterval(10)))
+        #expect(!entry(in: queue).awaitingMachine(at: start.addingTimeInterval(5)))
     }
 
     @Test func aFlightNothingAnswersGoesToAwaitingAMachine() {
@@ -242,7 +242,7 @@ private let t0 = Date(timeIntervalSince1970: 1_780_000_000)
         queue.enqueue("a.m4a")
         queue.markInFlight("a.m4a", expecting: 2, at: start)
 
-        #expect(entry(in: queue).awaitingMachine(at: start.addingTimeInterval(31)))
+        #expect(entry(in: queue).awaitingMachine(at: start.addingTimeInterval(11)))
     }
 
     @Test func aRoundThatCameBackEmptyWaitsAsAwaitingAMachineNotAsACountdown() {

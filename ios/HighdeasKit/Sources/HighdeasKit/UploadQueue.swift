@@ -33,7 +33,7 @@ public struct PendingUpload: Equatable, Identifiable, Sendable {
     /// and only this bookkeeping knows that from a flight that's still warm.
     /// A refusal is neither: a machine answered, and what it said is a
     /// problem someone has to fix, so it stays a loud state of its own.
-    public func awaitingMachine(at now: Date, silentFor: TimeInterval = 30) -> Bool {
+    public func awaitingMachine(at now: Date, silentFor: TimeInterval = 10) -> Bool {
         if inFlight {
             guard let started = flightStartedAt else { return false }
             return now.timeIntervalSince(started) > silentFor

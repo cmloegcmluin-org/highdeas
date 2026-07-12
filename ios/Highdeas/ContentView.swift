@@ -175,6 +175,9 @@ private struct RecordButton: View {
                     .foregroundStyle(.red)
             }
         }
+        // Room above as below: with no top inset the bar's edge ran exactly
+        // through the button's halo, reading as a button bursting out of it.
+        .padding(.top, 14)
         .padding(.bottom, 10)
         .frame(maxWidth: .infinity)
         .background(.bar)
