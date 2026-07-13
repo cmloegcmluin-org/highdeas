@@ -14,10 +14,15 @@
 {% macro clip(field) -%}
 <button type="button" class="clip" data-copy="{{ field }}" title="Copy {{ field }}" aria-label="Copy {{ field }}"><span class="ic-copy">{{ clipboard() }}</span><span class="ic-ok">{{ check() }}</span></button>
 {%- endmacro %}
+{#- Recordings that have landed but not yet earned a row: named the moment they
+    exist, so the handoff from the phone's list to this one never passes through
+    "nowhere". Rides the /pending fragment too — inbox.js swaps it by itself,
+    outside the row merge. -#}
+{% if incoming %}
+<p class="transcribing">Transcribing {{ incoming }} new recording{{ 's' if incoming != 1 else '' }}…</p>
+{% endif %}
 {% if not memos %}
-  {% if incoming %}
-  <p class="empty">Transcribing your memos…</p>
-  {% else %}
+  {% if not incoming %}
   <p class="empty">Your inbox is empty. Record a memo and it'll show up here.</p>
   {% endif %}
 {% else %}

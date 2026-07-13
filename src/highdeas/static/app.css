@@ -93,6 +93,10 @@ body:has(#empty-bin:not(:disabled):hover) .row .purge:not(:disabled) { border-co
                 opacity: .6; transition: opacity .15s; }
 .notice-close:hover { opacity: 1; }
 .empty { opacity: .7; padding: 48px 0; text-align: center; }
+/* A recording that has landed but not yet earned a row. Quiet, not an alert:
+   this is the system working, shown so the note visibly exists somewhere
+   during the seconds between the phone letting go and transcription finishing. */
+.transcribing { margin: 14px 0 0; font-size: .9rem; font-style: italic; opacity: .7; }
 /* Rows top-justify rather than center: a centered row re-centers whenever one cell
    grows, so the Asana dropdown appearing shoved the destination icons (and every
    neighbour) upward. Anchored to the top, a growing cell only extends downward. */

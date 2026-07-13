@@ -14,7 +14,7 @@ def asset(client, filename):
 
 
 class FakeService:
-    def __init__(self, pending=(), binned=(), incoming=False):
+    def __init__(self, pending=(), binned=(), incoming=0):
         self._pending = list(pending)
         self._binned = list(binned)
         self._incoming = incoming
@@ -70,7 +70,7 @@ class FakeService:
     def pending(self):
         return self._pending
 
-    def has_incoming(self):
+    def incoming_count(self):
         return self._incoming
 
     def get(self, audio_filename):
@@ -1068,14 +1068,31 @@ def test_inbox_row_leaves_the_timestamp_blank_when_the_recording_time_is_unknown
 def test_index_shows_a_transcribing_hint_while_recordings_await(tmp_path):
     # Opened with an empty store but recordings still waiting in the inbox, the page
     # says they're being transcribed rather than the misleading "Your inbox is empty".
-    service = FakeService(pending=[], incoming=True)
+    service = FakeService(pending=[], incoming=1)
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     body = client.get("/").data
 
     # The visible empty-state is the transcribing hint, not the idle message.
-    assert b"Transcribing your memos" in body
+    assert b"Transcribing 1 new recording" in body
     assert b'<p class="empty">Your inbox is empty' not in body
+
+
+def test_a_landed_recording_is_visible_before_transcription_finishes(tmp_path):
+    # The nerve-wracking window: the phone's row disappears on delivery, but the
+    # desktop showed nothing until transcription finished — for cold starts, model
+    # warm-up plus the take itself. The strip names the landed recordings the moment
+    # they exist, above the rows, and it rides the /pending fragment so the open
+    # page picks it up on the next poll.
+    service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hi")], incoming=2)
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    page = client.get("/").data.decode()
+    fragment = client.get("/pending").data.decode()
+
+    for body in (page, fragment):
+        assert '<p class="transcribing">Transcribing 2 new recordings…</p>' in body
+    assert page.index('class="transcribing"') < page.index('grid inbox body')
 
 
 def test_index_shows_empty_state_when_the_inbox_is_idle(tmp_path):

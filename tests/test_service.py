@@ -542,25 +542,26 @@ def test_concurrent_refreshes_transcribe_each_recording_once(tmp_path):
     assert len(store.list_pending()) == 1
 
 
-def test_has_incoming_is_true_when_the_inbox_holds_an_untranscribed_recording(tmp_path):
+def test_incoming_count_counts_the_untranscribed_recordings(tmp_path):
     inbox = tmp_path / "inbox"
     inbox.mkdir()
     (inbox / "voice.m4a").write_bytes(b"A")
+    (inbox / "voice2.m4a").write_bytes(b"B")
     store = MemoStore(tmp_path / "memos.db")
     service = InboxService(inbox_dir=inbox, store=store,
                             transcriber=FakeTranscriber(), bin_dir=tmp_path / "bin")
 
-    assert service.has_incoming() is True
+    assert service.incoming_count() == 2
 
 
-def test_has_incoming_is_false_when_the_inbox_is_drained(tmp_path):
+def test_incoming_count_is_zero_when_the_inbox_is_drained(tmp_path):
     inbox = tmp_path / "inbox"
     inbox.mkdir()
     store = MemoStore(tmp_path / "memos.db")
     service = InboxService(inbox_dir=inbox, store=store,
                             transcriber=FakeTranscriber(), bin_dir=tmp_path / "bin")
 
-    assert service.has_incoming() is False
+    assert service.incoming_count() == 0
 
 
 def _two_notes(tmp_path, first=b"AAA", second=b"BB"):

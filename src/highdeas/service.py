@@ -186,12 +186,13 @@ class InboxService:
         recording is confirmed instead of landing as an orphan file."""
         return audio_filename in self._store.known_filenames()
 
-    def has_incoming(self):
-        """True when the inbox holds recordings not yet in the store, so a freshly
-        opened page can say "Transcribing…" rather than "Your inbox is empty" while the
-        background scan works through them. A cheap directory scan — no model, no
-        decoding, and nothing pulled down from iCloud — so it's safe on the request path."""
-        return bool(self._find_new(self._inbox_dir, self._store.known_filenames()))
+    def incoming_count(self):
+        """How many recordings sit in the inbox but not yet in the store, so the
+        page can show them as "transcribing" the moment they land: the handoff
+        from the phone's list to this one must never pass through "nowhere". A
+        cheap directory scan — no model, no decoding, and nothing pulled down
+        from iCloud — so it's safe on the request path."""
+        return len(self._find_new(self._inbox_dir, self._store.known_filenames()))
 
     def binned(self):
         """Retired memos whose recording sits in the local bin, newest first."""

@@ -74,7 +74,7 @@ def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=(), no
         # The app's background scan transcribes waiting recordings and the /pending
         # poll streams them in, so the first frame never waits on the model.
         return render_template(
-            "inbox.html", memos=service.pending(), incoming=service.has_incoming(),
+            "inbox.html", memos=service.pending(), incoming=service.incoming_count(),
             asana_parents=asana_parents,
         )
 
@@ -88,6 +88,7 @@ def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=(), no
         a scan the user asked for shouldn't wait on the next tick of one they didn't."""
         service.refresh()
         return render_template("rows.html", memos=service.pending(),
+                               incoming=service.incoming_count(),
                                asana_parents=asana_parents)
 
     @app.get("/version")

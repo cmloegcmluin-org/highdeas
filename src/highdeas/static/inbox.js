@@ -754,6 +754,19 @@
   function merge(html) {
     var incoming = document.createElement('div');
     incoming.innerHTML = html;
+    // The "Transcribing N new recordings…" strip lives outside the row merge:
+    // it has no state worth preserving, so the server's word replaces the
+    // page's whole. It appears the moment a recording lands, which is what
+    // spares the gap between the phone letting go and the row existing.
+    var strip = incoming.querySelector('.transcribing');
+    var shown = content.querySelector('.transcribing');
+    if (strip && !shown) {
+      content.insertBefore(strip, content.firstChild);
+    } else if (!strip && shown) {
+      shown.remove();
+    } else if (strip && shown && strip.textContent !== shown.textContent) {
+      shown.replaceWith(strip);
+    }
     var arriving = {};
     incoming.querySelectorAll('.memo').forEach(function (memo) {
       arriving[memo.dataset.file] = memo;
