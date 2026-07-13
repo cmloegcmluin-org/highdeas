@@ -162,6 +162,16 @@ home Wi-Fi — no iCloud mirror, no hours-late sync. One-time setup on the PC:
    and a machine that is off simply misses a delivery it will receive by sync.
    Tailscale addresses (`http://<machine>.ts.net:5055`) work as lines too.
 
+   **Prefer hostnames over raw DHCP addresses** — a numbered line rots when the
+   router reassigns the machine's IP, and the phone then pushes at an empty
+   address with no error anyone sees (learned the hard way: a week of "the PC
+   never gets my notes" was one drifted digit). `http://<name>.local:5055` uses
+   mDNS and follows the machine: on a Mac the name is `scutil --get
+   LocalHostName`; on Windows it's the device name (Settings → System → About).
+   Verify a line from the phone's browser first — a `Not Found` page means the
+   machine answered; only if `.local` can't cross the network (some buildings
+   filter mDNS) fall back to the IP, reserved in the router if possible.
+
 Only `POST /upload` is reachable from the network — the inbox page and its
 submit/delete routes stay loopback-only. Recordings made away from home simply wait
 in the app's retry queue until the phone is back on the home Wi-Fi.
