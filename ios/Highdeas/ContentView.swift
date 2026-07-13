@@ -108,7 +108,9 @@ private struct StateLine: View {
             Label("Uploading…", systemImage: "arrow.up.circle")
                 .font(.caption).foregroundStyle(.blue)
         case .awaitingMachine:
-            Label("Will sync next time Highdeas is open on a computer",
+            // One line, like every other state: a two-line message made the
+            // waiting rows taller than their uploading neighbours.
+            Label("Will sync when a computer is around",
                   systemImage: "arrow.up.circle.dotted")
                 .font(.caption).foregroundStyle(.secondary)
         case .queued:
