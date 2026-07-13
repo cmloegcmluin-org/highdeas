@@ -272,6 +272,47 @@ private let t0 = Date(timeIntervalSince1970: 1_780_000_000)
     }
 }
 
+// MARK: - Retrying now because the settings changed
+
+@Suite struct ExpediteTests {
+    let start = Date(timeIntervalSince1970: 1_800_000_000)
+
+    @Test func expediteMakesABackedOffEntryDueImmediately() {
+        var queue = UploadQueue()
+        queue.enqueue("a.m4a")
+        queue.markInFlight("a.m4a", at: start)
+        queue.resolve("a.m4a", .retriable, at: start)  // backoff pushes notBefore out
+
+        queue.expedite()
+
+        #expect(queue.next(at: start)?.fileName == "a.m4a")
+    }
+
+    @Test func expediteKeepsABlockedReasonButRetriesAnyway() {
+        var queue = UploadQueue()
+        queue.enqueue("a.m4a")
+        queue.markInFlight("a.m4a", at: start)
+        queue.resolve("a.m4a", .blocked("Server refused (401)."), at: start)
+
+        queue.expedite()
+
+        // Due now — a fixed token deserves an immediate answer — but the row
+        // keeps saying why it was stuck until that answer arrives.
+        #expect(queue.next(at: start)?.fileName == "a.m4a")
+        #expect(queue.pending[0].blockedReason == "Server refused (401).")
+    }
+
+    @Test func expediteLeavesALiveFlightAlone() {
+        var queue = UploadQueue()
+        queue.enqueue("a.m4a")
+        queue.markInFlight("a.m4a", at: start)
+
+        queue.expedite()
+
+        #expect(queue.next(at: start) == nil)  // still in flight, not re-pushed
+    }
+}
+
 // MARK: - Giving up on a flight the system has quietly parked
 
 /// iOS can hold a background transfer toward an unreachable machine forever

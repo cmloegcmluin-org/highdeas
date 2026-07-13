@@ -184,6 +184,17 @@ public struct UploadQueue: Equatable, Sendable {
         }
     }
 
+    /// Make every queued entry due right now, keeping any blocked reason for
+    /// the row to show until a fresh answer replaces it. For when the world
+    /// changes out from under the backoff — a server URL corrected, a token
+    /// fixed — and waiting out a five-minute timer against addresses that no
+    /// longer exist would read as "still broken".
+    public mutating func expedite() {
+        for index in pending.indices where !pending[index].inFlight {
+            pending[index].notBefore = .distantPast
+        }
+    }
+
     public static let maximumBackoff: TimeInterval = 300
 
     /// 5s, 10s, 20s… doubling to a 5-minute ceiling. Fast enough that a memo

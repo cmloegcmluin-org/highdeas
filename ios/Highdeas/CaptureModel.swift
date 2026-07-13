@@ -32,8 +32,11 @@ final class CaptureModel: ObservableObject {
     /// button that silently does nothing (denied microphone, audio-session
     /// failure) reads as a lost memo.
     @Published var recordingProblem: String?
-    @AppStorage("serverURLs") var serverURLs: String = "" { didSet { wake() } }
-    @AppStorage("uploadToken") var uploadToken: String = "" { didSet { wake() } }
+    // A settings change means the old failures say nothing about the new
+    // world: retry everything now rather than waiting out backoff timers
+    // aimed at addresses (or a token) that no longer exist.
+    @AppStorage("serverURLs") var serverURLs: String = "" { didSet { queue.expedite(); wake() } }
+    @AppStorage("uploadToken") var uploadToken: String = "" { didSet { queue.expedite(); wake() } }
 
     let recorder = Recorder()
     let uploader = Uploader()
