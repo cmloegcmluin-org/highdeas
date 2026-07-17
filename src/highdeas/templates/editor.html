@@ -8,9 +8,11 @@
     numbered lists. -#}
 {% from "icons.html" import chevron, clipboard, check %}
 
-{#- The row's three field controls, in the dialog too: a copy button pinned inside each
-    field, and — unlabelled, aimed by editor.js — the chevron that moves the text from
-    the field that holds it into the one that doesn't. -#}
+{#- Two of the row's field controls ride inside the fields here too: a copy button pinned
+    in each. The third — the chevron that moves the text from the field that holds it into
+    the one that doesn't — sits centred in its own row between the two stacked fields
+    (below), where up/down reads the way the text travels. It is unlabelled; editor.js
+    aims and names it. -#}
 {% macro clip(field) -%}
 <button type="button" class="clip editor-clip" data-copy="{{ field }}" title="Copy {{ field }}" aria-label="Copy {{ field }}"><span class="ic-copy">{{ clipboard() }}</span><span class="ic-ok">{{ check() }}</span></button>
 {%- endmacro %}
@@ -20,7 +22,6 @@
       <input type="text" id="editor-name" class="editor-name" placeholder="Name…" autocomplete="off" aria-label="Name">
       {{ clip('name') }}
     </div>
-    <button type="button" class="btn icon move editor-move">{{ chevron() }}</button>
     <button type="button" id="editor-close" class="editor-close" title="Close (Esc)" aria-label="Close">&times;</button>
   </div>
 
@@ -37,6 +38,10 @@
   <div class="toolbar">
     <button type="button" class="btn tool" data-cmd="insertUnorderedList" title="Bulleted list">&bull;&nbsp;List</button>
     <button type="button" class="btn tool" data-cmd="insertOrderedList" title="Numbered list">1.&nbsp;List</button>
+  </div>
+
+  <div class="editor-move-row">
+    <button type="button" class="btn icon move editor-move">{{ chevron() }}</button>
   </div>
 
   <div class="editor-body-cell">

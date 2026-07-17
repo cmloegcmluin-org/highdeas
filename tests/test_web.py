@@ -913,6 +913,23 @@ def test_editor_offers_copy_buttons_for_both_fields_and_the_move_chevron(tmp_pat
     assert 'class="btn icon move editor-move"' in body
 
 
+def test_editor_move_chevron_points_up_or_down_centered_above_the_transcript(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data.decode()
+    css = asset(client, "app.css")
+
+    # The editor stacks its two fields, so the chevron sits in its own centred row directly
+    # above the transcript and points up to lift the transcript into the title, down to drop
+    # the title into the transcript — not the inbox row's left/right.
+    move_row = body.split('class="editor-move-row"', 1)[1].split("</div>", 1)[0]
+    assert "editor-move" in move_row
+    assert body.index('class="editor-move-row"') < body.index('id="editor-body"')
+    assert "justify-content: center" in css.split(".editor-move-row {")[1].split("}")[0]
+    assert "rotate(-90deg)" in css.split(".editor-move svg {")[1].split("}")[0]
+    assert "rotate(90deg)" in css.split(".editor-move.back svg {")[1].split("}")[0]
+
+
 def test_editor_js_copies_a_field_and_flips_the_move_by_which_field_holds_text(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 

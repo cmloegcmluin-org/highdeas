@@ -251,12 +251,16 @@ body:has(#empty-bin:not(:disabled):hover) .row .purge:not(:disabled) { border-co
 .drag-ghost { display: grid; position: fixed; top: 0; left: -10000px; pointer-events: none;
               padding: 8px; border-radius: 10px; background: Canvas;
               border: 1px solid #3b82f6; box-shadow: 0 12px 28px rgba(0,0,0,.35); }
-/* One chevron, turned around once the transcript is empty so it points the way the name
-   is about to travel back; with both cells empty it has no move to offer and goes out
-   with every other button that has nothing left to do. Shared by the inbox row and the
-   editor, which flips it the same way between the same two fields. */
+/* One chevron that turns to point the way the text is about to travel, and — with both
+   fields empty — goes out with every other button that has nothing left to do. The turn
+   is shared; the axis isn't. The inbox lays its fields side by side, so the chevron aims
+   right, then flips to the left once the transcript is empty. The editor stacks its
+   fields, so its chevron aims up to lift the transcript into the title, and down to drop
+   the title into the transcript. */
 .move svg { transition: transform .15s; }
-.move.back svg { transform: rotate(180deg); }
+.memo .move.back svg { transform: rotate(180deg); }
+.editor-move svg { transform: rotate(-90deg); }
+.editor-move.back svg { transform: rotate(90deg); }
 /* The destination picker: three radio-backed brand icons; the checked one is lit,
    the rest sit dimmed (half-lit on hover). */
 .route-cell { display: flex; flex-direction: column; gap: 6px; }
@@ -337,8 +341,6 @@ body:has(#empty-bin:not(:disabled):hover) .row .purge:not(:disabled) { border-co
 /* Both of the editor's copy buttons pin absolutely inside their field; each cell says where. */
 .editor-clip { position: absolute; }
 .editor-name-cell .clip { top: 50%; right: 8px; transform: translateY(-50%); }
-/* The chevron between the title and the body wears the app's icon-button square. */
-.editor-move { flex: none; }
 .editor-close { flex: none; font: inherit; font-size: 1.7rem; line-height: 1; width: 40px; height: 40px;
                 border: none; border-radius: 9px; background: transparent; color: inherit;
                 opacity: .5; cursor: pointer; transition: opacity .15s; }
@@ -356,6 +358,9 @@ body:has(#empty-bin:not(:disabled):hover) .row .purge:not(:disabled) { border-co
 
 .toolbar { display: flex; gap: 8px; }
 .tool { font-size: .8rem; padding: 5px 11px; }
+/* The move chevron sits centred in the gap between the two stacked fields, directly above
+   the transcript, so up and down read as the way the text travels. */
+.editor-move-row { display: flex; justify-content: center; }
 
 /* The body's copy button hangs on the cell, not the scrolling body, so it stays in the
    top-right corner as the transcript scrolls under it. */
