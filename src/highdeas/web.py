@@ -62,8 +62,8 @@ def _submitted_fields():
 
 
 def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=(), claude_models=(),
-               drive_folder_url="", now=datetime.now, updates=None, update_respawn_delay=0.7,
-               rescan=None):
+               drive_folder_url="", drive_link_for=None, now=datetime.now, updates=None,
+               update_respawn_delay=0.7, rescan=None):
     app = Flask(__name__)
     app.jinja_env.filters["when"] = _format_when
     app.jinja_env.filters["playable"] = _audio_url
@@ -278,13 +278,22 @@ def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=(), cl
         service.restore_all()
         return redirect("/bin")
 
-    @app.post("/open-drive")
-    def open_drive():
-        """Open the Drive folder memos are filed into. A link can't choose which Chrome
-        profile opens it, so the app launches the browser itself (open_link) at the
-        configured folder's own URL — a direct link into Drive, never a Drive search."""
-        if open_link is not None and drive_folder_url:
-            open_link(drive_folder_url)
+    @app.post("/open-drive/<path:filename>")
+    def open_drive(filename):
+        """Open the Drive folder this memo's audio actually landed in. A link can't
+        choose which Chrome profile opens it, so the app launches the browser itself
+        (open_link) — at that memo's own dated subfolder when drive_link_for can
+        resolve it, else the static top-level folder, so the icon still does
+        something useful rather than nothing. Never a Drive search."""
+        memo = service.get(filename)
+        if memo is None:
+            return ("", 204)
+        link = ""
+        if memo.drive_subfolder and drive_link_for is not None:
+            link = drive_link_for(memo.drive_subfolder)
+        link = link or drive_folder_url
+        if open_link is not None and link:
+            open_link(link)
         return ("", 204)
 
     @app.post("/open-asana/<path:filename>")
