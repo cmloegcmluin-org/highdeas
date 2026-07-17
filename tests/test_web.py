@@ -796,7 +796,9 @@ def test_a_column_of_submits_and_its_bulk_head_wear_the_same_glyph(tmp_path):
     # same way — one paper plane over a column of them, one bin over a column of bins.
     assert 'id="submit-all" class="btn icon" title="Submit all" aria-label="Submit all"' in body
     assert 'id="trash-all" class="btn icon danger" title="Trash all" aria-label="Trash all"' in body
-    assert 'class="btn icon go" title="Submit" aria-label="Submit"><svg' in body
+    # The row's plane rests in a span it swaps for a spinner mid-send; at rest it is the
+    # same glyph the head wears.
+    assert 'class="btn icon go" title="Submit" aria-label="Submit"><span class="ic-send"><svg' in body
     assert ">Submit all<" not in body and ">Trash all<" not in body
     assert ">Submit</button>" not in body
     # One rule draws every glyph in the app, so a head and its column can't drift.
@@ -1374,13 +1376,25 @@ def test_submit_js_removes_a_row_only_after_the_server_confirms(tmp_path):
 
 
 def test_index_shows_a_per_row_sending_state_while_a_submit_is_in_flight(tmp_path):
-    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+    service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hi")])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
-    # A row dims/locks and its button answers to "Sending…" while its request is in
-    # flight, so Submit all visibly works through the list instead of rows silently
-    # vanishing. The button's face is a glyph, so that name lives in its label.
-    assert "label(go, 'Sending…')" in asset(client, "inbox.js")
-    assert ".memo.sending" in asset(client, "app.css")  # the dim-and-lock style the JS toggles
+    body = client.get("/").data.decode()
+    js = asset(client, "inbox.js")
+    css = asset(client, "app.css")
+
+    # A row dims/locks and its Submit trades the paper plane for a spinner while its
+    # request is in flight, so a click plainly took hold instead of the row seeming to
+    # do nothing until it vanishes. The button's face is a glyph, so "Sending…" lives
+    # in its label.
+    assert "label(go, 'Sending…')" in js
+    assert ".memo.sending" in css  # the dim-and-lock style the JS toggles
+    # The Submit button carries both the plane and a spinner; .sending hides the plane,
+    # shows the spinner, and holds it bright while the rest of the row dims.
+    assert 'class="ic-spin"' in body
+    assert ".memo.sending .go .ic-send { display: none" in css
+    assert ".memo.sending .go .ic-spin svg { animation: spin" in css
+    assert ".memo.sending > .go { opacity: 1" in css  # the spinner stays at full strength
 
 
 def test_reorder_route_persists_the_dropped_order_and_returns_204(tmp_path):

@@ -5,7 +5,7 @@
     dialog, where the whole note — waveform, spoken-word highlighting, title,
     lists — has room to be worked on. The row carries the memo's word timings so
     the editor can highlight along with the audio without a second request. -#}
-{% from "icons.html" import notesnook, drive, asana, trash, send, chevron, clipboard, check, grip, kind_cell %}
+{% from "icons.html" import notesnook, drive, asana, trash, send, spinner, chevron, clipboard, check, grip, kind_cell %}
 
 {#- A copy-to-clipboard button, pinned inside its cell. It carries both the clipboard
     and the check icon; the client swaps them with a `.copied` class, so confirming a
@@ -67,7 +67,9 @@
         {% endfor %}
       </select>
     </div>
-    <button type="button" class="btn icon go" title="Submit" aria-label="Submit">{{ send() }}</button>
+    {#- The plane rests here; while the note is in flight .sending hides it and spins the
+        loader in its place, so the click has an immediate, moving answer. -#}
+    <button type="button" class="btn icon go" title="Submit" aria-label="Submit"><span class="ic-send">{{ send() }}</span><span class="ic-spin">{{ spinner() }}</span></button>
     <button type="button" class="btn icon del danger" title="Delete" aria-label="Delete">{{ trash() }}</button>
   </div>
   {% endfor %}

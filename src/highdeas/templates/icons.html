@@ -18,6 +18,13 @@
 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
 {%- endmacro %}
 
+{#- A loading spinner: a ring with a quarter cut out of it, spun by CSS. A row's Submit
+    wears it in place of the paper plane while its note is in flight, so the press reads
+    as working rather than as a note that quietly vanished. -#}
+{% macro spinner() -%}
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-9-9"/></svg>
+{%- endmacro %}
+
 {#- The row's arrow between Transcript and Name. One chevron: CSS turns it around when
     the text is due to travel the other way. -#}
 {% macro chevron() -%}

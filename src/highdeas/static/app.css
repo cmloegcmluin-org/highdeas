@@ -200,6 +200,15 @@ body:has(#empty-bin:not(:disabled):hover) .row .purge:not(:disabled) { border-co
    list, and so a row can't be double-submitted. A display:contents row generates no
    box of its own, so dimming has to reach its cells — set on the row it does nothing. */
 .memo.sending > * { opacity: .5; transition: opacity .15s; }
+/* Its Submit is the exception: it trades the paper plane for a spinner and stays at
+   full strength — the one bright, moving thing on a dimmed row, so the press has an
+   immediate answer instead of the note just fading toward gone. The spin reuses the
+   refresh button's keyframes. */
+.memo.sending > .go { opacity: 1; }
+.go .ic-spin { display: none; }
+.memo.sending .go .ic-send { display: none; }
+.memo.sending .go .ic-spin { display: flex; }
+.memo.sending .go .ic-spin svg { animation: spin .7s linear infinite; }
 /* The row you have hold of, faded in place — its picture is the thing under the cursor
    (.drag-ghost), and the gap it leaves behind is where letting go would put it. */
 .memo.dragging > * { opacity: .25; }
