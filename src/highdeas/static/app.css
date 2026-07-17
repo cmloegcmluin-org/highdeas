@@ -2,13 +2,15 @@
    identical — same title bar, top-right buttons, and header row — and nothing jumps
    when you flip between them.
 
-   The two grids diverge where the pages do. An inbox row leads with the three controls
-   that act on it — grip, select, group badge — and then a 106px timestamp. The bin
-   reorders nothing and selects nothing, so it leads with the badge and the timestamp
-   alone, rather than holding two columns open for controls it hasn't got. Both then run
-   348 | flex | a band | two 34px action columns, so the pages are the same width and
-   their bulk buttons sit over the same two columns. The flex transcript column absorbs
-   the difference, and the bin's is wider for it.
+   The two grids diverge where the pages do. An inbox row leads with the grip alone — the
+   one control it wears before you read it, now that grouping is a drag and the checkbox is
+   gone — and then a 106px timestamp. The bin reorders nothing, so it leads with its
+   read-only group badge and the timestamp. Both then run 348 | flex | a band of narrow
+   columns and close with their action buttons: the bin's two (Restore, Delete), the
+   inbox's three (Submit, Trash, and — on group rows only — Ungroup, where the badge went
+   when it stopped leading the row). The bulk heads sit over Submit/Trash and Restore/Delete
+   alike. The flex transcript column absorbs the width the two shapes don't share, and the
+   bin's is wider for it.
 
    An action column is exactly as wide as the square button in it. They were 94px each
    once, when the buttons wore words; the 120px that left with the words went to the
