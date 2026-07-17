@@ -440,6 +440,20 @@ def test_drive_router_skips_doc_when_transcript_is_blank(tmp_path):
     assert (tmp_path / "drive" / "_2026_07_07_NOT_YET_PROCESSED_MUSIC" / "Song.m4a").exists()
 
 
+def test_drive_router_reports_which_subfolder_it_filed_the_memo_into(tmp_path):
+    # Drive for Desktop uploads this folder to the cloud on its own schedule, so the
+    # app never learns Drive's own ID for it here — only its name. The bin's Drive
+    # icon asks the real Drive API for that ID later, by this name, so the memo
+    # needs to remember which dated folder it actually landed in.
+    (tmp_path / "inbox").mkdir()
+    (tmp_path / "inbox" / "v.m4a").write_bytes(b"A")
+    router = _drive_router(tmp_path / "inbox", tmp_path / "drive")
+
+    outcome = router.route(Memo(audio_filename="v.m4a", name="Song", transcript=""))
+
+    assert outcome == {"drive_subfolder": "_2026_07_07_NOT_YET_PROCESSED_MUSIC"}
+
+
 def test_drive_router_sanitizes_illegal_filename_characters(tmp_path):
     (tmp_path / "inbox").mkdir()
     (tmp_path / "inbox" / "v.m4a").write_bytes(b"A")

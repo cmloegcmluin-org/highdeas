@@ -34,6 +34,11 @@ class Memo:
     # ("claude-sonnet-5"). Empty leaves the composer on whatever it defaults to —
     # which is also all a "code" note can do, since the Code link carries no model.
     claude_model: str = ""
+    # The dated subfolder (e.g. "_2026_07_07_NOT_YET_PROCESSED_MUSIC") this memo's audio
+    # was actually filed into under HIGHDEAS_DRIVE_BASE, so the bin's Drive icon can look
+    # up that subfolder's own Drive link instead of always the static top-level folder.
+    # Empty for other routes and for memos sent before this was tracked.
+    drive_subfolder: str = ""
     status: str = "pending"
     created_at: str = ""
     recorded_at: str = ""

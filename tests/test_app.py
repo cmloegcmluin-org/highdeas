@@ -177,6 +177,33 @@ def test_chrome_launcher_opens_the_url_in_the_configured_profile(monkeypatch):
     assert calls == [[r"C:\chrome.exe", "--profile-directory=Default", "https://drive.google.com/x"]]
 
 
+def test_drive_link_resolver_is_none_without_a_service_account_configured(monkeypatch):
+    import highdeas.app as app_mod
+    monkeypatch.delenv("HIGHDEAS_GOOGLE_SERVICE_ACCOUNT_FILE", raising=False)
+
+    resolver = app_mod._drive_link_resolver("https://drive.google.com/drive/folders/PARENT_ID")
+
+    assert resolver is None
+
+
+def test_drive_link_resolver_is_none_without_a_resolvable_parent_folder_id(monkeypatch, tmp_path):
+    import highdeas.app as app_mod
+    monkeypatch.setenv("HIGHDEAS_GOOGLE_SERVICE_ACCOUNT_FILE", str(tmp_path / "key.json"))
+
+    # Blank, or some other page's URL that has no Drive folder ID in it.
+    assert app_mod._drive_link_resolver("") is None
+    assert app_mod._drive_link_resolver("https://drive.google.com/drive/search?q=x") is None
+
+
+def test_drive_link_resolver_wires_up_when_both_are_configured(monkeypatch, tmp_path):
+    import highdeas.app as app_mod
+    monkeypatch.setenv("HIGHDEAS_GOOGLE_SERVICE_ACCOUNT_FILE", str(tmp_path / "key.json"))
+
+    resolver = app_mod._drive_link_resolver("https://drive.google.com/drive/folders/PARENT_ID")
+
+    assert callable(resolver)
+
+
 def test_default_bin_dir_sits_beside_the_inbox(tmp_path):
     # The bin must live in the same parent folder as the inbox, so retiring a
     # recording (inbox -> bin) moves it *within* the same iCloud tree. Moving a

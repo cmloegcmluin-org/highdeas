@@ -2342,32 +2342,103 @@ def test_bin_drive_memo_icon_posts_to_open_drive(tmp_path):
 
     body = client.get("/bin").data.decode()
 
-    # Only the Drive memo's icon opens Drive (via /open-drive, which launches Chrome
-    # in the chosen profile, at the actual Drive folder); trashed/Notesnook icons don't.
-    assert body.count('action="/open-drive"') == 1
+    # Only the Drive memo's icon opens Drive (via /open-drive/<filename>, which
+    # launches Chrome in the chosen profile, at that memo's own subfolder link);
+    # trashed/Notesnook icons don't.
+    assert body.count('action="/open-drive/g.m4a"') == 1
+    assert 'action="/open-drive/d.m4a"' not in body
 
 
-def test_open_drive_launches_chrome_at_the_configured_drive_folder(tmp_path):
-    # A direct link to the real Drive folder — never a Drive search for the memo's
-    # name, which is a search-results page, not "opening the memo in Drive".
+def test_open_drive_opens_the_memos_own_subfolder_link_when_it_resolves(tmp_path):
+    # The whole point of this fix: not the same static top-level folder for every
+    # memo, but the actual dated subfolder this memo's audio was filed into.
     launched = []
-    folder_url = "https://drive.google.com/drive/folders/1AbCDeFGhIJKlmNOpQRstuVwxYZ01234"
-    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin"),
-                        open_link=launched.append, drive_folder_url=folder_url).test_client()
+    service = FakeService(binned=[
+        Memo(audio_filename="g.m4a", status="processed", route="drive",
+             drive_subfolder="_2026_07_07_NOT_YET_PROCESSED_MUSIC", processed_at="2026-07-07T01:00"),
+    ])
+    resolved = {}
 
-    resp = client.post("/open-drive")
+    def drive_link_for(subfolder_name):
+        resolved["asked"] = subfolder_name
+        return "https://drive.google.com/drive/folders/SUBFOLDER_ID"
+
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin"),
+                        open_link=launched.append,
+                        drive_folder_url="https://drive.google.com/drive/folders/TOP_LEVEL",
+                        drive_link_for=drive_link_for).test_client()
+
+    resp = client.post("/open-drive/g.m4a")
 
     assert resp.status_code == 204
-    assert launched == [folder_url]
+    assert resolved["asked"] == "_2026_07_07_NOT_YET_PROCESSED_MUSIC"
+    assert launched == ["https://drive.google.com/drive/folders/SUBFOLDER_ID"]
 
 
-def test_open_drive_does_nothing_without_a_configured_folder_url(tmp_path):
-    # Nothing configured yet: stay quiet rather than launch a blank/broken link.
+def test_open_drive_falls_back_to_the_top_level_folder_when_the_subfolder_cant_be_resolved(tmp_path):
+    # The subfolder may not have synced up to Drive yet, or the lookup may have
+    # failed — either way the icon should still do something useful, not nothing.
     launched = []
-    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin"),
+    service = FakeService(binned=[
+        Memo(audio_filename="g.m4a", status="processed", route="drive",
+             drive_subfolder="_2026_07_07_NOT_YET_PROCESSED_MUSIC", processed_at="2026-07-07T01:00"),
+    ])
+    top_level = "https://drive.google.com/drive/folders/TOP_LEVEL"
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin"),
+                        open_link=launched.append, drive_folder_url=top_level,
+                        drive_link_for=lambda subfolder_name: "").test_client()
+
+    resp = client.post("/open-drive/g.m4a")
+
+    assert resp.status_code == 204
+    assert launched == [top_level]
+
+
+def test_open_drive_falls_back_to_the_top_level_folder_for_a_memo_sent_before_subfolders_were_tracked(tmp_path):
+    # A memo routed to Drive before this feature existed has no drive_subfolder
+    # recorded — same graceful fallback as an unresolvable one, and the resolver
+    # is never even asked.
+    launched = []
+    service = FakeService(binned=[
+        Memo(audio_filename="g.m4a", status="processed", route="drive", processed_at="2026-07-07T01:00"),
+    ])
+    top_level = "https://drive.google.com/drive/folders/TOP_LEVEL"
+
+    def unexpected_call(subfolder_name):
+        raise AssertionError("drive_link_for must not be asked without a recorded subfolder")
+
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin"),
+                        open_link=launched.append, drive_folder_url=top_level,
+                        drive_link_for=unexpected_call).test_client()
+
+    resp = client.post("/open-drive/g.m4a")
+
+    assert resp.status_code == 204
+    assert launched == [top_level]
+
+
+def test_open_drive_does_nothing_without_a_configured_folder_url_or_resolver(tmp_path):
+    # Nothing configured at all yet: stay quiet rather than launch a blank/broken link.
+    launched = []
+    service = FakeService(binned=[
+        Memo(audio_filename="g.m4a", status="processed", route="drive", processed_at="2026-07-07T01:00"),
+    ])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin"),
                         open_link=launched.append).test_client()
 
-    resp = client.post("/open-drive")
+    resp = client.post("/open-drive/g.m4a")
+
+    assert resp.status_code == 204
+    assert launched == []
+
+
+def test_open_drive_does_nothing_for_an_unknown_memo(tmp_path):
+    launched = []
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin"),
+                        open_link=launched.append,
+                        drive_folder_url="https://drive.google.com/drive/folders/TOP_LEVEL").test_client()
+
+    resp = client.post("/open-drive/missing.m4a")
 
     assert resp.status_code == 204
     assert launched == []
