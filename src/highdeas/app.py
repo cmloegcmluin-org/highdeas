@@ -145,6 +145,7 @@ def build_app():
     )
     app = create_app(service, inbox_dir=inbox_dir, bin_dir=bin_dir,
                      open_link=_chrome_launcher(), asana_parents=asana_parents,
+                     drive_folder_url=os.environ.get("HIGHDEAS_DRIVE_FOLDER_URL", ""),
                      updates=UpdateChecker(PROJECT_ROOT))
     return app, service
 

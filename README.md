@@ -71,9 +71,9 @@ recording, or a subtask on an Asana task.
    merged into a group, or deleted) with its audio, transcript, and date, plus **Restore**
    / **Delete** and bulk **Restore all** / **Empty bin**. **Where** names the destination
    that took the memo, and stays empty for the ones that went nowhere; the Drive icon
-   reopens that memo in Drive in your chosen Chrome profile, and the Asana icon opens the
-   created task the same way. Items older than 90 days are purged automatically whenever
-   the app runs.
+   opens the Drive folder (`HIGHDEAS_DRIVE_FOLDER_URL`) in your chosen Chrome profile,
+   and the Asana icon opens the created task the same way. Items older than 90 days are
+   purged automatically whenever the app runs.
 
 ## Launch it
 
@@ -204,6 +204,7 @@ Everything but the keys for the destinations you use is optional. Set these in `
 | `ASANA_PARENT_TASKS` | — | `gid=Label` pairs (`;`-separated) the Asana dropdown offers; the first is the default. |
 | `HIGHDEAS_INBOX_DIR` | iCloud `Shortcuts/Highdeas` | Folder the iOS Shortcut drops recordings into. |
 | `HIGHDEAS_DRIVE_BASE` | `G:\My Drive\voice memos (top level)` | Where music-routed audio is filed. |
+| `HIGHDEAS_DRIVE_FOLDER_URL` | — | That folder's own Drive link (Share -> Copy link), for the bin's Drive icon to open. Empty = the icon does nothing. |
 | `HIGHDEAS_BIN_DIR` | `Highdeas Bin` beside the inbox | Where retired recordings wait (recoverable for 90 days). |
 | `HIGHDEAS_DB` | `memos.db` in this folder | SQLite store of memo state (single-machine mode). |
 | `HIGHDEAS_STATE_DIR` | — | Set to a synced folder to keep memo state as per-memo files shared between machines; the local DB migrates across on first boot. |

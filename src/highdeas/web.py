@@ -5,7 +5,6 @@ module is the routes and the glue that binds them to the templates.
 """
 import threading
 from datetime import datetime
-from urllib.parse import quote
 
 from flask import Flask, redirect, render_template, request, send_from_directory
 from werkzeug.exceptions import HTTPException
@@ -48,8 +47,8 @@ def _submitted_fields():
     }
 
 
-def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=(), now=datetime.now,
-               updates=None, update_respawn_delay=0.7):
+def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=(), drive_folder_url="",
+               now=datetime.now, updates=None, update_respawn_delay=0.7):
     app = Flask(__name__)
     app.jinja_env.filters["when"] = _format_when
     # The bin's ages are read against the wall clock, so the clock is injectable.
@@ -220,11 +219,11 @@ def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=(), no
 
     @app.post("/open-drive")
     def open_drive():
-        """Open a memo in Google Drive. A link can't choose which Chrome profile
-        opens it, so the app launches the browser itself (open_link) at a Drive
-        search for the memo — the server builds the URL so only Drive can be opened."""
-        if open_link is not None:
-            open_link("https://drive.google.com/drive/u/0/search?q=" + quote(request.form.get("q", "")))
+        """Open the Drive folder memos are filed into. A link can't choose which Chrome
+        profile opens it, so the app launches the browser itself (open_link) at the
+        configured folder's own URL — a direct link into Drive, never a Drive search."""
+        if open_link is not None and drive_folder_url:
+            open_link(drive_folder_url)
         return ("", 204)
 
     @app.post("/open-asana/<path:filename>")

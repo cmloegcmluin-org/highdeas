@@ -51,7 +51,7 @@
           read before the route or the bin claims they were sent. -#}
       <div class="dest">
         {%- if m.status == 'processed' %}
-        {%- if m.route == 'drive' %}<form method="post" action="/open-drive"><input type="hidden" name="q" value="{{ m.name or m.audio_filename.rsplit('.', 1)[0] }}"><button class="destlink icon" type="submit" title="Sent to Google Drive — open in Drive" aria-label="Sent to Google Drive — open in Drive">{{ drive() }}</button></form>
+        {%- if m.route == 'drive' %}<form method="post" action="/open-drive"><button class="destlink icon" type="submit" title="Sent to Google Drive — open in Drive" aria-label="Sent to Google Drive — open in Drive">{{ drive() }}</button></form>
         {%- elif m.route == 'asana' and m.asana_url %}<form method="post" action="/open-asana/{{ m.audio_filename }}"><button class="destlink icon" type="submit" title="Sent to Asana — open the task" aria-label="Sent to Asana — open the task">{{ asana() }}</button></form>
         {%- elif m.route == 'asana' %}<span class="icon" title="Sent to Asana" aria-label="Sent to Asana">{{ asana() }}</span>
         {%- else %}<span class="icon" title="Sent to Notesnook" aria-label="Sent to Notesnook">{{ notesnook() }}</span>

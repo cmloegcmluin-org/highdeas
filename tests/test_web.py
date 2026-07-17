@@ -1714,7 +1714,7 @@ def test_bin_audio_serves_from_bin(tmp_path):
     assert resp.data == b"BINAUDIO"
 
 
-def test_bin_drive_memo_icon_posts_to_open_drive_with_the_memo_name(tmp_path):
+def test_bin_drive_memo_icon_posts_to_open_drive(tmp_path):
     service = FakeService(binned=[
         Memo(audio_filename="g.m4a", name="My Song", status="processed", route="drive", processed_at="2026-07-07T01:00"),
         Memo(audio_filename="d.m4a", status="deleted", processed_at="2026-07-07T02:00"),
@@ -1724,20 +1724,34 @@ def test_bin_drive_memo_icon_posts_to_open_drive_with_the_memo_name(tmp_path):
     body = client.get("/bin").data.decode()
 
     # Only the Drive memo's icon opens Drive (via /open-drive, which launches Chrome
-    # in the chosen profile), carrying the memo name; trashed/Notesnook icons don't.
+    # in the chosen profile, at the actual Drive folder); trashed/Notesnook icons don't.
     assert body.count('action="/open-drive"') == 1
-    assert 'name="q" value="My Song"' in body
 
 
-def test_open_drive_launches_chrome_at_a_drive_search_for_the_memo(tmp_path):
+def test_open_drive_launches_chrome_at_the_configured_drive_folder(tmp_path):
+    # A direct link to the real Drive folder — never a Drive search for the memo's
+    # name, which is a search-results page, not "opening the memo in Drive".
+    launched = []
+    folder_url = "https://drive.google.com/drive/folders/1AbCDeFGhIJKlmNOpQRstuVwxYZ01234"
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin"),
+                        open_link=launched.append, drive_folder_url=folder_url).test_client()
+
+    resp = client.post("/open-drive")
+
+    assert resp.status_code == 204
+    assert launched == [folder_url]
+
+
+def test_open_drive_does_nothing_without_a_configured_folder_url(tmp_path):
+    # Nothing configured yet: stay quiet rather than launch a blank/broken link.
     launched = []
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin"),
                         open_link=launched.append).test_client()
 
-    resp = client.post("/open-drive", data={"q": "Korok Dance"})
+    resp = client.post("/open-drive")
 
     assert resp.status_code == 204
-    assert launched == ["https://drive.google.com/drive/u/0/search?q=Korok%20Dance"]
+    assert launched == []
 
 
 def test_bin_asana_memo_icon_posts_to_open_asana(tmp_path):
