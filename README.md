@@ -14,9 +14,12 @@ recording, or a subtask on an Asana task.
    content-unique name, so a recycled inbox filename can never collide with a past memo.
 3. **Transcribe** — each recording is transcribed locally (`onnx-asr`, CPU), along with
    the second each word was spoken on. This runs in the background, so the window opens
-   instantly and memos stream in as they finish. When the model makes out no words the
-   note isn't left blank: a sung recording — which a speech model hears as nothing —
-   reads `[singing]`, and anything else too unclear to make out reads `[unclear]`.
+   instantly and memos stream in as they finish. The model rarely returns nothing even
+   when it heard no speech — humming comes back as filler ("Mm-hmm"), noise as a
+   confident hallucination (sometimes in another script). So its text is relabelled
+   before storing: an all-humming note reads `[singing]` (a run of humming inside speech
+   is bracketed where it sits), and an empty or wrong-script result reads `[unclear]`.
+   Anything that reads as real speech is kept exactly as heard.
 4. **Inbox** — a local Flask page opens in its own native window (Edge WebView2), at the
    size, monitor, and maximized state it was last closed at — maximized until you say
    otherwise. Each memo row leads with the three controls that act on it — a drag grip, a

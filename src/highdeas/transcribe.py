@@ -6,12 +6,7 @@ from pathlib import Path
 
 from highdeas.audio import NO_WINDOW as _NO_WINDOW
 from highdeas.audio import locate_ffmpeg as _default_ffmpeg
-from highdeas.singing import is_singing as _is_singing
-
-# What a note reads when the model made out no words: unclear speech, or — since a
-# speech recognizer hears melody as nothing — a sung note. Either beats a blank note.
-UNCLEAR = "[unclear]"
-SINGING = "[singing]"
+from highdeas.nonspeech import mark_nonspeech
 
 
 class AudioDecodeError(Exception):
@@ -78,13 +73,11 @@ def _to_words(tokens, timestamps):
 
 class Transcriber:
     def __init__(self, *, model=None, decode=decode_to_wav,
-                 model_loader=_load_parakeet, model_name=DEFAULT_MODEL,
-                 detect_singing=_is_singing):
+                 model_loader=_load_parakeet, model_name=DEFAULT_MODEL):
         self._model = model
         self._decode = decode
         self._model_loader = model_loader
         self._model_name = model_name
-        self._detect_singing = detect_singing
 
     def _get_model(self):
         if self._model is None:
@@ -94,10 +87,11 @@ class Transcriber:
     def transcribe(self, audio_path):
         wav = self._decode(audio_path)
         recognized = self._get_model().recognize(wav)
-        if recognized.text.strip():
+        # The model rarely returns nothing; it renders humming as filler and noise as a
+        # confident hallucination. Relabel those as [singing]/[unclear] before storing.
+        # A relabelled note drops its word timings — there are no real words to light up.
+        marked = mark_nonspeech(recognized.text)
+        if marked == recognized.text:
             return Transcript(recognized.text,
                               _to_words(recognized.tokens, recognized.timestamps))
-        # No words came back. Rather than store a blank note, say which kind of nothing
-        # it was — a sung note the speech model can't read, or speech too unclear to make
-        # out — reading the audio a second time only now that it's worth the look.
-        return Transcript(SINGING if self._detect_singing(wav) else UNCLEAR)
+        return Transcript(marked)
