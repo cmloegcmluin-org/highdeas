@@ -42,6 +42,8 @@
   var painted = null;    // the mark currently lit, so a frame that changes nothing costs nothing
   var peaks = null;      // normalized amplitudes, or null when the audio won't decode
   var following = true;  // scroll the spoken word into view until the user takes over
+  var selection = null;  // {from, to} seconds selected across the waveform, or null
+  var press = null;      // {x, at} while a pointer is held down on the waveform
   var saveTimer = null;
   var alignTimer = null;
   var frame = null;
@@ -264,6 +266,12 @@
       pen.fillStyle = bar / bars < played ? SPOKEN : 'rgba(128,128,128,.45)';
       pen.fillRect(bar * (barWidth + gap), middle - tall / 2, barWidth, tall);
     }
+    if (selection && audio.duration) {
+      var from = selection.from / audio.duration * width;
+      var to = selection.to / audio.duration * width;
+      pen.fillStyle = 'rgba(59,130,246,.28)';  // the focus blue, translucent over the bars
+      pen.fillRect(from, 0, Math.max(1, to - from), height);
+    }
   }
 
   function clock(seconds) {
@@ -281,12 +289,66 @@
     if (!audio.paused) frame = requestAnimationFrame(tick);
   }
 
-  function seek(event) {
-    if (!audio.duration) return;
+  function timeAt(event) {
+    if (!audio.duration) return 0;
     var box = canvas.getBoundingClientRect();
     var ratio = Math.min(1, Math.max(0, (event.clientX - box.left) / box.width));
-    audio.currentTime = ratio * audio.duration;
+    return ratio * audio.duration;
+  }
+
+  function seek(event) {
+    if (!audio.duration) return;
+    audio.currentTime = timeAt(event);
     tick();
+  }
+
+  function setSelection(sel) { selection = sel; drawWave(); }
+
+  // The words whose spoken span overlaps the selection, in text order. Each mark runs
+  // until the next one begins; the last runs to the end of the recording.
+  function selectedMarks() {
+    var chosen = [];
+    for (var i = 0; i < marks.length; i++) {
+      var end = (i + 1 < marks.length) ? marks[i + 1].at : (audio.duration || marks[i].at);
+      if (marks[i].at < selection.to && end > selection.from) chosen.push(marks[i]);
+    }
+    return chosen;
+  }
+
+  // Delete the transcript under the waveform selection: the recording is the source of
+  // truth, so cutting a stretch of sound cuts the words it produced. Re-align first so
+  // the marks point at live text nodes, then cut from the first selected word to the
+  // last — sweeping up any unmatched words caught between — and one bordering space.
+  function deleteSelection() {
+    align();
+    var chosen = selectedMarks();
+    setSelection(null);
+    if (!chosen.length) return;  // a selection over silence has no words to cut
+    var first = chosen[0].token;
+    var last = chosen[chosen.length - 1].token;
+    var range = document.createRange();
+    try {
+      range.setStart(first.node, first.from);
+      range.setEnd(last.node, last.to);
+      eatSpace(range);
+      range.deleteContents();
+      bodyEl.normalize();
+    } catch (err) { return; }  // the text moved under us; leave it be
+    align();
+    paint(audio.currentTime);
+    scheduleSave();
+  }
+
+  // Widen a range by one bordering space so a deletion doesn't leave a double gap.
+  function eatSpace(range) {
+    var end = range.endContainer;
+    var start = range.startContainer;
+    if (end.nodeType === Node.TEXT_NODE && /\s/.test(end.nodeValue.charAt(range.endOffset))) {
+      range.setEnd(end, range.endOffset + 1);
+    } else if (start.nodeType === Node.TEXT_NODE && range.startOffset > 0 &&
+               /\s/.test(start.nodeValue.charAt(range.startOffset - 1))) {
+      range.setStart(start, range.startOffset - 1);
+    }
   }
 
   /* ---- Open, edit, close -------------------------------------------------- */
@@ -364,6 +426,8 @@
     current = note;
     words = note.words || [];
     following = true;
+    selection = null;
+    press = null;
     nameEl.value = note.name || '';
     bodyEl.replaceChildren(renderNote(note.transcript || ''));
     audio.src = note.audioUrl;
@@ -394,6 +458,8 @@
     words = [];
     marks = [];
     painted = null;
+    selection = null;
+    press = null;
   }
 
   function closeEditor() {
@@ -452,12 +518,35 @@
   audio.addEventListener('pause', function () { playBtn.textContent = 'Play'; tick(); });
   audio.addEventListener('loadedmetadata', tick);
 
+  // A click lands the playhead; dragging past a small wobble paints a selection over
+  // that stretch of sound instead. Focusing the canvas hands it the space and Delete
+  // keys below without stealing them from the text body.
+  var DRAG_PX = 4;
   canvas.addEventListener('pointerdown', function (event) {
     canvas.setPointerCapture(event.pointerId);
+    canvas.focus();
+    press = { x: event.clientX, at: timeAt(event) };
+    setSelection(null);
     seek(event);
   });
   canvas.addEventListener('pointermove', function (event) {
-    if (canvas.hasPointerCapture(event.pointerId)) seek(event);
+    if (!press || !canvas.hasPointerCapture(event.pointerId) || !audio.duration) return;
+    if (Math.abs(event.clientX - press.x) < DRAG_PX) return;
+    var here = timeAt(event);
+    setSelection({ from: Math.min(press.at, here), to: Math.max(press.at, here) });
+  });
+  canvas.addEventListener('lostpointercapture', function () { press = null; });
+
+  // With the waveform focused, space plays or pauses and Delete (Backspace, on a Mac)
+  // removes the words under a selection.
+  canvas.addEventListener('keydown', function (event) {
+    if (event.key === ' ' || event.key === 'Spacebar') {
+      event.preventDefault();
+      if (audio.paused) audio.play(); else audio.pause();
+    } else if (selection && (event.key === 'Delete' || event.key === 'Backspace')) {
+      event.preventDefault();
+      deleteSelection();
+    }
   });
 
   if (window.ResizeObserver) new ResizeObserver(drawWave).observe(canvas);

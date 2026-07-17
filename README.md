@@ -57,10 +57,12 @@ recording, or a subtask on an Asana task.
    place it held.
 6. **Edit** — clicking a transcript opens the note in a near-fullscreen editor, so a rough
    transcription gets fixed here rather than shipped out half-finished. The recording sits
-   up top as a scrubbable waveform and starts playing; each word lights up in the text as
-   it's spoken (highlighted, never selected, so your caret stays where you left it). The
-   title has room to be read whole, and the body takes bulleted and numbered lists. Edits
-   auto-save, and the words re-match to the text as you change it.
+   up top as a waveform and starts playing; each word lights up in the text as it's spoken
+   (highlighted, never selected, so your caret stays where you left it). Click the waveform
+   to move the playhead, press Space to play or pause, or drag across a stretch to select
+   it — Delete then cuts the words spoken there out of the transcript. The title has room
+   to be read whole, and the body takes bulleted and numbered lists. Edits auto-save, and
+   the words re-match to the text as you change it.
 7. **Route on submit**
    - **Notesnook** — the transcript becomes a note via the Notesnook Inbox API, lists and
      all — so a group's bullets arrive as a real bulleted list. An unnamed memo is titled
