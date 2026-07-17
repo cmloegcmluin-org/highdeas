@@ -517,6 +517,9 @@ def test_dragging_a_row_onto_the_middle_of_another_groups_the_two(tmp_path):
     assert ".memo.grouping" in css
     assert "dropTarget" not in js
     assert ".kind.dropping" not in css
+    # The drag has to *allow* a copy for that cursor to appear at all: with a move-only
+    # effectAllowed the browser throws the copy dropEffect away and the "+" never shows.
+    assert "effectAllowed = 'copyMove'" in js
 
 
 def test_index_trash_all_asks_for_confirmation(tmp_path):

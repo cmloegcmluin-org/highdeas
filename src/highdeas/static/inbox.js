@@ -660,7 +660,10 @@
     handle.addEventListener('dragstart', function (event) {
       dragged = memo;
       orderBefore = orderOf();
-      event.dataTransfer.effectAllowed = 'move';
+      // A row drops two ways — reordered (move) or grouped (copy) — so both effects have to
+      // be allowed up front. A move-only effectAllowed makes the browser discard the copy
+      // dropEffect the group band asks for, and the "+" cursor that marks a merge never shows.
+      event.dataTransfer.effectAllowed = 'copyMove';
       event.dataTransfer.setData('text/plain', memo.dataset.file);
       dragImage(memo, event);
       memo.classList.add('dragging');
