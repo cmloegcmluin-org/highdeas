@@ -130,9 +130,9 @@ body:has(#empty-bin:not(:disabled):hover) .row .purge:not(:disabled) { border-co
    input beside it, not the box's fixed width, so the box holds still as the tally fills and
    empties. Tabular figures so the count itself doesn't jitter as it changes. */
 .find-tally { font-size: .78rem; opacity: .55; font-variant-numeric: tabular-nums; white-space: nowrap; }
-/* A row the current search misses, and the separator stranded above a hidden row. Set on
-   the .memo and .row elements, which are display:contents, so the rule has to out-specify
-   that to take the display back to none. */
+/* A row the current search misses, and the separator stranded above a hidden row. The .memo
+   is a subgrid and the bin's .row is display:contents; either way it carries a display of its
+   own, so this rule out-specifies that to take it back to none. */
 .grid .memo.find-miss, .grid .row.find-miss, .grid .sep.find-miss { display: none; }
 
 /* Rows top-justify rather than center: a centered row re-centers whenever one cell
@@ -161,12 +161,9 @@ body:has(#empty-bin:not(:disabled):hover) .row .purge:not(:disabled) { border-co
 .grid .sep { grid-column: 1 / -1; border-top: 1px solid rgba(128,128,128,.18); }
 /* The recording's time on the inbox; in the bin, the days a memo has sat there. */
 .when, .age { font-size: .8rem; opacity: .6; white-space: nowrap; }
-/* On the inbox the timestamp is a drag handle too, so the note can be grabbed by its own
-   body and not just the grip; the grab cursor says so. */
-.when { cursor: grab; }
 /* The grip is the row's plainest handle — dotted, so it says "take hold here", and faint
-   until you go for it. The timestamp and transcript are draggable as well; this is just the
-   one that looks the part. */
+   until you go for it. But the whole row is draggable now (see .memo), so the grip is only
+   the most obvious place to grab a note, not the only one. */
 .grip { display: flex; align-items: flex-start; justify-content: center;
         cursor: grab; opacity: .3; transition: opacity .15s; }
 .grip:hover { opacity: .75; }
@@ -181,10 +178,10 @@ body:has(#empty-bin:not(:disabled):hover) .row .purge:not(:disabled) { border-co
    its own size. The inbox's is a button, and .icon draws it. */
 .kind svg { width: 16px; height: 16px; display: block; }
 [data-kind="note"] .group-badge { display: none; }
-/* The row a dragged note hovers over its middle: let go here and the two fold into a
-   group. A .memo is display:contents and has no box to outline, so the tint lands on its
-   cells — every one, so the whole row reads as the one thing you'd merge into. */
-.memo.grouping > * { background: rgba(59,130,246,.14); }
+/* The row a dragged note hovers over its middle: let go here and the two fold into a group.
+   The row is a box of its own now, so the tint lands on the whole row at once — cells and the
+   gaps between them — and it reads as the one continuous thing you'd merge into. */
+.memo.grouping { background: rgba(59,130,246,.14); border-radius: 8px; }
 /* On the inbox the badge is a button — the same square as the head above it — and
    reaching for it shows the stack coming apart and reddens (.btn.danger), so the click
    reads as what it does, and as the taking-apart that it is, before it is made. */
@@ -198,11 +195,18 @@ body:has(#empty-bin:not(:disabled):hover) .row .purge:not(:disabled) { border-co
    column's buttons wear, so a head and its column read as one thing. */
 .head form { margin: 0; }
 
-/* Inbox rows */
-.memo { display: contents; }
-.memo audio { width: 100%; }
+/* Inbox rows. The row is a real box — a subgrid spanning every column — rather than
+   display:contents, so a note can be grabbed and dragged as one whole thing, anywhere
+   along it, instead of only at a thin handle. Its cells still sit on the parent grid's
+   column tracks (that is what subgrid buys), so the columns line up across rows exactly as
+   they did when the row generated no box of its own. The grab cursor says the row is
+   draggable; the controls inside it reset to their own cursors just below. */
+.memo { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1;
+        align-items: start; cursor: grab; }
+.memo.dragging { cursor: grabbing; }
+.memo audio { width: 100%; cursor: auto; }
 .memo input[type=text] {
-  width: 100%; box-sizing: border-box; padding: 8px; font: inherit;
+  width: 100%; box-sizing: border-box; padding: 8px; font: inherit; cursor: text;
   border: 1px solid rgba(128,128,128,.4); border-radius: 8px; background: transparent; color: inherit; }
 /* The transcript is a preview, not a field: it opens the editor dialog, where the
    note has room to be worked on. So it is a fixed three-line box — three line boxes
@@ -240,9 +244,10 @@ body:has(#empty-bin:not(:disabled):hover) .row .purge:not(:disabled) { border-co
 /* A row whose submit/trash just failed: outline its fields so it's obvious which
    one stayed behind. */
 .memo.failed .transcript, .memo.failed input[type=text] { border-color: #e5484d; }
-/* A row mid-request: dimmed and locked so a bulk run reads as working through the
-   list, and so a row can't be double-submitted. A display:contents row generates no
-   box of its own, so dimming has to reach its cells — set on the row it does nothing. */
+/* A row mid-request: dimmed and locked so a bulk run reads as working through the list, and
+   so a row can't be double-submitted. The dimming reaches each cell rather than the row as a
+   whole because Submit is the one exception (below) and stays bright — a child can't climb
+   back out of a parent's opacity, so the fade has to be set per cell for one to escape it. */
 .memo.sending > * { opacity: .5; transition: opacity .15s; }
 /* Its Submit is the exception: it trades the paper plane for a spinner and stays at
    full strength — the one bright, moving thing on a dimmed row, so the press has an
@@ -256,15 +261,16 @@ body:has(#empty-bin:not(:disabled):hover) .row .purge:not(:disabled) { border-co
 /* The row you have hold of, faded in place — its picture is the thing under the cursor
    (.drag-ghost), and the gap it leaves behind is where letting go would put it. */
 .memo.dragging > * { opacity: .25; }
-/* That picture. The browser paints a drag image from the dragged element's box, and a
-   display:contents row has none, so the pointer would carry the bare grip. inbox.js
-   clones the row's cells into this — a grid of the same shape and width — and hands it
-   over as the drag image. Parked off-screen: it has to be rendered to be photographed,
-   and must never be seen or hit-tested where it sits. Its width is set to the grid's
-   and left content-box, so its columns land exactly under the real ones.
+/* That picture. The browser would paint the drag image from the row's own box, but that
+   snapshot is the full-width strip caught mid-fade; inbox.js clones the row's cells into this
+   instead — a grid of the same shape and width — and hands it over as a clean, bordered card.
+   Parked off-screen: it has to be rendered to be photographed, and must never be seen or
+   hit-tested where it sits. Its width is set to the grid's and left content-box, so its
+   columns land exactly under the real ones.
 
-   It is a .memo too, since that is what a row's cells are styled through, so `display`
-   has to be given back what .memo takes away. Declared after .memo, so it wins. */
+   It carries `.memo`, since that is what a row's cells are styled through — but off the grid
+   `.memo`'s subgrid has nothing to inherit, so `.grid.inbox`'s explicit tracks (more specific)
+   give the ghost its ten columns. Declared after .memo so its box styling wins. */
 .drag-ghost { display: grid; position: fixed; top: 0; left: -10000px; pointer-events: none;
               padding: 8px; border-radius: 10px; background: Canvas;
               border: 1px solid #3b82f6; box-shadow: 0 12px 28px rgba(0,0,0,.35); }

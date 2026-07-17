@@ -1046,7 +1046,7 @@ def test_index_shows_the_live_item_count(tmp_path):
     assert b"2 items" in body
 
 
-def test_each_inbox_row_is_dragged_by_a_grip_not_by_a_number(tmp_path):
+def test_each_inbox_row_wears_a_grip_and_carries_no_row_number(tmp_path):
     service = FakeService(pending=[
         Memo(audio_filename="a.m4a", transcript="one"),
         Memo(audio_filename="b.m4a", transcript="two"),
@@ -1055,16 +1055,17 @@ def test_each_inbox_row_is_dragged_by_a_grip_not_by_a_number(tmp_path):
 
     body = client.get("/").data.decode()
 
-    # A grip is what a draggable row wears. A row number was a poor stand-in: nothing
-    # about a number says "pick me up", and numbering a list you reorder by hand only
-    # ever names where a row is sitting this second.
-    assert 'class="grip" draggable="true"' in body
+    # A grip is the row's plainest "pick me up" mark. A row number was a poor stand-in:
+    # nothing about a number says that, and numbering a list you reorder by hand only ever
+    # names where a row is sitting this second. (The whole row is the drag source now — see
+    # the grab-anywhere test — but the grip stays as the obvious place to take hold.)
+    assert 'class="grip"' in body
     assert 'class="num"' not in body
     # A drop posts the whole on-screen order back.
     assert "/reorder" in asset(client, "inbox.js")
 
 
-def test_a_note_is_grabbed_by_its_body_not_only_the_thin_grip(tmp_path):
+def test_a_note_is_grabbed_anywhere_along_its_body_not_only_the_thin_grip(tmp_path):
     service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hi",
                                         recorded_at="2026-07-07T14:23:05")])
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
@@ -1072,24 +1073,29 @@ def test_a_note_is_grabbed_by_its_body_not_only_the_thin_grip(tmp_path):
     body = client.get("/").data.decode()
     js = asset(client, "inbox.js")
 
-    # A 26px grip is a small target for "pick this note up", and reaching for the note itself
-    # — its timestamp, its transcript — started a text-selection drag the list ignored, which
-    # the browser paints as "no drop". Those cells are drag sources too now, so grabbing the
-    # note anywhere along its body moves it.
-    assert 'class="when" draggable="true"' in body
-    assert 'class="transcript" draggable="true"' in body
-    # One pair of drag handlers, wired to every draggable cell rather than the grip alone.
-    assert "querySelectorAll('[draggable=\"true\"]')" in js
-    assert "querySelector('.grip')" not in js
+    # A 26px grip was the only drag source, so reaching for the note itself — its audio, its
+    # name, the space between its cells — started a native drag the list ignored, which the
+    # browser paints as "no drop", the red cross with no "+" ever. The whole row is the drag
+    # source now (a subgrid box, not display:contents), so taking hold of the note anywhere
+    # moves it; the cells no longer each carry a draggable of their own.
+    assert 'class="memo" draggable="true"' in body
+    assert 'class="grip" draggable' not in body
+    assert 'class="when" draggable' not in body
+    assert "grid-template-columns: subgrid" in asset(client, "app.css")
+    # The handlers hang off the row, and a press on a control that needs the gesture for
+    # itself — the audio scrubber, the name field — is left to that control, not stolen to
+    # move the note.
+    assert "memo.addEventListener('dragstart'" in js
+    assert "closest('input, select, audio, button, a')" in js
 
 
 def test_dragging_a_row_carries_a_picture_of_the_whole_row(tmp_path):
     service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="one")])
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
-    # A .memo is display:contents and has no box, so the browser would photograph the
-    # grip alone. The client paints the row into an off-screen clone and hands that over
-    # as the drag image, so what you're moving is visible while you move it.
+    # The browser would photograph the row's own box — a full-width strip caught mid-fade —
+    # so the client paints the row into an off-screen clone instead and hands that over as a
+    # clean, bordered drag image, so what you're moving reads tidily while you move it.
     assert "setDragImage" in asset(client, "inbox.js")
     assert ".drag-ghost" in asset(client, "app.css")
 
@@ -1159,7 +1165,7 @@ def test_inbox_row_leaves_the_timestamp_blank_when_the_recording_time_is_unknown
 
     body = client.get("/").data.decode()
 
-    assert '<div class="when" draggable="true"></div>' in body
+    assert '<div class="when"></div>' in body
 
 
 def test_index_shows_a_transcribing_hint_while_recordings_await(tmp_path):
@@ -2110,8 +2116,8 @@ def test_find_filters_both_pages_by_a_rows_whole_name_and_transcript(tmp_path):
     assert "textContent" in js
     assert "toLowerCase()" in js
     assert "indexOf(term) >= 0" in js
-    # A missed row is display:none even though .memo/.row are display:contents, so the
-    # rule out-specifies them to put the display back.
+    # A missed row is display:none even though .memo carries a subgrid display and the bin's
+    # .row is display:contents, so the rule out-specifies each to put the display back.
     rule = css.split(".grid .memo.find-miss")[1].split("}")[0]
     assert ".grid .row.find-miss" in rule and ".grid .sep.find-miss" in rule
     assert "display: none" in rule

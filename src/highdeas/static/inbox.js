@@ -467,18 +467,19 @@
     return (box.top + box.bottom) / 2;
   }
 
-  // What the cursor carries while a row is in the air. The browser photographs the
-  // dragged element's box, and a display:contents row has none — so without this the
-  // pointer would drag the grip alone, and there'd be no seeing what you were moving.
-  // Clone the row's cells into a grid of the same shape, off-screen (it must be
-  // rendered to be photographed), and hand it over. The browser rasterizes it during
-  // dragstart, so it can be dropped as soon as the call stack unwinds.
+  // What the cursor carries while a row is in the air. The row has a box of its own now,
+  // so the browser could photograph it — but that snapshot is the whole full-width strip,
+  // live audio player and all, caught just as the .dragging fade lands on it. Hand over a
+  // clean clone instead: the same cells in a grid of the same shape, off-screen (it must be
+  // rendered to be photographed), bordered and un-faded, so what you're moving reads as a
+  // tidy card. The browser rasterizes it during dragstart, so it can be dropped as soon as
+  // the call stack unwinds.
   //
-  // It wears `memo` and the row's data-kind, because a row's cells are styled through
-  // those (`.memo audio`, `[data-kind=note] .group-badge`) and a clone outside them
-  // renders as something else entirely — an audio element at its intrinsic width,
-  // overflowing its column. `.drag-ghost` re-boxes what `.memo` un-boxes. It lives
-  // outside #content, so it never answers to rows().
+  // It wears `memo` and the row's data-kind, because a row's cells are styled through those
+  // (`.memo audio`, `[data-kind=note] .group-badge`) and a clone outside them renders as
+  // something else entirely — an audio element at its intrinsic width, overflowing its
+  // column. `.drag-ghost` gives the clone the row's grid back, and lives outside #content,
+  // so it never answers to rows().
   var GHOST_PAD = 8;
 
   function dragImage(memo, event) {
@@ -656,37 +657,40 @@
       radio.addEventListener('change', rebind);
     });
     if (parent) parent.addEventListener('change', rebind);
-    // The note is grabbed by more than its thin grip — its timestamp and its transcript are
-    // drag sources too (rows.html marks them draggable), so the hand can take hold of the
-    // note itself. They share one pair of handlers; the grip is just the most obvious of them.
-    memo.querySelectorAll('[draggable="true"]').forEach(function (source) {
-      source.addEventListener('dragstart', function (event) {
-        dragged = memo;
-        orderBefore = orderOf();
-        // A row drops two ways — reordered (move) or grouped (copy) — so both effects have to
-        // be allowed up front. A move-only effectAllowed makes the browser discard the copy
-        // dropEffect the group band asks for, and the "+" cursor that marks a merge never shows.
-        event.dataTransfer.effectAllowed = 'copyMove';
-        event.dataTransfer.setData('text/plain', memo.dataset.file);
-        dragImage(memo, event);
-        memo.classList.add('dragging');
-      });
-      source.addEventListener('dragend', function () {
-        memo.classList.remove('dragging');
-        dragged = null;
-        highlight(null);
-        var was = orderBefore;
-        orderBefore = null;
-        // The dropped note is being folded into a group, so it is leaving the inbox: the
-        // rows it passed on the way there keep the order they already had on the server.
-        if (joining) { joining = false; return; }
-        var now = orderOf();
-        if (now.join() === was.join()) return;  // let go where it was picked up
-        saveOrder();
-        undoStack.did({
-          undo: function () { applyOrder(was); },
-          redo: function () { applyOrder(now); },
-        });
+    // The whole row is draggable (rows.html marks the .memo), so the note is picked up
+    // anywhere along it — the grip, the timestamp, the transcript, the space between. The
+    // controls that need the press for themselves keep it: a drag begun on the audio scrubber
+    // or in the name field cancels the row drag, so scrubbing and selecting still work.
+    memo.addEventListener('dragstart', function (event) {
+      if (event.target.closest('input, select, audio, button, a')) {
+        event.preventDefault();  // this press is scrubbing or selecting, not moving the note
+        return;
+      }
+      dragged = memo;
+      orderBefore = orderOf();
+      // A row drops two ways — reordered (move) or grouped (copy) — so both effects have to
+      // be allowed up front. A move-only effectAllowed makes the browser discard the copy
+      // dropEffect the group band asks for, and the "+" cursor that marks a merge never shows.
+      event.dataTransfer.effectAllowed = 'copyMove';
+      event.dataTransfer.setData('text/plain', memo.dataset.file);
+      dragImage(memo, event);
+      memo.classList.add('dragging');
+    });
+    memo.addEventListener('dragend', function () {
+      memo.classList.remove('dragging');
+      dragged = null;
+      highlight(null);
+      var was = orderBefore;
+      orderBefore = null;
+      // The dropped note is being folded into a group, so it is leaving the inbox: the
+      // rows it passed on the way there keep the order they already had on the server.
+      if (joining) { joining = false; return; }
+      var now = orderOf();
+      if (now.join() === was.join()) return;  // let go where it was picked up
+      saveOrder();
+      undoStack.did({
+        undo: function () { applyOrder(was); },
+        redo: function () { applyOrder(now); },
       });
     });
     memo.querySelector('.move').addEventListener('click', function () { moveText(memo); });
