@@ -661,15 +661,86 @@ def test_group_grows_an_existing_group_rather_than_starting_a_new_one(tmp_path):
     assert store.get("c.m4a").status == "grouped"
 
 
-def test_group_names_a_named_note_in_its_bullet(tmp_path):
+def test_group_takes_the_name_of_its_one_named_note(tmp_path):
+    # A single named note among the picks hands its name up to the group, so the bullet
+    # it becomes drops the now-redundant prefix and reads as its transcript alone.
     inbox, store = _two_notes(tmp_path)
     store.update("b.m4a", name="Chorus")
     service = grouping_service(inbox, store, tmp_path / "bin", clock=lambda: "T")
 
     group = service.group(["a.m4a", "b.m4a"])
 
+    assert group.name == "Chorus"
     # Both routers already turn "- " lines into real lists (see routers.py).
-    assert group.transcript == "- one\n- Chorus: two"
+    assert group.transcript == "- one\n- two"
+
+
+def test_group_is_left_unnamed_when_no_note_is_named(tmp_path):
+    # Nothing to hand up, so the group stays untitled and every bullet is a plain line.
+    inbox, store = _two_notes(tmp_path)
+    service = grouping_service(inbox, store, tmp_path / "bin", clock=lambda: "T")
+
+    group = service.group(["a.m4a", "b.m4a"])
+
+    assert group.name == ""
+    assert group.transcript == "- one\n- two"
+
+
+def test_group_takes_a_name_shared_by_several_notes_without_asking(tmp_path):
+    # Several notes, but one name between them: nothing to choose, so the group takes it
+    # unasked (the page never opens the namer) and every bullet carrying it drops it.
+    inbox, store = _two_notes(tmp_path)
+    store.update("a.m4a", name="Idea")
+    store.update("b.m4a", name="Idea")
+    service = grouping_service(inbox, store, tmp_path / "bin", clock=lambda: "T")
+
+    group = service.group(["a.m4a", "b.m4a"])
+
+    assert group.name == "Idea"
+    assert group.transcript == "- one\n- two"
+
+
+def test_group_takes_the_chosen_name_when_several_notes_are_named(tmp_path):
+    # Two notes named, so the page asks which name the group takes and passes the answer.
+    # The chosen name rises to the group and its note's bullet drops the prefix; the other
+    # named note keeps its "- Name: transcript" prefix.
+    inbox, store = _two_notes(tmp_path)
+    store.update("a.m4a", name="Verse")
+    store.update("b.m4a", name="Chorus")
+    service = grouping_service(inbox, store, tmp_path / "bin", clock=lambda: "T")
+
+    group = service.group(["a.m4a", "b.m4a"], name="Chorus")
+
+    assert group.name == "Chorus"
+    assert group.transcript == "- Verse: one\n- two"
+
+
+def test_group_takes_a_freshly_typed_name_and_keeps_every_prefix(tmp_path):
+    # The name typed at the modal belongs to none of the notes, so none of them gives it
+    # up: the group wears the new name and every named note keeps its prefix.
+    inbox, store = _two_notes(tmp_path)
+    store.update("a.m4a", name="Verse")
+    store.update("b.m4a", name="Chorus")
+    service = grouping_service(inbox, store, tmp_path / "bin", clock=lambda: "T")
+
+    group = service.group(["a.m4a", "b.m4a"], name="Song")
+
+    assert group.name == "Song"
+    assert group.transcript == "- Verse: one\n- Chorus: two"
+
+
+def test_group_stays_unnamed_when_several_are_named_and_no_name_is_chosen(tmp_path):
+    # No pick to go on — a stale page, or a direct call — so the group falls back to
+    # untitled with every name kept as a prefix, rather than guessing which one wins.
+    inbox, store = _two_notes(tmp_path)
+    store.update("a.m4a", name="Verse")
+    store.update("b.m4a", name="Chorus")
+    service = grouping_service(inbox, store, tmp_path / "bin", clock=lambda: "T")
+
+    group = service.group(["a.m4a", "b.m4a"])
+
+    assert group.name == ""
+    assert group.transcript == "- Verse: one\n- Chorus: two"
 
 
 def test_group_does_not_leave_a_blank_line_when_the_group_text_ends_in_a_newline(tmp_path):

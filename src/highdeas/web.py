@@ -169,11 +169,15 @@ def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=(), dr
     def group():
         """Consolidate the posted notes into one group memo.
 
-        The group is named alongside the rows: only the server knows what it is called —
-        a group's recording is one the app makes, named by its content — and Undo has to
-        know which row to walk the merge back out of."""
+        A group's recording is one the app makes, named by its content, so only the
+        server knows the filename it answers to — and Undo has to know which row to walk
+        the merge back out of. The optional `name` is the title the page settled on when
+        several picked notes were named and it asked which the group should take; absent,
+        the server takes the sole name among them, or leaves the group untitled.
+        The filename is returned alongside the rows the merge rebuilt."""
         try:
-            grouped = service.group(request.form.getlist("files"))
+            grouped = service.group(request.form.getlist("files"),
+                                    name=request.form.get("name"))
         except ValueError as exc:
             return (str(exc), 400)
         return {"target": grouped.audio_filename, "rows": _inbox_rows()}

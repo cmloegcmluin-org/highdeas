@@ -1,0 +1,15 @@
+{#- The group namer. A group takes a single name, so when several of the notes being
+    folded are named, the page asks which it should be — here, in its own voice, the way
+    the confirm and the editor speak — rather than choosing for the user. A chip per
+    candidate name fills the field; the field is what the answer is read from, so a
+    freshly typed name is offered the same way. Cancel leads: dismissing the ask leaves
+    the notes exactly as they were. -#}
+<dialog id="name-group" class="ask namer" aria-labelledby="name-group-text">
+  <p id="name-group-text" class="ask-text">More than one of these notes is named. What should the group be called?</p>
+  <div id="name-group-chips" class="namer-chips"></div>
+  <input type="text" id="name-group-name" class="namer-name" autocomplete="off" aria-label="Group name">
+  <div class="ask-foot">
+    <button type="button" id="name-group-cancel" class="btn ask-btn">Cancel</button>
+    <button type="button" id="name-group-ok" class="btn ask-btn">Group</button>
+  </div>
+</dialog>

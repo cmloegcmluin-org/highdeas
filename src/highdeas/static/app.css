@@ -391,6 +391,21 @@ body:has(#empty-bin:not(:disabled):hover) .row .purge:not(:disabled) { border-co
    button. OK reddens on hover when what it agrees to cannot be undone. */
 .ask-btn { padding: 7px 18px; }
 
+/* ---- Naming a group --------------------------------------------------------
+   The confirm's box, holding a question a yes/no can't answer: which name a group
+   of several named notes should take. A chip per candidate name fills the field
+   below it, and the field is what the answer is read from — so a name typed by hand
+   is offered the same way a note's own name is. */
+.namer-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+/* Each candidate name a click away from the field. They wear the app's outline
+   chrome (.btn) and lighten on hover like anything else the pointer can press. */
+.name-group-chip { padding: 5px 12px; max-width: 100%; overflow: hidden;
+                   text-overflow: ellipsis; white-space: nowrap; }
+.namer-name { width: 100%; box-sizing: border-box; font: inherit; padding: 8px 10px;
+              margin: 0 0 20px; background: transparent; color: inherit;
+              border: 1px solid rgba(128,128,128,.4); border-radius: 8px; }
+.namer-name:focus { outline: none; border-color: #3b82f6; }
+
 /* The "new code landed on main" button: quietly hidden until /version says
    the running app is behind, dressed to be noticed without shouting. */
 .update { background: #14532d; border-color: #22c55e; color: #dcfce7; }

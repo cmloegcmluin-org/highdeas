@@ -64,10 +64,25 @@ def _step(memos, group=None):
             "transcript": group.transcript if group else ""}
 
 
-def _bullet(memo):
-    """One consolidated note as a bullet: its name, colon, then its transcript."""
+def _sole_name(memos):
+    """The name a fresh group takes on its own: the one name among its notes, or none.
+
+    Distinct names, not named notes — two notes carrying the same name leave one name to
+    take, and the group takes it. None, too, when several distinct names are in play,
+    where the page asks which and passes the answer instead of this being reached."""
+    named = {memo.name.strip() for memo in memos if memo.name.strip()}
+    return next(iter(named)) if len(named) == 1 else ""
+
+
+def _bullet(memo, group_name=""):
+    """One consolidated note as a bullet: its name, colon, then its transcript.
+
+    The note whose name the group itself took drops the now-redundant prefix and reads
+    as its transcript alone — its name is up in the title, not repeated on every line."""
     text = memo.transcript.strip()
     name = memo.name.strip()
+    if name == group_name.strip():
+        name = ""
     if name and text:
         return f"- {name}: {text}"
     return f"- {name or text}"
@@ -211,15 +226,21 @@ class InboxService:
         """Fix the inbox to the order the user dragged its rows into."""
         self._store.reorder(audio_filenames)
 
-    def group(self, audio_filenames):
+    def group(self, audio_filenames, name=None):
         """Consolidate the named pending notes into a single group memo.
 
         A group is a memo the app makes, not a note promoted out of the pile. Every note
-        picked becomes a bullet — in inbox order, not the order they were ticked, a named
-        one reading "- Name: transcript" — and every one of them retires to the bin. What
-        stands in their place is a new memo whose recording is theirs joined end to end,
-        carrying their word timings slid to where each lands in it. It sits where the
-        topmost note sat, bound for the same destination, waiting to be titled.
+        picked becomes a bullet — in inbox order, not the order they were ticked — and
+        every one of them retires to the bin. What stands in their place is a new memo
+        whose recording is theirs joined end to end, carrying their word timings slid to
+        where each lands in it. It sits where the topmost note sat, bound for the same
+        destination.
+
+        The group takes a name of its own. One note named among the picks and its name
+        rises to the group; several named and the page has already asked which — its
+        answer arrives as `name`, a note's own or one freshly typed. A named note whose
+        name the group did not take keeps it as a "- Name: transcript" prefix on its
+        bullet; the one whose name rose reads as its transcript alone.
 
         Pick a group among them and it is the group that grows: the rest fold into its
         bullets, its recording gains theirs on the end, and its name is left alone.
@@ -236,18 +257,23 @@ class InboxService:
         for memo in absorbed:
             self._retire(memo.audio_filename, "grouped")
         if group is None:
-            return self._found_group(chosen)
+            return self._found_group(chosen, name)
         trail = _merges(group) + [_step(absorbed, group)]
         return self._rejoin(group, trail, name=group.name, transcript="\n".join(
-            [group.transcript.rstrip(), *(_bullet(memo) for memo in absorbed)]))
+            [group.transcript.rstrip(), *(_bullet(memo, group.name) for memo in absorbed)]))
 
-    def _found_group(self, members):
-        """Make the memo that stands in the place of the notes it was folded from."""
+    def _found_group(self, members, name=None):
+        """Make the memo that stands in the place of the notes it was folded from.
+
+        Its name is the caller's pick when given, else the one name among the notes (or
+        none when they are all nameless or several are named without a pick)."""
+        group_name = _sole_name(members) if name is None else name
         lead, trail = members[0], [_step(members)]
         joined = self._join_members(trail, Path(lead.audio_filename).suffix)
         self._store.upsert(Memo(
             audio_filename=joined,
-            transcript="\n".join(_bullet(memo) for memo in members),
+            transcript="\n".join(_bullet(memo, group_name) for memo in members),
+            name=group_name,
             kind="group",
             route=lead.route,
             asana_parent=lead.asana_parent,

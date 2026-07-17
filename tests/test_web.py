@@ -28,6 +28,7 @@ class FakeService:
         self.restored_all = 0
         self.reordered = []
         self.grouped = []
+        self.group_names = []
         self.group_error = None
         self.ungrouped = []
         self.ungroup_error = None
@@ -41,13 +42,14 @@ class FakeService:
     def reorder(self, audio_filenames):
         self.reordered.append(list(audio_filenames))
 
-    def group(self, audio_filenames):
+    def group(self, audio_filenames, name=None):
         if self.group_error:
             raise ValueError(self.group_error)
         self.grouped.append(list(audio_filenames))
+        self.group_names.append(name)
         # A group's recording is one the app makes, so it answers to a name of its own.
         return Memo(audio_filename=f"group-of-{len(audio_filenames)}.m4a",
-                    transcript="- one\n- two", kind="group")
+                    transcript="- one\n- two", kind="group", name=name or "")
 
     def ungroup(self, audio_filename):
         if self.ungroup_error:
@@ -477,6 +479,30 @@ def test_the_inbox_posts_its_ticked_notes_to_the_group_endpoint(tmp_path):
     assert "getElementById('select-all')" in js
 
 
+def test_inbox_carries_the_group_naming_dialog(tmp_path):
+    # A group takes one name, so when several picked notes are named the page asks which
+    # it should be — its own dialog, in its own voice, like the confirm and the editor.
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data.decode()
+
+    assert 'id="name-group"' in body
+    assert "namer.js" in body
+    # A real, servable module that hangs its opener where inbox.js reaches for it.
+    assert "window.HighdeasNameGroup" in asset(client, "namer.js")
+
+
+def test_grouping_asks_which_name_before_founding_a_group_from_named_notes(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    js = asset(client, "inbox.js")
+
+    # Founding a group from two-or-more named notes asks which name it takes; the answer
+    # rides the same POST as the files, under "name", straight to the /group route.
+    assert "HighdeasNameGroup" in js
+    assert "append('name'" in js
+
+
 def test_grouping_hands_over_every_unsaved_edit_before_the_merge(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
@@ -736,10 +762,11 @@ def test_grouping_is_walked_back_one_merge_at_a_time(tmp_path):
 
     # Undo posts the last merge back out of the group and redo folds the same notes in
     # again. It walks back one merge, not the whole group: a note dragged into a group
-    # that already existed must come back out without dissolving what it joined.
+    # that already existed must come back out without dissolving what it joined. Redo
+    # carries the group's chosen name so it re-founds the same titled group.
     step = js.split("function groupFiles")[1].split("\n  function ")[0]
     assert "undoStack.did(" in step
-    assert "unmergeRow(groupNames[id])" in step and "mergeFiles(folding())" in step
+    assert "unmergeRow(groupNames[id])" in step and "mergeFiles(folding(), name)" in step
     assert "post('/unmerge/'" in js
 
 
@@ -1317,6 +1344,20 @@ def test_group_route_consolidates_the_posted_notes_and_names_the_group(tmp_path)
     # Only the server can name the group: its recording is one the app makes, named by its
     # content, and undo has to know which row to walk the merge back out of.
     assert body["target"] == "group-of-2.m4a"
+
+
+def test_group_route_hands_the_chosen_name_to_the_service(tmp_path):
+    # When several picked notes are named, the page asks which name the group takes and
+    # posts the answer beside the files; the route hands it straight through.
+    service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="one", name="Verse"),
+                                   Memo(audio_filename="b.m4a", transcript="two", name="Chorus")])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    resp = client.post("/group", data={"files": ["a.m4a", "b.m4a"], "name": "Chorus"})
+
+    assert resp.status_code == 200
+    assert service.grouped == [["a.m4a", "b.m4a"]]
+    assert service.group_names == ["Chorus"]
 
 
 def test_unmerge_route_walks_one_merge_back_and_renames_the_group(tmp_path):

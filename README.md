@@ -34,10 +34,13 @@ recording, or a subtask on an Asana task.
    Esc brings the full list back. The bin carries the same find.
 5. **Group** — ideas arrive in clusters. Tick a few notes and press the group button above
    the checkboxes: they fold into one memo whose transcript is a bullet per note, in inbox
-   order, a named note reading `- Name: transcript`. Tick an existing group and the rest
-   merge into it, keeping its name; or drag a note by its grip onto a group's badge to
-   drop it in. Two groups have no obvious survivor, so ticking two disables the button. A
-   badge in the third of the row's leading columns marks which rows are groups.
+   order. The group takes a name of its own — the one name among the notes, or, when
+   several are named, whichever you pick (or type fresh) at the ask that pops up. Whichever
+   name rose to the group reads plain in its bullet; a named note whose name did not rise
+   keeps it, reading `- Name: transcript`. Tick an existing group and the rest merge into
+   it, keeping its name; or drag a note by its grip onto a group's badge to drop it in. Two
+   groups have no obvious survivor, so ticking two disables the button. A badge in the
+   third of the row's leading columns marks which rows are groups.
 
    A group is a memo the app makes, not a note promoted out of the pile. It stands where
    the topmost note stood, bound for the same destination, and it **plays all of their

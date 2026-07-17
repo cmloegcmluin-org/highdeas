@@ -54,10 +54,11 @@
 
 {% block content %}{% include "rows.html" %}{% endblock %}
 
-{% block dialogs %}{% include "editor.html" %}{% endblock %}
+{% block dialogs %}{% include "editor.html" %}{% include "namer.html" %}{% endblock %}
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='history.js') }}"></script>
 <script src="{{ url_for('static', filename='editor.js') }}"></script>
+<script src="{{ url_for('static', filename='namer.js') }}"></script>
 <script src="{{ url_for('static', filename='inbox.js') }}"></script>
 {% endblock %}

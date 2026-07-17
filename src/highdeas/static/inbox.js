@@ -248,7 +248,9 @@
 
   // ---- Grouping: fold several notes into one bulleted memo. --------------------
   // A group's row absorbs the others' text, so exactly one survivor must be obvious:
-  // group at least two notes, and at most one of them may already be a group.
+  // group at least two notes, and at most one of them may already be a group. The group
+  // takes a name of its own — the one name among the notes, or the one the namer asks
+  // for when several are named (see groupPicked).
   var groupBtn = document.getElementById('group-picked');
   var selectAll = document.getElementById('select-all');
 
@@ -310,12 +312,15 @@
   }
 
   // The merge is server-side, so the button locks until it answers: a double-click would
-  // post a second selection whose absorbed rows are no longer in the inbox to group.
-  function mergeFiles(files) {
+  // post a second selection whose absorbed rows are no longer in the inbox to group. A
+  // group founded from several named notes carries the name the namer settled on; every
+  // other merge leaves `name` out and lets the server name the group.
+  function mergeFiles(files, name) {
     if (groupBtn) groupBtn.disabled = true;
     var picks = rows().filter(function (memo) { return files.indexOf(memo.dataset.file) >= 0; });
     var data = new URLSearchParams();
     files.forEach(function (file) { data.append('files', file); });
+    if (name != null) data.append('name', name);
     return flushEdits(picks).then(function () {
       return post('/group', data);
     }).then(readGroup);
@@ -357,14 +362,18 @@
     return null;
   }
 
-  function groupFiles(files) {
+  // The chosen name rides along so redo re-founds the same group: re-posting the files
+  // alone would let the server fall back to untitled, since two named notes have no sole
+  // name to take. A merge that needed no name (grown group, or at most one named note)
+  // passes none, and redo asks the server for the same name it gave the first time.
+  function groupFiles(files, name) {
     var id = cellOf(files) || 'group-' + (groupsMade += 1);
     // What this merge takes in, which is everything but the group it takes them into.
     var notes = files.filter(function (file) { return file !== groupNames[id]; });
     function folding() {
       return groupNames[id] ? [groupNames[id]].concat(notes) : notes;
     }
-    return mergeFiles(files).then(function (target) {
+    return mergeFiles(files, name).then(function (target) {
       groupNames[id] = target;
       undoStack.did({
         undo: function () {
@@ -374,12 +383,39 @@
           }, unmergeFailed);
         },
         redo: function () {
-          return mergeFiles(folding()).then(function (target) {
+          return mergeFiles(folding(), name).then(function (target) {
             groupNames[id] = target;
           }, groupFailed);
         },
       });
     }).catch(groupFailed);
+  }
+
+  // The names among a set of rows, deduped and in row order — what the namer offers when
+  // a group founded from them could take more than one.
+  function namesAmong(memos) {
+    var seen = {};
+    return memos.reduce(function (names, memo) {
+      var name = nameOf(memo).trim();
+      if (name && !seen[name]) { seen[name] = true; names.push(name); }
+      return names;
+    }, []);
+  }
+
+  // Fold the picked notes together. Founding a fresh group from two-or-more named notes,
+  // the group can take only one name, so ask which before posting. Growing an existing
+  // group keeps the name it already has, and founding from a single name has nothing to
+  // choose between — both let the server settle the name, unasked.
+  function groupPicked(picks) {
+    var files = picks.map(function (memo) { return memo.dataset.file; });
+    var names = namesAmong(picks);
+    if (!picks.some(isGroup) && names.length > 1 && window.HighdeasNameGroup) {
+      window.HighdeasNameGroup(names).then(function (name) {
+        if (name != null) groupFiles(files, name);
+      });
+      return;
+    }
+    groupFiles(files);
   }
 
   // The badge walks every merge back at once, past however many steps the stack still
@@ -400,10 +436,10 @@
   });
 
   if (groupBtn) groupBtn.addEventListener('click', function () {
-    var files = picked().map(function (memo) { return memo.dataset.file; });
-    if (files.length < 2) return;
+    var picks = picked();
+    if (picks.length < 2) return;
     clearNotice();
-    groupFiles(files);
+    groupPicked(picks);
   });
 
   // A .memo is display:contents, so it has no box of its own to grab, hit-test, or
