@@ -122,14 +122,19 @@ class AsanaRouter:
         parent = memo.asana_parent or self._default_parent
         if not parent:
             raise RuntimeError("No Asana parent task configured — put ASANA_PARENT_TASKS in .env.")
+        # A named memo keeps its transcript as the task's notes. An unnamed one has
+        # only its transcript, so that becomes the name — a readable task rather than
+        # a generic date title — and the notes are left empty rather than repeating it.
+        if memo.name:
+            name, notes = memo.name, memo.transcript
+        else:
+            name = memo.transcript or _default_title(memo.recorded_at or memo.created_at)
+            notes = ""
         response = self._post(
             self.ENDPOINT.format(parent=parent),
             headers={"Authorization": f"Bearer {self._token}", "Content-Type": "application/json"},
             params={"opt_fields": "permalink_url"},
-            json={"data": {
-                "name": memo.name or _default_title(memo.recorded_at or memo.created_at),
-                "notes": memo.transcript,
-            }},
+            json={"data": {"name": name, "notes": notes}},
             timeout=30,
         )
         response.raise_for_status()

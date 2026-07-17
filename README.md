@@ -60,9 +60,11 @@ recording, or a subtask on an Asana task.
      `_YYYY_MM_DD_NOT_YET_PROCESSED_MUSIC` folder under your Drive base, renamed from the
      memo's name, with a `.docx` of the transcript alongside if there is one.
    - **Asana** — the transcript becomes a subtask of the parent task picked in the
-     row's dropdown (the small set you configure via `ASANA_PARENT_TASKS`). Only the
-     text is sent — the audio never leaves this PC. The created task's link is kept
-     for the bin.
+     row's dropdown (the small set you configure via `ASANA_PARENT_TASKS`). A named
+     memo carries its name as the task and its transcript as the notes; an unnamed one
+     has only its transcript, so that becomes the task's name (falling back to the
+     `Note <date> <time>` title when there is no transcript either). Only the text is
+     sent — the audio never leaves this PC. The created task's link is kept for the bin.
 8. **Retire to the bin** — on Submit, Delete, or being merged into a group, the recording
    leaves the inbox for a local bin, kept beside the inbox by default so the move stays
    inside iCloud and never triggers a per-file "move off iCloud" prompt. The inbox

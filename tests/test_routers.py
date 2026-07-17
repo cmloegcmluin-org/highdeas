@@ -229,13 +229,26 @@ def test_asana_router_explains_missing_setup_instead_of_calling_asana():
     assert post.calls == []
 
 
-def test_asana_router_titles_unnamed_memo_with_its_recording_time():
-    # Same auto-title convention as Notesnook, so an unnamed note is findable by
-    # when it was recorded on any destination.
+def test_asana_router_names_unnamed_memo_by_its_transcript():
+    # With nothing but spoken words, the transcript becomes the task's name so the
+    # note reads at a glance in Asana instead of hiding under a generic date title.
+    # It moves into the name, leaving the notes empty rather than repeating itself.
     post = FakePost(body={"data": {}})
 
     AsanaRouter("PAT", default_parent="1", post=post).route(
-        Memo(audio_filename="a.m4a", name="", transcript="hi",
+        Memo(audio_filename="a.m4a", name="", transcript="call the plumber back",
+             recorded_at="2026-07-07T15:45:00", route="asana"))
+
+    assert post.calls[0][1]["json"]["data"] == {"name": "call the plumber back", "notes": ""}
+
+
+def test_asana_router_titles_an_empty_memo_with_its_recording_time():
+    # No name and no transcript — a failed or silent capture — still needs a title;
+    # fall back to the recording-time convention shared with Notesnook.
+    post = FakePost(body={"data": {}})
+
+    AsanaRouter("PAT", default_parent="1", post=post).route(
+        Memo(audio_filename="a.m4a", name="", transcript="",
              recorded_at="2026-07-07T15:45:00", route="asana"))
 
     assert post.calls[0][1]["json"]["data"]["name"] == "Note 2026-07-07 3:45:00 PM"
