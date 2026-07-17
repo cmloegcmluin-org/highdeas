@@ -380,16 +380,64 @@ def _open_window(webview, state_path):
     return window
 
 
-def _open_when_ready(window, url, wait_until_ready, become_current=None):
+def _open_when_ready(window, url, wait_until_ready, become_current=None,
+                     enable_context_menus=None):
     """The splash is already on screen when this runs: first the launch update
     (behind "Loading…" — the user's click must answer immediately, never sit
     invisible through a git fetch), then wait for the local server, then swap
-    the splash for the real app. The model load and backlog transcription
-    happen in the background, never on this path."""
+    the splash for the real app, and finally hand that page back its right-click
+    menu. The model load and backlog transcription happen in the background,
+    never on this path."""
     (become_current or _become_current)()
     _match_mac_dock_tile()
     wait_until_ready()
     window.load_url(url)
+    (enable_context_menus or _enable_context_menus)(window)
+
+
+def _enable_context_menus(window):
+    """Give the desktop window back the right-click Cut/Copy/Paste menu.
+
+    pywebview's WebView2 backend switches the default context menus off unless
+    it is running in debug mode (edgechromium.py ties AreDefaultContextMenusEnabled
+    to the debug flag), which leaves every text field in the app — the note
+    editor's title and transcript most of all — with no menu to cut or copy from
+    on a right-click. Turn that one setting back on, on the UI thread the control
+    lives on, and leave the rest of debug mode (DevTools, F12, the status bar)
+    off.
+
+    Windows only: the Cocoa backend strips the menu a different way and has no
+    WebView2 to reach. Best-effort — Ctrl+C/V keep working regardless, so any
+    failure just prints and moves on."""
+    if sys.platform != "win32":
+        return
+    try:
+        form = window.native            # the winforms BrowserForm
+        control = form.browser.webview  # the WebView2 control it hosts
+
+        def apply():
+            _turn_on_context_menus(control)
+
+        # Event handlers run off the UI thread; a WebView2 setting must be
+        # touched on the thread that created the control, so marshal onto it.
+        if form.InvokeRequired:
+            from System import Action
+
+            form.Invoke(Action(apply))
+        else:
+            apply()
+    except Exception as exc:  # noqa: BLE001 — cosmetic; keyboard cut/copy still works
+        print(f"Couldn't restore the right-click menu ({exc}).")
+
+
+def _turn_on_context_menus(control):
+    """Switch WebView2's default context menus back on, once its core is up.
+
+    Called before the core has finished initializing, the setting would have
+    nothing to land on, so the guard lets the caller fire and forget."""
+    core = control.CoreWebView2
+    if core is not None:
+        core.Settings.AreDefaultContextMenusEnabled = True
 
 
 def _match_mac_dock_tile():

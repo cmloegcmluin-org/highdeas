@@ -12,6 +12,7 @@ from highdeas.app import (
     _open_window,
     _run_browser,
     _start_upload_listener,
+    _turn_on_context_menus,
     build_app,
     platform_defaults,
     build_upload_app,
@@ -21,7 +22,7 @@ from highdeas.store import Memo, MemoStore
 from highdeas.window_state import WindowGeometry, load_geometry, save_geometry
 
 
-def test_open_when_ready_updates_then_waits_then_loads():
+def test_open_when_ready_updates_then_waits_then_loads_then_restores_the_menu():
     events = []
 
     class FakeWindow:
@@ -29,13 +30,36 @@ def test_open_when_ready_updates_then_waits_then_loads():
             events.append(("load", url))
 
     _open_when_ready(FakeWindow(), "http://127.0.0.1:9/", lambda: events.append(("waited",)),
-                     become_current=lambda: events.append(("updated",)))
+                     become_current=lambda: events.append(("updated",)),
+                     enable_context_menus=lambda window: events.append(("menus",)))
 
     # The splash is already on screen when this runs, so the launch update
     # happens behind "Loading…" instead of before any window exists — the
     # user's click always answers immediately. Then wait for the server, then
-    # swap the splash for the real page.
-    assert events == [("updated",), ("waited",), ("load", "http://127.0.0.1:9/")]
+    # swap the splash for the real page, and only then hand the loaded page back
+    # its right-click menu.
+    assert events == [("updated",), ("waited",), ("load", "http://127.0.0.1:9/"), ("menus",)]
+
+
+def test_the_right_click_menu_comes_back_on_once_the_webview_core_is_up():
+    # pywebview's WebView2 backend turns the default context menus off outside
+    # debug mode, which leaves the note editor's fields with nothing to cut or
+    # copy from on a right-click. We turn just that setting back on.
+    settings = SimpleNamespace(AreDefaultContextMenusEnabled=False)
+    control = SimpleNamespace(CoreWebView2=SimpleNamespace(Settings=settings))
+
+    _turn_on_context_menus(control)
+
+    assert settings.AreDefaultContextMenusEnabled is True
+
+
+def test_restoring_the_menu_waits_for_the_webview_core_instead_of_crashing():
+    # Fired from a window whose WebView2 core hasn't finished initializing, the
+    # setting has nothing to land on — so it's a quiet no-op, not a crash that
+    # would take the launch down with it.
+    control = SimpleNamespace(CoreWebView2=None)
+
+    _turn_on_context_menus(control)  # must not raise
 
 
 def _fake_webview(fake_window, screens=()):
