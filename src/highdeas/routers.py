@@ -271,10 +271,16 @@ class DriveMusicRouter:
         self._copy = copy
 
     def route(self, memo):
-        folder = self._base / f"_{self._today()}_NOT_YET_PROCESSED_MUSIC"
+        subfolder_name = f"_{self._today()}_NOT_YET_PROCESSED_MUSIC"
+        folder = self._base / subfolder_name
         folder.mkdir(parents=True, exist_ok=True)
         source = self._inbox / memo.audio_filename
         base = _sanitize_filename(memo.name or Path(memo.audio_filename).stem)
         self._copy(str(source), str(folder / (base + source.suffix)))
         if memo.transcript.strip():
             self._write_doc(folder / (base + ".docx"), memo.transcript)
+        # Nothing here yet knows this subfolder's own Drive ID — Drive for Desktop
+        # uploads it to the cloud on its own schedule — so only its name is reported;
+        # the bin's Drive icon looks up the ID from this name later, via the real
+        # Drive API, when it's asked to open this memo.
+        return {"drive_subfolder": subfolder_name}
