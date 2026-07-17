@@ -432,7 +432,10 @@
     bodyEl.replaceChildren(renderNote(note.transcript || ''));
     audio.src = note.audioUrl;
     dialog.showModal();
-    bodyEl.focus();
+    // Focus the waveform, not the transcript: the recording is already playing, so Space
+    // should pause it at once. Editing waits for a click into the text, as any real edit
+    // does. (showModal would otherwise focus the Name field — a text field that eats Space.)
+    canvas.focus();
     align();
     syncMove();
     loadWaveform(note.audioUrl);
