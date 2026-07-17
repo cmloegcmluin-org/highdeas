@@ -1,8 +1,9 @@
-/* The page's own find, in place of the browser's. Ctrl+F reveals a bar that filters the
-   list down to the rows whose name or transcript holds what you type — and it reaches
-   the whole transcript, including the part the three-line preview clips off and the part
-   the bin's scrolling text box hides, neither of which the browser's own find can see.
-   Esc closes it and brings the whole list back.
+/* The page's own find, in place of the browser's. A search box sits in the title bar from
+   the start — magnifier and all — and filters the list down to the rows whose name or
+   transcript holds what you type. It reaches the whole transcript, including the part the
+   three-line preview clips off and the part the bin's scrolling text box hides, neither of
+   which the browser's own find can see. Ctrl+F just puts the cursor in the box; Esc clears
+   it and brings the whole list back.
 
    Loaded from the shared chrome, so the inbox and the bin both have it. It knows nothing
    about what a row is beyond its name and its text: it filters the inbox's .memo rows and
@@ -12,13 +13,11 @@
 (function () {
   'use strict';
 
-  var bar = document.getElementById('find');
-  var content = document.getElementById('content');
-  if (!bar || !content) return;
-
   var input = document.getElementById('find-input');
+  var content = document.getElementById('content');
+  if (!input || !content) return;
+
   var tally = document.getElementById('find-tally');
-  var closeBtn = document.getElementById('find-close');
 
   function rows() {
     return Array.prototype.slice.call(content.querySelectorAll('.memo, .row'));
@@ -74,38 +73,26 @@
     else tally.textContent = shown + ' of ' + total;
   }
 
-  // Not named open(): that would shadow window.open, and this only ever uncovers the bar.
-  function reveal() {
-    bar.hidden = false;
-    input.focus();
-    input.select();
-  }
-
-  // Closing clears the query, so the list you come back to is the whole one and not a
-  // filter left on and forgotten behind a hidden bar.
-  function close() {
-    input.value = '';
-    apply();
-    bar.hidden = true;
-  }
-
   input.addEventListener('input', apply);
-  if (closeBtn) closeBtn.addEventListener('click', close);
 
   // An open dialog keeps the keyboard to itself: the editor's body is a long text the
   // browser's own find is the right tool for, and Esc there closes the editor.
   function dialogOpen() { return !!document.querySelector('dialog[open]'); }
 
   document.addEventListener('keydown', function (event) {
-    var find = (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey
+    var isFind = (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey
       && event.key.toLowerCase() === 'f';
-    if (find) {
+    if (isFind) {
       if (dialogOpen()) return;  // let the browser's find work the note being edited
       event.preventDefault();    // take Ctrl+F off the browser: ours reaches the clipped text
-      reveal();
-    } else if (event.key === 'Escape' && !bar.hidden && !dialogOpen()) {
-      event.preventDefault();
-      close();
+      input.focus();
+      input.select();
+    } else if (event.key === 'Escape' && document.activeElement === input) {
+      // The box is always there, so Esc empties it rather than closing it, and hands focus
+      // back to the page so the whole list is in front of you again.
+      input.value = '';
+      apply();
+      input.blur();
     }
   });
 

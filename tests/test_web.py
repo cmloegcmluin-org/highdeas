@@ -2004,27 +2004,32 @@ def test_every_page_carries_the_in_page_find(tmp_path):
     binned = client.get("/bin").data.decode()
 
     for body in (inbox, binned):
-        assert 'id="find"' in body
         assert 'id="find-input"' in body
+        assert 'class="find-icon"' in body   # the magnifier is there before a key is pressed
         assert "/static/find.js" in body
-    # It names the page it searches, and starts hidden until Ctrl+F calls it up.
-    assert 'placeholder="Find in Inbox…"' in inbox
-    assert 'placeholder="Find in Bin…"' in binned
-    assert 'id="find" class="find" hidden' in inbox
+    # It's a box in the title bar, sitting between the item count and the nav buttons —
+    # not a row of its own — and it names the page it searches for a screen reader.
+    assert inbox.index('id="count"') < inbox.index('class="find"') < inbox.index('id="undo"')
+    assert binned.index('id="count"') < binned.index('class="find"') < binned.index('href="/"')
+    assert 'aria-label="Find in Inbox"' in inbox
+    assert 'aria-label="Find in Bin"' in binned
+    # It's there from the start, not revealed on demand: no hidden bar, no close button.
+    assert 'class="find">' in inbox and 'class="find" hidden' not in inbox
+    assert 'id="find-close"' not in inbox
 
 
-def test_find_opens_on_ctrl_f_and_steps_aside_for_a_dialog(tmp_path):
+def test_ctrl_f_puts_the_cursor_in_the_find_and_steps_aside_for_a_dialog(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     js = asset(client, "find.js")
 
-    # Ctrl+F — and ⌘F on a Mac — opens ours instead of the browser's, whose match can't
-    # reach the clipped preview; it takes the key off the browser so both can't answer it.
+    # The box is always there, so Ctrl+F — and ⌘F on a Mac — doesn't summon it; it just
+    # puts the cursor in it, taking the key off the browser (whose find can't reach the
+    # clipped preview) so both can't answer it.
     assert "event.ctrlKey || event.metaKey" in js
     assert "'f'" in js
     assert "event.preventDefault()" in js
-    # Esc closes ours again.
-    assert "'Escape'" in js
+    assert "input.focus()" in js and "input.select()" in js
     # But an open dialog keeps the keys to itself: the editor's body is a long text the
     # browser's own find is the right tool for, and Esc there closes the editor.
     assert "dialog[open]" in js
@@ -2079,7 +2084,7 @@ def test_find_tallies_the_matches_out_loud(tmp_path):
     body = client.get("/").data.decode()
     js = asset(client, "find.js")
 
-    # The bar says how much of the list it has narrowed to, announced for a screen reader
+    # The box says how much of the list it has narrowed to, announced for a screen reader
     # as it changes.
     assert 'id="find-tally"' in body
     assert 'aria-live="polite"' in body
@@ -2087,18 +2092,19 @@ def test_find_tallies_the_matches_out_loud(tmp_path):
     assert "No matches" in js
 
 
-def test_find_closes_back_to_the_whole_list(tmp_path):
+def test_esc_clears_the_find_and_hands_the_whole_list_back(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
-    body = client.get("/").data.decode()
     js = asset(client, "find.js")
 
-    # Closing clears the query, so the list you come back to is the whole one and not a
-    # filter left on and forgotten.
-    assert 'id="find-close"' in body
-    close = js.split("function close()")[1].split("}")[0]
-    assert "input.value = ''" in close
-    assert "bar.hidden = true" in close
+    # The box doesn't go away, so Esc empties it rather than closing it — and only while the
+    # cursor is in it, so an Esc meant for something else on the page is left alone — then
+    # blurs, so the whole list is back in front of you.
+    assert "'Escape'" in js
+    assert "document.activeElement === input" in js
+    esc = js.split("'Escape'")[1].split("});")[0]
+    assert "input.value = ''" in esc
+    assert "input.blur()" in esc
 
 
 def test_find_is_the_one_script_both_pages_share_for_it(tmp_path):
