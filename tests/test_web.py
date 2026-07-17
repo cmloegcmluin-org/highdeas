@@ -322,7 +322,7 @@ def test_copy_button_confirms_a_copy_and_reports_a_failed_one(tmp_path):
     assert "Couldn't copy" in js
 
 
-def test_index_gives_every_row_a_select_checkbox_under_a_select_all(tmp_path):
+def test_grouping_by_drag_drops_the_checkbox_and_group_columns(tmp_path):
     service = FakeService(pending=[
         Memo(audio_filename="a.m4a", transcript="one"),
         Memo(audio_filename="b.m4a", transcript="two"),
@@ -330,24 +330,29 @@ def test_index_gives_every_row_a_select_checkbox_under_a_select_all(tmp_path):
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     body = client.get("/").data.decode()
+    js = asset(client, "inbox.js")
 
-    # A thin leading column of checkboxes, headed by a select-all that ticks them together.
-    assert body.count('class="pick"') == 2
-    assert 'id="select-all"' in body
-    assert body.index('id="select-all"') < body.index('class="pick"')
+    # Grouping is a drag now — drop one row on another — so the two columns that only ever
+    # fed the old picked-then-group flow are gone: the per-row checkbox, the select-all
+    # that ticked them together, and the header Group button that acted on the ticks.
+    assert 'class="pick"' not in body
+    assert 'id="select-all"' not in body
+    assert 'id="group-picked"' not in body
+    assert "select-all" not in js
+    assert "syncSelection" not in js
 
 
-def test_the_select_column_is_exactly_as_wide_as_the_box_it_holds(tmp_path):
+def test_the_inbox_grid_leads_with_the_grip_and_carries_no_select_column(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     css = asset(client, "app.css")
     columns = css.split(".grid.inbox")[1].split("grid-template-columns:")[1].split(";")[0].split()
-    box = css.split(".pick, #select-all {")[1].split("}")[0]
 
-    # The rule under a column head is drawn across the whole cell, so a column wider than
-    # its checkbox underlined empty space either side of it. The column is the checkbox.
-    assert "width: 15px" in box
-    assert columns[1] == "15px"
+    # The grip leads, and the 15px checkbox column it used to sit beside is gone — nothing
+    # in the inbox is that narrow any more.
+    assert columns[0] == "26px"
+    assert "15px" not in columns
+    assert ".pick" not in css
 
 
 def test_a_button_is_faded_only_when_it_is_disabled_and_always_by_the_same_amount(tmp_path):
@@ -395,12 +400,12 @@ def test_a_head_that_holds_a_control_is_as_bright_as_the_column_under_it(tmp_pat
 
     css = asset(client, "app.css")
 
-    # The head cells were dimmed as a whole, which took the select-all box and the bulk
-    # buttons down with them — and no child can climb back out of its parent's opacity,
-    # so a select-all read fainter than the very boxes it ticks. Only a head that is
-    # nothing but a word is a label, and only a label is dimmed.
+    # The head cells were dimmed as a whole, which took the bulk buttons down with them —
+    # and no child can climb back out of its parent's opacity, so Submit all read fainter
+    # than the very Submits it presses. Only a head that is nothing but a word is a label,
+    # and only a label is dimmed.
     assert "opacity" not in css.split(".grid .head {")[1].split("}")[0]
-    assert "opacity: .55" in css.split(".grid .head:not(:has(button, input)) {")[1].split("}")[0]
+    assert "opacity: .55" in css.split(".grid .head:not(:has(button)) {")[1].split("}")[0]
 
 
 def test_index_badges_a_group_row_and_leaves_a_plain_note_unbadged(tmp_path):
@@ -449,34 +454,15 @@ def test_the_bin_badge_only_reports_a_group_and_cannot_break_it_up(tmp_path):
     assert "ungroup" not in body
 
 
-def test_index_puts_the_group_button_over_the_group_column_and_starts_it_disabled(tmp_path):
-    service = FakeService(pending=[
-        Memo(audio_filename="a.m4a", transcript="one"),
-        Memo(audio_filename="b.m4a", transcript="two"),
-    ])
-    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
-
-    body = client.get("/").data.decode()
-
-    # Like Submit all and Trash all, it sits in the header of the column it acts on —
-    # here the group column, beside the checkboxes that feed it — and wears their chrome,
-    # rather than being the one bulk action drawn as a bare glyph.
-    assert 'id="group-picked" class="btn icon"' in body
-    assert body.index('id="select-all"') < body.index('id="group-picked"') < body.index(">Audio<")
-    # Nothing is ticked on load, so there is nothing to group yet.
-    opening_tag = body[body.index('id="group-picked"'):]
-    assert "disabled" in opening_tag[:opening_tag.index(">")]
-
-
-def test_the_inbox_posts_its_ticked_notes_to_the_group_endpoint(tmp_path):
+def test_the_inbox_posts_the_dragged_pair_to_the_group_endpoint(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     js = asset(client, "inbox.js")
 
     # Pins the seam between the page and the route: /group reads request.form.getlist("files").
+    # A drop hands it the two files it joined; the endpoint doesn't care how they were chosen.
     assert "post('/group'" in js
     assert "append('files'" in js
-    assert "getElementById('select-all')" in js
 
 
 def test_inbox_carries_the_group_naming_dialog(tmp_path):
@@ -515,17 +501,22 @@ def test_grouping_hands_over_every_unsaved_edit_before_the_merge(tmp_path):
     assert body.index("flushEdits(picks)") < body.index("post('/group'")
 
 
-def test_a_note_dragged_onto_a_group_joins_it_instead_of_reordering(tmp_path):
+def test_dragging_a_row_onto_the_middle_of_another_groups_the_two(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     js = asset(client, "inbox.js")
     css = asset(client, "app.css")
 
-    # The row drag already reorders; dropping on a group's badge cell means "join this
-    # group" instead. Only that cell accepts the drop, and only from a loose note.
-    assert "dropTarget" in js
-    assert "'dropping'" in js
-    assert ".kind.dropping" in css
+    # One drag does both jobs: near a row's top or bottom edge it reorders (as it always
+    # has), but over the row's middle band it means "group these two". A drop there routes
+    # the pair through the same namer-aware path a picked pair took, and the browser shows
+    # the copy cursor to say the drop combines rather than moves. The row you'd merge into
+    # lights up whole — there's no badge cell to drop on any more.
+    assert "groupPicked([" in js
+    assert "dropEffect = 'copy'" in js
+    assert ".memo.grouping" in css
+    assert "dropTarget" not in js
+    assert ".kind.dropping" not in css
 
 
 def test_index_trash_all_asks_for_confirmation(tmp_path):
@@ -661,12 +652,12 @@ def test_every_button_that_is_only_a_glyph_is_the_same_square(tmp_path):
     assert "width: 34px" in square and "height: 34px" in square
     for control in ("undo", "redo", "refresh"):
         assert f'id="{control}" class="btn topbtn icon"' in inbox
-    assert 'id="group-picked" class="btn icon"' in inbox
     assert 'id="submit-all" class="btn icon"' in inbox
     assert 'id="trash-all" class="btn icon danger"' in inbox
     assert 'class="btn icon move"' in inbox
     assert 'class="btn icon go"' in inbox
     assert 'class="btn icon del danger"' in inbox
+    assert 'class="btn icon danger group-badge ungroup"' in inbox
     assert 'id="restore-all" class="btn icon" title="Restore all"' in binned
     assert 'id="empty-bin" class="btn icon danger" title="Empty bin"' in binned
     assert 'class="btn icon restore" title="Restore"' in binned
@@ -1090,26 +1081,28 @@ def test_inbox_row_shows_when_the_recording_was_made(tmp_path):
     assert "Jul 7, 2:23 PM" in body
 
 
-def test_an_inbox_row_leads_with_grip_select_group_then_recorded(tmp_path):
-    # The three controls that act on a row come first, narrow and in reach of each
-    # other; the recording time follows as the first thing the row has to *say*.
-    service = FakeService(pending=[Memo(audio_filename="a.m4a", recorded_at="2026-07-07T14:23:05")])
+def test_an_inbox_row_leads_with_the_grip_and_ungroups_from_the_right(tmp_path):
+    # Only the grip leads a row now — pick one up and drop it on another to group them, so
+    # the checkbox and badge columns that fed the old flow are gone. The recording time
+    # follows the grip as the first thing the row has to *say*. The one group-only control
+    # left is Ungroup, which has moved to the row's action cluster on the right, after
+    # Submit and Trash, where breaking a group apart sits beside sending and binning it.
+    service = FakeService(pending=[Memo(audio_filename="g.m4a", transcript="- one",
+                                        kind="group", recorded_at="2026-07-07T14:23:05")])
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     body = client.get("/").data.decode()
 
     row = body.index('class="memo"')
-    order = ['class="grip"', 'class="pick"', 'class="kind"', 'class="when"']
+    assert body.index('class="grip"', row) < body.index('class="when"', row)
+    order = ['class="btn icon go"', 'class="btn icon del danger"', 'group-badge ungroup']
     assert [body.index(cell, row) for cell in order] == sorted(body.index(cell, row) for cell in order)
-    # The headers run the same way, so each control sits under the head that presses it.
-    heads = ['id="select-all"', 'id="group-picked"', "Recorded"]
-    assert [body.index(head) for head in heads] == sorted(body.index(head) for head in heads)
 
 
 def test_a_column_with_no_header_carries_no_underline(tmp_path):
-    # The header row's rule marks off the columns that are named. Under the grip and the
-    # move chevron there is nothing to name, so the rule breaks rather than underlining
-    # a heading that isn't there.
+    # The header row's rule marks off the columns that are named. Under the grip, the move
+    # chevron, and the group-only Ungroup on the right there is nothing to name, so the rule
+    # breaks rather than underlining a heading that isn't there.
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     css = asset(client, "app.css")

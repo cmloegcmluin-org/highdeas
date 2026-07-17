@@ -28,19 +28,18 @@
   </div>
 {% endblock %}
 
-{#- Bulk actions live in their own column headers so they sit directly over the
-    column they act on, instead of being pushed around by the topbar buttons. Group is
-    one of them: it folds the ticked notes together, so it heads the badge column right
-    beside their checkboxes.
+{#- Bulk actions live in their own column headers so they sit directly over the column
+    they act on, instead of being pushed around by the topbar buttons. Every one of them
+    now means "all" — Submit all, Trash all — since grouping became a drag and gave up its
+    header button.
 
-    The grip and the chevron head nothing — there is no naming a handle — so those two
+    The grip, the chevron, and the group-only Ungroup on the right head nothing — there is
+    no naming a handle, and Ungroup speaks only on the rows that are groups — so those three
     heads stay empty, and the rule under the header row breaks across them. -#}
 {% block headrow %}
-  {% from "icons.html" import group, send, trash %}
+  {% from "icons.html" import send, trash %}
   <div class="grid inbox headrow">
     <div class="head"></div>
-    <div class="head"><input type="checkbox" id="select-all" title="Select every note" aria-label="Select every note"></div>
-    <div class="head"><button type="button" id="group-picked" class="btn icon" disabled title="Group the selected notes" aria-label="Group the selected notes">{{ group() }}</button></div>
     <div class="head">Recorded</div>
     <div class="head">Audio</div>
     <div class="head">Transcript</div>
@@ -49,6 +48,7 @@
     <div class="head">Destination</div>
     <div class="head"><button type="button" id="submit-all" class="btn icon" title="Submit all" aria-label="Submit all">{{ send() }}</button></div>
     <div class="head"><button type="button" id="trash-all" class="btn icon danger" title="Trash all" aria-label="Trash all">{{ trash() }}</button></div>
+    <div class="head"></div>
   </div>
 {% endblock %}
 

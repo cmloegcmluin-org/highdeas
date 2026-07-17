@@ -123,7 +123,7 @@ body:has(#empty-bin:not(:disabled):hover) .row .purge:not(:disabled) { border-co
    grows, so the Asana dropdown appearing shoved the destination icons (and every
    neighbour) upward. Anchored to the top, a growing cell only extends downward. */
 .grid { display: grid; gap: 14px 18px; align-items: start; }
-.grid.inbox  { grid-template-columns: 26px 15px 34px 106px 348px minmax(220px, 1fr) 34px 132px 110px 34px 34px; }
+.grid.inbox  { grid-template-columns: 26px 106px 348px minmax(220px, 1fr) 34px 132px 110px 34px 34px 34px; }
 .grid.bin    { grid-template-columns: 34px 106px 348px minmax(220px, 1fr) 234px 90px 34px 34px; }
 .grid.body { margin-top: 12px; }
 /* Each head draws its own rule at its own bottom edge, so heads of different heights
@@ -135,9 +135,9 @@ body:has(#empty-bin:not(:disabled):hover) .row .purge:not(:disabled) { border-co
               padding-bottom: 4px; border-bottom: 1px solid rgba(128,128,128,.25); }
 /* A head that is nothing but a word is a label, and reads dim. A head that holds
    something you press is a control, and has to be as bright as the ones in the column
-   under it: dimming the cell dims its button too, and no child can climb back out of
-   its parent's opacity — which is why select-all read fainter than the boxes it ticks. */
-.grid .head:not(:has(button, input)) { opacity: .55; }
+   under it: dimming the cell dims its button too, and no child can climb back out of its
+   parent's opacity — which is why Submit all read fainter than the Submits it presses. */
+.grid .head:not(:has(button)) { opacity: .55; }
 /* A grip, a chevron, a badge in the bin: columns with nothing to name. The rule under
    the header row marks off the columns that have a heading, so it breaks across these
    rather than underlining a word that isn't there. */
@@ -152,20 +152,19 @@ body:has(#empty-bin:not(:disabled):hover) .row .purge:not(:disabled) { border-co
 .grip:hover { opacity: .75; }
 .grip:active { cursor: grabbing; }
 .grip svg { width: 16px; height: 16px; display: block; pointer-events: none; }
-/* The selection column: tick rows, then act on them as a set (grouping). The column is
-   the checkbox, to the pixel — the rule under a column head runs the width of the cell,
-   so a wider column would underline empty space either side of the box. */
-.pick, #select-all { width: 15px; height: 15px; margin: 0; cursor: pointer; accent-color: #3b82f6; }
-/* The group column. Every row carries the badge and only a group shows it, so the client
-   promotes a row by flipping data-kind. The cell stretches to the row's full height, to
-   be a big enough target for a note dragged onto a group. */
-.kind { align-self: stretch; display: flex; align-items: flex-start; justify-content: center; }
+/* The group badge cell. Every row carries the badge and only a group shows it, so the
+   client promotes a row by flipping data-kind. It leads the bin's rows as a bare marker,
+   and closes the inbox's as the Ungroup button — the one action a group has that a note
+   doesn't, sitting with Submit and Trash. */
+.kind { display: flex; align-items: flex-start; justify-content: center; }
 /* The bin's badge only reports, so it is a bare glyph outside any square and asks for
    its own size. The inbox's is a button, and .icon draws it. */
 .kind svg { width: 16px; height: 16px; display: block; }
 [data-kind="note"] .group-badge { display: none; }
-/* A group's badge while a dragged note hovers it: let go here and the note joins it. */
-.kind.dropping { outline: 2px dashed #3b82f6; outline-offset: 3px; border-radius: 6px; }
+/* The row a dragged note hovers over its middle: let go here and the two fold into a
+   group. A .memo is display:contents and has no box to outline, so the tint lands on its
+   cells — every one, so the whole row reads as the one thing you'd merge into. */
+.memo.grouping > * { background: rgba(59,130,246,.14); }
 /* On the inbox the badge is a button — the same square as the head above it — and
    reaching for it shows the stack coming apart and reddens (.btn.danger), so the click
    reads as what it does, and as the taking-apart that it is, before it is made. */
