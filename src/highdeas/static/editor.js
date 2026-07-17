@@ -519,8 +519,8 @@
   audio.addEventListener('loadedmetadata', tick);
 
   // A click lands the playhead; dragging past a small wobble paints a selection over
-  // that stretch of sound instead. Focusing the canvas hands it the space and Delete
-  // keys below without stealing them from the text body.
+  // that stretch of sound instead. Focusing the canvas moves focus off the text body,
+  // so the Space and Delete keys below act on the audio rather than the transcript.
   var DRAG_PX = 4;
   canvas.addEventListener('pointerdown', function (event) {
     canvas.setPointerCapture(event.pointerId);
@@ -537,10 +537,16 @@
   });
   canvas.addEventListener('lostpointercapture', function () { press = null; });
 
-  // With the waveform focused, space plays or pauses and Delete (Backspace, on a Mac)
-  // removes the words under a selection.
-  canvas.addEventListener('keydown', function (event) {
+  // Space plays or pauses, and Delete (Backspace, on a Mac) cuts the words under a
+  // selection — but only when focus isn't in a text field, where those keys still type
+  // and edit as normal. A focused button keeps its own Space so Done and Close still fire.
+  function isTyping(el) {
+    return !!el && (el.isContentEditable || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
+  }
+  dialog.addEventListener('keydown', function (event) {
+    if (isTyping(event.target)) return;
     if (event.key === ' ' || event.key === 'Spacebar') {
+      if (event.target.tagName === 'BUTTON') return;
       event.preventDefault();
       if (audio.paused) audio.play(); else audio.pause();
     } else if (selection && (event.key === 'Delete' || event.key === 'Backspace')) {
