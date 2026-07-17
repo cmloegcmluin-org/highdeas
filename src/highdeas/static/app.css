@@ -176,23 +176,26 @@ body:has(#empty-bin:not(:disabled):hover) .row .purge:not(:disabled) { border-co
                     transition: border-color .15s, background .15s; }
 .memo .transcript:hover, .memo .transcript:focus-visible { border-color: #3b82f6; }
 .memo .transcript:empty::before { content: "Add a transcript…"; opacity: .45; }
-/* A copy button rides inside its cell rather than claiming a grid column of its own,
-   so the inbox keeps the widths the bin grid mirrors. The cell's contents pad right to
-   keep their text out from under the button. */
+/* A copy-to-clipboard button that rides inside a field rather than claiming a column of
+   its own — transparent and faint until reached, carrying both the clipboard and the
+   check the client swaps to on a copy. The chrome is shared by the inbox rows and the
+   note editor; only where each pins its own (below) differs. */
+.clip { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+        padding: 0; border: none; border-radius: 6px; background: transparent; color: inherit;
+        opacity: .35; cursor: pointer; transition: opacity .15s, color .15s; }
+.clip:hover { opacity: 1; color: #3b82f6; }
+.clip svg { width: 15px; height: 15px; display: block; }
+/* Copied: hold a green check for a beat, since the clipboard gives no sign of its own. */
+.clip.copied { opacity: 1; color: #30a46c; }
+.clip .ic-ok, .clip.copied .ic-copy { display: none; }
+.clip.copied .ic-ok { display: block; }
+/* On an inbox row the button pins inside its cell, so the inbox keeps the widths the bin
+   grid mirrors. The cell's contents pad right to keep their text out from under it. */
 .cell { position: relative; }
 .cell .transcript, .cell input[type=text] { padding-right: 34px; }
-.memo .clip { position: absolute; top: 7px; right: 6px; width: 24px; height: 24px;
-              display: flex; align-items: center; justify-content: center; padding: 0;
-              border: none; border-radius: 6px; background: transparent; color: inherit;
-              opacity: .35; cursor: pointer; transition: opacity .15s, color .15s; }
+.memo .clip { position: absolute; top: 7px; right: 6px; }
 /* A one-line cell centres its button; the transcript anchors it to the first line. */
 .cell.oneline .clip { top: 50%; transform: translateY(-50%); }
-.memo .clip:hover { opacity: 1; color: #3b82f6; }
-.memo .clip svg { width: 15px; height: 15px; display: block; }
-/* Copied: hold a green check for a beat, since the clipboard gives no sign of its own. */
-.memo .clip.copied { opacity: 1; color: #30a46c; }
-.memo .clip .ic-ok, .memo .clip.copied .ic-copy { display: none; }
-.memo .clip.copied .ic-ok { display: block; }
 /* A row whose submit/trash just failed: outline its fields so it's obvious which
    one stayed behind. */
 .memo.failed .transcript, .memo.failed input[type=text] { border-color: #e5484d; }
@@ -226,9 +229,10 @@ body:has(#empty-bin:not(:disabled):hover) .row .purge:not(:disabled) { border-co
               border: 1px solid #3b82f6; box-shadow: 0 12px 28px rgba(0,0,0,.35); }
 /* One chevron, turned around once the transcript is empty so it points the way the name
    is about to travel back; with both cells empty it has no move to offer and goes out
-   with every other button that has nothing left to do. */
-.memo .move svg { transition: transform .15s; }
-.memo .move.back svg { transform: rotate(180deg); }
+   with every other button that has nothing left to do. Shared by the inbox row and the
+   editor, which flips it the same way between the same two fields. */
+.move svg { transition: transform .15s; }
+.move.back svg { transform: rotate(180deg); }
 /* The destination picker: three radio-backed brand icons; the checked one is lit,
    the rest sit dimmed (half-lit on hover). */
 .route-cell { display: flex; flex-direction: column; gap: 6px; }
@@ -297,11 +301,20 @@ body:has(#empty-bin:not(:disabled):hover) .row .purge:not(:disabled) { border-co
 .editor[open] { display: flex; flex-direction: column; gap: 14px; }
 .editor::backdrop { background: rgba(0,0,0,.55); }
 .editor-head { display: flex; align-items: center; gap: 14px; }
-/* The title gets the full width of the dialog, so a long auto-title reads whole. */
-.editor-name { flex: 1; min-width: 0; font: inherit; font-size: 1.3rem; font-weight: 600;
-               padding: 8px 10px; border-radius: 9px; background: transparent; color: inherit;
+/* The title cell takes the width the row leaves after the chevron and the close, and holds
+   its copy button pinned over its right end. */
+.editor-name-cell { position: relative; flex: 1; min-width: 0; }
+/* The title gets the full width of its cell, so a long auto-title reads whole; its right
+   padding is the copy button's zone. */
+.editor-name { width: 100%; box-sizing: border-box; font: inherit; font-size: 1.3rem; font-weight: 600;
+               padding: 8px 40px 8px 10px; border-radius: 9px; background: transparent; color: inherit;
                border: 1px solid rgba(128,128,128,.35); }
 .editor-name:focus { outline: none; border-color: #3b82f6; }
+/* Both of the editor's copy buttons pin absolutely inside their field; each cell says where. */
+.editor-clip { position: absolute; }
+.editor-name-cell .clip { top: 50%; right: 8px; transform: translateY(-50%); }
+/* The chevron between the title and the body wears the app's icon-button square. */
+.editor-move { flex: none; }
 .editor-close { flex: none; font: inherit; font-size: 1.7rem; line-height: 1; width: 40px; height: 40px;
                 border: none; border-radius: 9px; background: transparent; color: inherit;
                 opacity: .5; cursor: pointer; transition: opacity .15s; }
@@ -319,9 +332,13 @@ body:has(#empty-bin:not(:disabled):hover) .row .purge:not(:disabled) { border-co
 .toolbar { display: flex; gap: 8px; }
 .tool { font-size: .8rem; padding: 5px 11px; }
 
-.editor-body { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 16px; font-size: 1.05rem;
+/* The body's copy button hangs on the cell, not the scrolling body, so it stays in the
+   top-right corner as the transcript scrolls under it. */
+.editor-body-cell { position: relative; flex: 1; min-height: 0; display: flex; }
+.editor-body { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 44px 14px 16px; font-size: 1.05rem;
                border: 1px solid rgba(128,128,128,.35); border-radius: 10px; }
 .editor-body:focus { outline: none; border-color: #3b82f6; }
+.editor-body-cell .clip { top: 10px; right: 14px; }
 .editor-body p { margin: 0 0 .55em; min-height: 1.45em; }
 .editor-body ul, .editor-body ol { margin: 0 0 .55em; padding-left: 1.6em; }
 .editor-body li { margin: 0 0 .2em; }

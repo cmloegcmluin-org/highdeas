@@ -24,6 +24,7 @@
   var playBtn = document.getElementById('editor-play');
   var timeEl = document.getElementById('editor-time');
   var waveNote = document.getElementById('editor-wave-note');
+  var moveBtn = dialog.querySelector('.editor-move');
 
   var SAVE_MS = 400;      // debounce before an edit is reported to the caller
   var ALIGN_MS = 150;     // debounce before edited text is re-matched to the audio
@@ -300,6 +301,65 @@
     alignTimer = setTimeout(function () { align(); paint(audio.currentTime); }, ALIGN_MS);
   }
 
+  /* ---- The field controls: copy each field, and move text between them ------ */
+
+  // A glyph button carries its name where the pointer and the screen reader each find it.
+  function label(button, name) {
+    button.title = name;
+    button.setAttribute('aria-label', name);
+  }
+
+  function transcriptText() { return readNote(bodyEl); }
+
+  // The chevron always points the way the text is about to travel: into the Name while
+  // the transcript has something to give, back into the transcript once it's empty and
+  // the name is the one holding it. Derived from the two fields each time rather than
+  // remembered, so it can never offer a move that isn't there.
+  function movesBack() { return !transcriptText().trim(); }
+
+  function syncMove() {
+    var back = movesBack();
+    moveBtn.classList.toggle('back', back);
+    label(moveBtn, back ? 'Move name into Transcript' : 'Move transcript into Name');
+    moveBtn.disabled = back && !nameEl.value.trim();
+  }
+
+  function moveText() {
+    if (movesBack()) {
+      var name = nameEl.value;
+      nameEl.value = '';
+      bodyEl.replaceChildren(renderNote(name));
+    } else {
+      nameEl.value = transcriptText();
+      bodyEl.replaceChildren(renderNote(''));
+    }
+    align();
+    paint(audio.currentTime);
+    syncMove();
+    flush();  // a move is a whole edit, not a keystroke: report it now, not on the timer
+  }
+
+  // Copy a field to the clipboard and hold a check on its button for a beat — the
+  // clipboard gives no sign of its own that the copy landed.
+  var COPIED_MS = 1200;
+
+  function writeClipboard(text) {
+    try {
+      return navigator.clipboard.writeText(text);
+    } catch (err) {
+      return Promise.reject(err);  // no Clipboard API at all (insecure origin, old webview)
+    }
+  }
+
+  function copyField(btn) {
+    var text = btn.dataset.copy === 'name' ? nameEl.value : transcriptText();
+    writeClipboard(text).then(function () {
+      btn.classList.add('copied');
+      clearTimeout(btn._copied);
+      btn._copied = setTimeout(function () { btn.classList.remove('copied'); }, COPIED_MS);
+    }).catch(function () { /* the clipboard wouldn't take it; the editor has no bar to say so */ });
+  }
+
   function open(note) {
     current = note;
     words = note.words || [];
@@ -310,6 +370,7 @@
     dialog.showModal();
     bodyEl.focus();
     align();
+    syncMove();
     loadWaveform(note.audioUrl);
     // The click that opened the dialog is the gesture autoplay needs.
     audio.play().catch(function () { /* the user can still press play */ });
@@ -362,8 +423,12 @@
     if (pressedOff && isOffDialog(event)) closeEditor();
   });
 
-  nameEl.addEventListener('input', scheduleSave);
-  bodyEl.addEventListener('input', function () { scheduleSave(); scheduleAlign(); });
+  nameEl.addEventListener('input', function () { scheduleSave(); syncMove(); });
+  bodyEl.addEventListener('input', function () { scheduleSave(); scheduleAlign(); syncMove(); });
+  moveBtn.addEventListener('click', moveText);
+  dialog.querySelectorAll('.editor-clip').forEach(function (btn) {
+    btn.addEventListener('click', function () { copyField(btn); });
+  });
   // Once the user is working in the text, stop yanking it around under them.
   ['pointerdown', 'wheel', 'keydown'].forEach(function (event) {
     bodyEl.addEventListener(event, function () { following = false; });
@@ -377,6 +442,7 @@
       // real list — and to undo one — without reimplementing block editing.
       document.execCommand(button.dataset.cmd);
       align();
+      syncMove();
       scheduleSave();
     });
   });

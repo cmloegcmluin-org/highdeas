@@ -279,7 +279,7 @@ def test_the_move_button_points_the_way_the_text_will_travel(tmp_path):
     assert "Move transcript into Name" not in body
     assert "classList.toggle('back', back)" in js
     assert "'Move transcript into Name'" in js and "'Move name into Transcript'" in js
-    assert ".memo .move.back svg" in css  # the same chevron, turned around
+    assert ".move.back svg" in css  # the same chevron, turned around — shared with the editor
     # And with both cells empty there is no move to make, either way, so the chevron is
     # disabled and takes the one fade every spent button in the app takes.
     assert "btn.disabled" in js
@@ -881,6 +881,42 @@ def test_index_renders_the_editor_dialog_once_for_every_row(tmp_path):
     assert 'contenteditable="true"' in body
     assert 'data-cmd="insertUnorderedList"' in body
     assert 'data-cmd="insertOrderedList"' in body
+
+
+def test_editor_offers_copy_buttons_for_both_fields_and_the_move_chevron(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data.decode()
+
+    # The editor grows the same three controls the inbox row has: a copy button pinned in
+    # each field, and the auto-flipping chevron that moves the text from one to the other.
+    assert 'class="clip editor-clip" data-copy="name"' in body
+    assert 'class="clip editor-clip" data-copy="transcript"' in body
+    assert 'class="btn icon move editor-move"' in body
+
+
+def test_editor_js_copies_a_field_and_flips_the_move_by_which_field_holds_text(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    js = asset(client, "editor.js")
+
+    # Copy puts the field on the clipboard and holds a check for a beat; the move mirrors
+    # the row's chevron — aimed by which field currently holds the text, not by memory.
+    assert "navigator.clipboard.writeText" in js
+    assert "classList.add('copied')" in js
+    assert "movesBack" in js
+    assert "'Move transcript into Name'" in js and "'Move name into Transcript'" in js
+
+
+def test_editor_clip_shares_the_rows_clipboard_chrome(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    css = asset(client, "app.css")
+
+    # The clip chrome is written once and shared by both surfaces — the editor only says
+    # where its own copy of the button is pinned.
+    assert ".clip.copied" in css
+    assert ".editor-clip" in css
 
 
 def test_the_editor_dialog_stays_hidden_until_something_opens_it(tmp_path):
