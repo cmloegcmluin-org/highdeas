@@ -11,6 +11,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from highdeas.drive_link import DriveFolderLinker, parent_id_from_folder_url
 from highdeas.routers import (
     AsanaRouter, ClaudeRouter, DriveMusicRouter, NotesnookRouter, Router, parse_choices,
     read_asana_tokens,
@@ -209,10 +210,12 @@ def build_app():
         bin_dir=bin_dir,
         route=Router(notesnook=notesnook, drive=drive, asana=asana, claude=claude),
     )
+    drive_folder_url = os.environ.get("HIGHDEAS_DRIVE_FOLDER_URL", "")
     app = create_app(service, inbox_dir=inbox_dir, bin_dir=bin_dir,
                      open_link=open_link, asana_parents=asana_parents,
                      claude_models=claude_models,
-                     drive_folder_url=os.environ.get("HIGHDEAS_DRIVE_FOLDER_URL", ""),
+                     drive_folder_url=drive_folder_url,
+                     drive_link_for=_drive_link_resolver(drive_folder_url),
                      updates=UpdateChecker(PROJECT_ROOT),
                      rescan=lambda: _refresh_when_free(service))
     return app, service
@@ -286,6 +289,20 @@ def _deep_link_launcher():
     if sys.platform == "darwin":
         return lambda url: subprocess.Popen(["open", url])
     return os.startfile
+
+
+def _drive_link_resolver(folder_url):
+    """A callable that resolves a memo's dated subfolder name to that subfolder's
+    own Drive link, via the real Drive API — or None when that isn't configured
+    (no HIGHDEAS_GOOGLE_SERVICE_ACCOUNT_FILE, or folder_url isn't a real Drive
+    folder link to parse a parent ID out of). The bin's Drive icon falls back to
+    the static top-level folder link whenever this is None or the call resolves
+    to nothing, so per-memo linking stays opt-in, not required."""
+    service_account_file = os.environ.get("HIGHDEAS_GOOGLE_SERVICE_ACCOUNT_FILE", "")
+    parent_id = parent_id_from_folder_url(folder_url)
+    if not service_account_file or not parent_id:
+        return None
+    return DriveFolderLinker(service_account_file, parent_id).link_for
 
 
 def _become_current(checker=None):
