@@ -624,7 +624,6 @@
     var preview = previewOf(memo);
     var name = nameField(memo);
     var parent = parentField(memo);
-    var handle = memo.querySelector('.grip');
     syncMove(memo);
     memo.querySelector('.ungroup').addEventListener('click', function () {
       clearNotice();
@@ -657,32 +656,37 @@
       radio.addEventListener('change', rebind);
     });
     if (parent) parent.addEventListener('change', rebind);
-    handle.addEventListener('dragstart', function (event) {
-      dragged = memo;
-      orderBefore = orderOf();
-      // A row drops two ways — reordered (move) or grouped (copy) — so both effects have to
-      // be allowed up front. A move-only effectAllowed makes the browser discard the copy
-      // dropEffect the group band asks for, and the "+" cursor that marks a merge never shows.
-      event.dataTransfer.effectAllowed = 'copyMove';
-      event.dataTransfer.setData('text/plain', memo.dataset.file);
-      dragImage(memo, event);
-      memo.classList.add('dragging');
-    });
-    handle.addEventListener('dragend', function () {
-      memo.classList.remove('dragging');
-      dragged = null;
-      highlight(null);
-      var was = orderBefore;
-      orderBefore = null;
-      // The dropped note is being folded into a group, so it is leaving the inbox: the
-      // rows it passed on the way there keep the order they already had on the server.
-      if (joining) { joining = false; return; }
-      var now = orderOf();
-      if (now.join() === was.join()) return;  // let go where it was picked up
-      saveOrder();
-      undoStack.did({
-        undo: function () { applyOrder(was); },
-        redo: function () { applyOrder(now); },
+    // The note is grabbed by more than its thin grip — its timestamp and its transcript are
+    // drag sources too (rows.html marks them draggable), so the hand can take hold of the
+    // note itself. They share one pair of handlers; the grip is just the most obvious of them.
+    memo.querySelectorAll('[draggable="true"]').forEach(function (source) {
+      source.addEventListener('dragstart', function (event) {
+        dragged = memo;
+        orderBefore = orderOf();
+        // A row drops two ways — reordered (move) or grouped (copy) — so both effects have to
+        // be allowed up front. A move-only effectAllowed makes the browser discard the copy
+        // dropEffect the group band asks for, and the "+" cursor that marks a merge never shows.
+        event.dataTransfer.effectAllowed = 'copyMove';
+        event.dataTransfer.setData('text/plain', memo.dataset.file);
+        dragImage(memo, event);
+        memo.classList.add('dragging');
+      });
+      source.addEventListener('dragend', function () {
+        memo.classList.remove('dragging');
+        dragged = null;
+        highlight(null);
+        var was = orderBefore;
+        orderBefore = null;
+        // The dropped note is being folded into a group, so it is leaving the inbox: the
+        // rows it passed on the way there keep the order they already had on the server.
+        if (joining) { joining = false; return; }
+        var now = orderOf();
+        if (now.join() === was.join()) return;  // let go where it was picked up
+        saveOrder();
+        undoStack.did({
+          undo: function () { applyOrder(was); },
+          redo: function () { applyOrder(now); },
+        });
       });
     });
     memo.querySelector('.move').addEventListener('click', function () { moveText(memo); });

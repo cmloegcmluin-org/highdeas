@@ -1064,6 +1064,25 @@ def test_each_inbox_row_is_dragged_by_a_grip_not_by_a_number(tmp_path):
     assert "/reorder" in asset(client, "inbox.js")
 
 
+def test_a_note_is_grabbed_by_its_body_not_only_the_thin_grip(tmp_path):
+    service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hi",
+                                        recorded_at="2026-07-07T14:23:05")])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data.decode()
+    js = asset(client, "inbox.js")
+
+    # A 26px grip is a small target for "pick this note up", and reaching for the note itself
+    # — its timestamp, its transcript — started a text-selection drag the list ignored, which
+    # the browser paints as "no drop". Those cells are drag sources too now, so grabbing the
+    # note anywhere along its body moves it.
+    assert 'class="when" draggable="true"' in body
+    assert 'class="transcript" draggable="true"' in body
+    # One pair of drag handlers, wired to every draggable cell rather than the grip alone.
+    assert "querySelectorAll('[draggable=\"true\"]')" in js
+    assert "querySelector('.grip')" not in js
+
+
 def test_dragging_a_row_carries_a_picture_of_the_whole_row(tmp_path):
     service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="one")])
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
@@ -1140,7 +1159,7 @@ def test_inbox_row_leaves_the_timestamp_blank_when_the_recording_time_is_unknown
 
     body = client.get("/").data.decode()
 
-    assert '<div class="when"></div>' in body
+    assert '<div class="when" draggable="true"></div>' in body
 
 
 def test_index_shows_a_transcribing_hint_while_recordings_await(tmp_path):

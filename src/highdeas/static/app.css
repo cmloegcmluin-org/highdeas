@@ -161,8 +161,12 @@ body:has(#empty-bin:not(:disabled):hover) .row .purge:not(:disabled) { border-co
 .grid .sep { grid-column: 1 / -1; border-top: 1px solid rgba(128,128,128,.18); }
 /* The recording's time on the inbox; in the bin, the days a memo has sat there. */
 .when, .age { font-size: .8rem; opacity: .6; white-space: nowrap; }
-/* The one cell of an inbox row you can pick up. Dotted, so the row says where to take
-   hold of it, and faint until you go for it. */
+/* On the inbox the timestamp is a drag handle too, so the note can be grabbed by its own
+   body and not just the grip; the grab cursor says so. */
+.when { cursor: grab; }
+/* The grip is the row's plainest handle — dotted, so it says "take hold here", and faint
+   until you go for it. The timestamp and transcript are draggable as well; this is just the
+   one that looks the part. */
 .grip { display: flex; align-items: flex-start; justify-content: center;
         cursor: grab; opacity: .3; transition: opacity .15s; }
 .grip:hover { opacity: .75; }
