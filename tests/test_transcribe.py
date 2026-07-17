@@ -140,6 +140,53 @@ def test_transcriber_reports_no_words_when_the_model_gives_no_timings(tmp_path):
     assert spoken.words == ()
 
 
+def test_transcriber_marks_an_unreadable_recording_as_unclear(tmp_path):
+    # The model heard no words and the audio isn't singing: show a placeholder, never
+    # a blank note the user has to guess the emptiness of.
+    model = FakeModel(Recognition(""))
+
+    spoken = Transcriber(model=model, decode=lambda src: tmp_path / "x.wav",
+                         detect_singing=lambda wav: False).transcribe(tmp_path / "a.m4a")
+
+    assert spoken.text == "[unclear]"
+    assert spoken.words == ()
+
+
+def test_transcriber_marks_an_unread_but_sung_recording_as_singing(tmp_path):
+    # Whitespace-only is as empty as "": the model still made out no words.
+    model = FakeModel(Recognition("   "))
+
+    spoken = Transcriber(model=model, decode=lambda src: tmp_path / "x.wav",
+                         detect_singing=lambda wav: True).transcribe(tmp_path / "a.m4a")
+
+    assert spoken.text == "[singing]"
+    assert spoken.words == ()
+
+
+def test_transcriber_probes_for_singing_only_when_no_words_were_heard(tmp_path):
+    probed = []
+    model = FakeModel(Recognition("hello world", tokens=[" hello", " world"],
+                                  timestamps=[0.1, 0.4]))
+
+    spoken = Transcriber(
+        model=model, decode=lambda src: tmp_path / "x.wav",
+        detect_singing=lambda wav: probed.append(wav) or True,
+    ).transcribe(tmp_path / "a.m4a")
+
+    assert spoken.text == "hello world"
+    assert probed == []  # a heard recording is never opened a second time to guess at
+
+
+def test_transcriber_hands_the_decoded_wav_to_the_singing_probe(tmp_path):
+    probed = []
+    model = FakeModel(Recognition(""))
+
+    Transcriber(model=model, decode=lambda src: tmp_path / "decoded.wav",
+                detect_singing=lambda wav: probed.append(wav) or False).transcribe(tmp_path / "a.m4a")
+
+    assert probed == [tmp_path / "decoded.wav"]
+
+
 def test_load_parakeet_pins_the_cpu_provider(monkeypatch):
     # Left to choose, onnxruntime picks CoreML on macOS, which fails to
     # initialize this external-data model ("model_path must not be empty").
