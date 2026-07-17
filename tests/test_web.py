@@ -1156,16 +1156,22 @@ def test_refresh_button_spins_and_locks_for_a_held_beat_while_it_checks(tmp_path
     # surfaces nothing new still visibly reacts, and can't double-fire while it runs.
     assert "REFRESH_FEEDBACK_MS" in js
     assert "refreshBtn.disabled = true" in js
+    # The poll no longer scans, so the button kicks one itself via /rescan before it
+    # pulls in whatever's ready.
+    assert "/rescan" in js
 
 
-def test_pending_refreshes_and_renders_just_the_memo_rows(tmp_path):
+def test_pending_paints_stored_rows_without_scanning_on_the_request_thread(tmp_path):
+    # The 5s poll only reads the store; it never runs the scan (and its slow
+    # transcription) on the request thread. That is what keeps a stuck decode or a
+    # cold model from freezing the page — and from hiding a peer's memo that just
+    # synced in, the delay that once needed an app restart to clear.
     service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hello there")])
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     resp = client.get("/pending")
 
-    # Polling rescans the inbox, same as loading the page does.
-    assert service.refreshed == 1
+    assert service.refreshed == 0
     assert resp.status_code == 200
     # The row markup the client splices in, carrying its filename and transcript.
     assert b'data-file="a.m4a"' in resp.data
@@ -1175,7 +1181,7 @@ def test_pending_refreshes_and_renders_just_the_memo_rows(tmp_path):
     assert b"<!doctype" not in resp.data
 
 
-def test_pending_surfaces_a_recording_that_arrives_after_the_page_loads(tmp_path):
+def test_pending_surfaces_a_recording_once_the_background_scan_takes_it_in(tmp_path):
     from highdeas.service import InboxService
     from highdeas.store import MemoStore
 
@@ -1200,10 +1206,45 @@ def test_pending_surfaces_a_recording_that_arrives_after_the_page_loads(tmp_path
     # A recording lands in the inbox, as the iOS Shortcut + iCloud would deliver it.
     (inbox / "voice-8.m4a").write_bytes(b"NEW-RECORDING")
 
-    # The next poll rescans and surfaces the new memo without a page reload.
+    # The poll paints only what's stored, so it does NOT transcribe on the request
+    # thread — the recording is still merely "incoming" until a scan takes it in.
+    assert b"fresh idea" not in client.get("/pending").data
+
+    # The background scan (here, an explicit refresh) transcribes it; the next poll
+    # surfaces the memo without a page reload.
+    service.refresh()
     body = client.get("/pending").data
     assert b"fresh idea" in body
     assert b'class="memo"' in body
+
+
+def test_rescan_kicks_a_scan_off_the_request_thread_and_returns_at_once(tmp_path):
+    # The manual "check for new notes now" button. The poll no longer scans, so this
+    # is what makes a user-asked check happen now rather than at the next background
+    # tick — and it hands the scan to another thread so the click returns immediately,
+    # never blocking on transcription. Whatever the scan finds streams in via the poll.
+    kicks = []
+    service = FakeService()
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin"),
+                        rescan=lambda: kicks.append(1)).test_client()
+
+    resp = client.post("/rescan")
+
+    assert resp.status_code == 204
+    assert kicks == [1]
+
+
+def test_the_poll_never_kicks_a_scan_only_the_manual_check_does(tmp_path):
+    # Guard the decoupling: an automatic /pending poll must not trigger a scan, or the
+    # freeze the decoupling removes would sneak back in through the poll's own request.
+    kicks = []
+    service = FakeService()
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin"),
+                        rescan=lambda: kicks.append(1)).test_client()
+
+    client.get("/pending")
+
+    assert kicks == []
 
 
 def test_submit_saves_edits_then_submits_and_returns_204(tmp_path):

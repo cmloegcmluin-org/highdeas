@@ -48,7 +48,7 @@ def _submitted_fields():
 
 
 def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=(), drive_folder_url="",
-               now=datetime.now, updates=None, update_respawn_delay=0.7):
+               now=datetime.now, updates=None, update_respawn_delay=0.7, rescan=None):
     app = Flask(__name__)
     app.jinja_env.filters["when"] = _format_when
     # The bin's ages are read against the wall clock, so the clock is injectable.
@@ -79,16 +79,31 @@ def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=(), dr
 
     @app.get("/pending")
     def pending():
-        """The inbox rows alone — polled by the open page to pick up recordings
-        that arrive after load, so the app stays current without a manual reload.
+        """The inbox rows alone — polled by the open page to pick up memos that
+        arrive after load: recordings the background scan has transcribed, and —
+        now that another machine shares this store — memos the peer created,
+        edited, or retired.
 
-        It rescans rather than reading the store the background scan keeps current,
-        because this is also what the page's "check for new notes now" button calls:
-        a scan the user asked for shouldn't wait on the next tick of one they didn't."""
-        service.refresh()
+        It only reads the store and counts what's still incoming; it never runs the
+        scan itself. Ingesting, and its slow transcription, belongs to the background
+        thread alone, so this poll can't block on the model or stall behind a stuck
+        decode — the bug where a peer's freshly-synced memo sat unseen (and same-
+        machine notes hung) until the app was restarted. The "check now" button asks
+        for an out-of-band scan through /rescan."""
         return render_template("rows.html", memos=service.pending(),
                                incoming=service.incoming_count(),
                                asana_parents=asana_parents)
+
+    @app.post("/rescan")
+    def rescan_now():
+        """The manual "check for new notes now" button. The poll no longer scans, so
+        this is what makes a user-asked check happen now rather than at the next
+        background tick. The scan runs off the request thread (see app._refresh_when_free),
+        so the click returns at once and never blocks on transcription; whatever it
+        finds streams in through the next poll."""
+        if rescan is not None:
+            rescan()
+        return ("", 204)
 
     @app.get("/version")
     def version():

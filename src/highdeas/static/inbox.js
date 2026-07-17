@@ -844,10 +844,12 @@
 
   setInterval(maybeSelfUpdate, VERSION_POLL_MS);
 
-  // Manual "check now": the same inbox rescan the poll runs, on demand. A local check
-  // returns almost instantly, so hold the button's arrows spinning for a beat — even
-  // when nothing new turns up — so the click visibly does something and can't
-  // double-fire. Whatever it finds still streams in through merge as usual.
+  // Manual "check now": the poll only paints what's already stored, so this is the one
+  // place that asks for a scan on demand — /rescan, which runs it off the request
+  // thread. The check that follows returns almost instantly, so hold the button's
+  // arrows spinning for a beat — even when nothing new turns up yet — so the click
+  // visibly does something and can't double-fire. Whatever the scan finds streams in
+  // through merge on the polls that follow.
   var REFRESH_FEEDBACK_MS = 700;
   var refreshBtn = document.getElementById('refresh');
   if (refreshBtn) refreshBtn.addEventListener('click', function () {
@@ -855,6 +857,7 @@
     refreshBtn.disabled = true;
     refreshBtn.classList.add('spinning');
     var held = new Promise(function (done) { setTimeout(done, REFRESH_FEEDBACK_MS); });
+    post('/rescan').catch(function () {});
     Promise.all([check(), held]).then(function () {
       refreshBtn.classList.remove('spinning');
       refreshBtn.disabled = false;
