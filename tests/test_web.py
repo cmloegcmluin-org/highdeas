@@ -2038,6 +2038,24 @@ def test_every_page_carries_the_in_page_find(tmp_path):
     assert 'id="find-close"' not in inbox
 
 
+def test_find_sits_in_the_same_place_on_both_pages_and_holds_its_width(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    css = asset(client, "app.css")
+
+    # The title bar is three columns with an equal 1fr either side of the find, so the box
+    # is dead-centre and lands in the same place on the inbox and the bin however much
+    # their titles and button rows differ in width.
+    topbar = css.split(".topbar {")[1].split("}")[0]
+    assert "grid-template-columns: 1fr auto 1fr" in topbar
+    # One fixed width for the box, wide because the middle of the row is otherwise empty,
+    # and the input flexes within it — so the tally reading "no matches" comes out of the
+    # input rather than widening the box.
+    find = css.split(".find {")[1].split("}")[0]
+    assert "width: clamp(" in find
+    assert "flex: 1" in css.split(".find-input {")[1].split("}")[0]
+
+
 def test_ctrl_f_puts_the_cursor_in_the_find_and_steps_aside_for_a_dialog(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 

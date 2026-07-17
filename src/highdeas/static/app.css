@@ -57,7 +57,12 @@ body:has(#empty-bin:not(:disabled):hover) .row .purge:not(:disabled) { border-co
 /* The title bar and the column headers stay pinned while the rows scroll, so the
    item count and the bulk (Submit/Trash/Restore/Empty) buttons are always in reach. */
 .frozen { position: sticky; top: 0; z-index: 3; background: Canvas; padding-top: 24px; }
-.topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+/* Three columns — title, find, buttons — with the two outer ones an equal 1fr each, so the
+   find sits dead centre and lands in the same place on the inbox and the bin however much
+   their titles and button rows differ in width. The buttons hug the right of their column. */
+.topbar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+          gap: 16px; margin-bottom: 14px; }
+.topbar > :last-child { justify-self: end; }
 /* Refresh and Bin are buttons, not bare blue text: as adjacent links they ran together
    into one phrase — "refresh bin" — rather than two things to click. The bin's
    "← Inbox" gets the same chrome. */
@@ -99,25 +104,31 @@ body:has(#empty-bin:not(:disabled):hover) .row .purge:not(:disabled) { border-co
    this is the system working, shown so the note visibly exists somewhere
    during the seconds between the phone letting go and transcription finishing. */
 .transcribing { margin: 14px 0 0; font-size: .9rem; font-style: italic; opacity: .7; }
-/* The page's own find: a search box in the title bar, between the count and the buttons.
-   It carries its magnifier from the start and Ctrl+F only puts the cursor in it (find.js);
-   it filters the list to the matching rows, which the browser's own find can't, because it
-   can't see the transcript the three-line preview clips off. The box wears the app's
-   outline chrome, lighting its border like a focused field while the cursor is anywhere
-   inside it — the input, borderless, sits within. */
+/* The page's own find: a search box in the title bar, centred between the count and the
+   buttons. It carries its magnifier from the start and Ctrl+F only puts the cursor in it
+   (find.js); it filters the list to the matching rows, which the browser's own find can't,
+   because it can't see the transcript the three-line preview clips off. The box wears the
+   app's outline chrome, lighting its border like a focused field while the cursor is
+   anywhere inside it — the input, borderless, sits within.
+
+   One fixed width, wide because the middle of the row is otherwise empty, so the box holds
+   its shape whether the tally is blank or reading "no matches": the input flexes to fill
+   what the magnifier and tally leave, and the box itself never breathes in and out. */
 .find { display: flex; align-items: center; gap: 7px; padding: 0 10px;
+        width: clamp(240px, 36vw, 460px);
         border: 1px solid rgba(128,128,128,.4); border-radius: 8px; transition: border-color .15s; }
 .find:focus-within { border-color: #3b82f6; }
 .find-icon { display: flex; opacity: .5; }
 .find-icon svg { width: 15px; height: 15px; display: block; }
-.find-input { width: 200px; font: inherit; font-size: .9rem; padding: 6px 0;
+.find-input { flex: 1; min-width: 0; font: inherit; font-size: .9rem; padding: 6px 0;
               border: none; background: transparent; color: inherit; }
 .find-input:focus { outline: none; }
 /* Esc clears the field and the box stays put, so its own × would only be a second way to
    do the same thing in a smaller target — take Chromium's off. */
 .find-input::-webkit-search-cancel-button { display: none; }
-/* How much of the list the search has narrowed to — "3 of 42". Empty until a search is on,
-   so it asks for no room in the box until then. Tabular figures so it doesn't jitter. */
+/* How much of the list the search has narrowed to — "3 of 42". Its room comes out of the
+   input beside it, not the box's fixed width, so the box holds still as the tally fills and
+   empties. Tabular figures so the count itself doesn't jitter as it changes. */
 .find-tally { font-size: .78rem; opacity: .55; font-variant-numeric: tabular-nums; white-space: nowrap; }
 /* A row the current search misses, and the separator stranded above a hidden row. Set on
    the .memo and .row elements, which are display:contents, so the rule has to out-specify
