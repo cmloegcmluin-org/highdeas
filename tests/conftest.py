@@ -2,6 +2,18 @@ from types import SimpleNamespace
 
 import pytest
 
+import highdeas.app
+
+
+@pytest.fixture(autouse=True)
+def keep_the_real_env_file_out_of_the_tests(monkeypatch):
+    """`build_app()` loads the `.env` beside it, which on a real machine is the user's
+    own: a state folder, an inbox full of memos, live API keys. A test that deletes a
+    variable to go without it would find `.env` handing it straight back — and it would
+    pass in a fresh worktree (no `.env` there) while failing in the checkout the app
+    actually runs from. So no test ever reads it; each says what it needs."""
+    monkeypatch.setattr(highdeas.app, "load_dotenv", lambda *args, **kwargs: None)
+
 
 class _Event:
     """Stand-in for a pywebview window event: handlers subscribe with ``+=``."""
