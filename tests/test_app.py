@@ -17,6 +17,7 @@ from highdeas.app import (
     build_app,
     lexicon_path,
     platform_defaults,
+    terms_source,
     build_upload_app,
     default_bin_dir,
 )
@@ -598,6 +599,7 @@ def test_build_app_reads_every_transcription_against_the_lexicon_as_it_stands(tm
     monkeypatch.setenv("HIGHDEAS_DB", str(tmp_path / "memos.db"))
     monkeypatch.setenv("HIGHDEAS_STATE_DIR", str(state))
     monkeypatch.delenv("HIGHDEAS_LEXICON", raising=False)
+    monkeypatch.delenv("HIGHDEAS_NAMES_SHEET", raising=False)
     built = {}
     monkeypatch.setattr(app_mod, "Transcriber", lambda **kwargs: built.update(kwargs))
 
@@ -605,3 +607,44 @@ def test_build_app_reads_every_transcription_against_the_lexicon_as_it_stands(tm
     (state / "lexicon.md").write_text("Sagittal\n", encoding="utf-8")
 
     assert built["read_terms"]() == ("Sagittal",)
+
+
+def test_the_terms_are_the_lexicon_alone_until_a_sheet_is_named(tmp_path, monkeypatch):
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / "lexicon.md").write_text("Sagittal\n", encoding="utf-8")
+    monkeypatch.setenv("HIGHDEAS_STATE_DIR", str(state))
+    monkeypatch.delenv("HIGHDEAS_LEXICON", raising=False)
+    monkeypatch.delenv("HIGHDEAS_NAMES_SHEET", raising=False)
+
+    assert terms_source()() == ("Sagittal",)
+
+
+def test_the_names_in_the_sheet_are_terms_besides_the_ones_in_the_lexicon(tmp_path, monkeypatch):
+    # The names worth correcting toward are already kept in a spreadsheet, and it
+    # gains a row most weeks — so they're read from there rather than copied by hand.
+    import highdeas.app as app_mod
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / "lexicon.md").write_text("Sagittal\n", encoding="utf-8")
+    monkeypatch.setenv("HIGHDEAS_STATE_DIR", str(state))
+    monkeypatch.delenv("HIGHDEAS_LEXICON", raising=False)
+    monkeypatch.delenv("HIGHDEAS_NAMES_RANGE", raising=False)
+    monkeypatch.setenv("HIGHDEAS_NAMES_SHEET",
+                       "https://docs.google.com/spreadsheets/d/SHEET_ID/edit?usp=drivesdk")
+    monkeypatch.setenv("HIGHDEAS_GOOGLE_KEY", str(tmp_path / "robot.json"))
+    asked = {}
+
+    def fetch(session, *, spreadsheet, cell_range):
+        asked.update(session=session, spreadsheet=spreadsheet, cell_range=cell_range)
+        return ("Marguerite", "Sasha")
+
+    monkeypatch.setattr(app_mod, "authorized_session", lambda key: ("SIGNED", key))
+    monkeypatch.setattr(app_mod, "fetch_names", fetch)
+
+    assert terms_source()() == ("Sagittal", "Marguerite", "Sasha")
+    # The link is what's to hand, so the id comes out of it; the names sit in the
+    # third column of the first tab, under one row of headings.
+    assert asked["spreadsheet"] == "SHEET_ID"
+    assert asked["cell_range"] == "C2:C"
+    assert asked["session"] == ("SIGNED", str(tmp_path / "robot.json"))

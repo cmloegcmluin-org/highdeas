@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 
 from highdeas.routers import AsanaRouter, DriveMusicRouter, NotesnookRouter, Router, parse_asana_parents
 from highdeas.service import InboxService
+from highdeas.sheet import SheetNames, authorized_session, fetch_names, spreadsheet_id
 from highdeas.store import FolderStore, MemoStore, adopt_legacy_db
 from highdeas.transcribe import Transcriber
 from highdeas.update import UpdateChecker
@@ -122,6 +123,15 @@ def _system_prefers_dark():
     return False
 
 
+# The vocabulary's own files, kept together wherever the lexicon lives: the sheet's
+# service-account key, and the names last read from it (so a machine that boots away
+# from the network still knows them).
+GOOGLE_KEY = "google-key.json"
+NAMES_CACHE = "sheet-names.json"
+# The third column of the first tab, under one row of headings — where the names sit.
+DEFAULT_NAMES_RANGE = "C2:C"
+
+
 def lexicon_path():
     """The file holding the terms transcription is read against.
 
@@ -133,6 +143,31 @@ def lexicon_path():
         return Path(override)
     state_dir = os.environ.get("HIGHDEAS_STATE_DIR", "")
     return Path(state_dir) / "lexicon.md" if state_dir else PROJECT_ROOT / "lexicon.md"
+
+
+def terms_source():
+    """What transcription is corrected toward, read afresh for every recording: the
+    hand-kept lexicon, and — when a sheet is named — the names in its column.
+
+    Built once at startup, but nothing here reaches the network yet: signing in happens
+    inside the read, so a key that is missing or has been rotated costs one failed
+    read (and the names last seen), never a launch."""
+    lexicon = lambda: read_lexicon(lexicon_path())  # noqa: E731 — read per recording
+    sheet = os.environ.get("HIGHDEAS_NAMES_SHEET", "")
+    if not sheet:
+        return lexicon
+    names = SheetNames(_sheet_reader(sheet), cache=lexicon_path().with_name(NAMES_CACHE))
+    return lambda: lexicon() + names()
+
+
+def _sheet_reader(sheet):
+    """Reads the configured column of the named spreadsheet, as the service account
+    whose key the sheet is shared with."""
+    key = os.environ.get("HIGHDEAS_GOOGLE_KEY", "") or str(
+        lexicon_path().with_name(GOOGLE_KEY))
+    cell_range = os.environ.get("HIGHDEAS_NAMES_RANGE", DEFAULT_NAMES_RANGE)
+    return lambda: fetch_names(authorized_session(key),
+                               spreadsheet=spreadsheet_id(sheet), cell_range=cell_range)
 
 
 def build_app():
@@ -149,7 +184,7 @@ def build_app():
         os.environ.get("ASANA_ACCESS_TOKEN", ""),
         default_parent=asana_parents[0][0] if asana_parents else "",
     )
-    transcriber = Transcriber(read_terms=lambda: read_lexicon(lexicon_path()))
+    transcriber = Transcriber(read_terms=terms_source())
     service = InboxService(
         inbox_dir=inbox_dir,
         store=store,

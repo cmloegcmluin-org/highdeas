@@ -11,6 +11,9 @@ dependencies = [
     "python-docx>=1",
     "onnx-asr[cpu,hub]>=0.11",
     "imageio-ffmpeg>=0.4",
+    # Signs the read of the names sheet as a service account. Optional in practice:
+    # a machine without it falls back to the names it last saw.
+    "google-auth>=2.30",
 ]
 
 [project.optional-dependencies]
