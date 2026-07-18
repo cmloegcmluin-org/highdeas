@@ -3,6 +3,8 @@ name = "highdeas"
 version = "0.1.0"
 description = "Local pipeline that ingests iPhone voice-memo recordings, transcribes them locally, and routes each to Notesnook or Google Drive."
 requires-python = ">=3.11"
+# Each machine installs this list itself: a pull that moves this file runs pip into
+# that checkout's virtualenv before relaunching (see update.py).
 dependencies = [
     "flask>=3",
     "pywebview>=5",
