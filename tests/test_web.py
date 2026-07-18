@@ -501,17 +501,16 @@ def test_grouping_hands_over_every_unsaved_edit_before_the_merge(tmp_path):
     assert body.index("flushEdits(picks)") < body.index("post('/group'")
 
 
-def test_dragging_a_row_onto_the_middle_of_another_groups_the_two(tmp_path):
+def test_dropping_a_row_onto_another_note_groups_the_two(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     js = asset(client, "inbox.js")
     css = asset(client, "app.css")
 
-    # One drag does both jobs: near a row's top or bottom edge it reorders (as it always
-    # has), but over the row's middle band it means "group these two". A drop there routes
-    # the pair through the same namer-aware path a picked pair took, and the browser shows
-    # the copy cursor to say the drop combines rather than moves. The row you'd merge into
-    # lights up whole — there's no badge cell to drop on any more.
+    # One drag does both jobs: dropped BETWEEN notes it reorders, dropped ONTO a note it means
+    # "group these two". A drop onto one routes the pair through the same namer-aware path a
+    # picked pair took, and the browser shows the copy cursor to say the drop combines rather
+    # than moves. The note you'd merge into lights up whole — there's no badge cell any more.
     assert "groupPicked([" in js
     assert "dropEffect = 'copy'" in js
     assert ".memo.grouping" in css
@@ -522,17 +521,23 @@ def test_dragging_a_row_onto_the_middle_of_another_groups_the_two(tmp_path):
     assert "effectAllowed = 'copyMove'" in js
 
 
-def test_grouping_owns_most_of_the_row_and_reordering_only_the_thin_edges(tmp_path):
+def test_a_whole_note_is_the_group_target_and_reordering_lives_in_the_gaps(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     js = asset(client, "inbox.js")
 
-    # Grouping is the common intent, so it owns the middle of the row and reorder gets only
-    # the thin strips at top and bottom — otherwise the rows dodge out from under a note you
-    # were only trying to drop onto. GROUP_BAND is that edge fraction, so a smaller number is
-    # a bigger group zone; keeping it well under a third leaves grouping over half the row.
-    band = float(js.split("GROUP_BAND = ")[1].split(";")[0].split("//")[0].strip())
-    assert 0 < band < 0.25
+    # The note you're dropping onto must not move, or it dodges out from under the drop. So the
+    # whole note is the join target — the pointer only has to be somewhere on it (canGroup),
+    # not in a band — and while it's over a note nothing is reordered. Reordering happens only
+    # off a joinable note, sliding toward the gap the pointer is in. The middle-band machinery
+    # that used to split each row is gone.
+    over = js.split("addEventListener('dragover'")[1].split("addEventListener('drop'")[0]
+    assert "if (canGroup(over))" in over          # over a note at all -> group, no reorder
+    assert "reorderToward(event.clientY)" in over  # otherwise slide toward the gap
+    assert "GROUP_BAND" not in js and "inGroupBand" not in js
+    # Reordering never runs while the pointer is over the note being grouped onto.
+    reorder = js.split("function reorderToward")[1].split("\n  }")[0]
+    assert "insertBefore" in reorder
 
 
 def test_the_live_poll_leaves_a_row_in_mid_drag_alone(tmp_path):

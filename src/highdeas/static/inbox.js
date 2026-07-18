@@ -419,21 +419,14 @@
   var hovered = null;
   var orderBefore = null;  // the order the drag started from, so dragend can record the move
 
-  // A dragged row means "join this" over most of another row, and "go here" only in the thin
-  // strips along its top and bottom. Grouping is the common intent and reordering the rarer
-  // one, so grouping gets the lion's share of the row: a wide, forgiving target that doesn't
-  // make the rows dodge out from under a note you're only trying to drop onto. Two groups have
-  // no obvious survivor, so a group let go over a group is never a join — only ever a reorder.
-  var GROUP_BAND = 0.2;  // group over the middle 60%; reorder only in the top and bottom 20%
-
+  // Dropping a note ONTO another note groups them; dropping it BETWEEN notes reorders. So a
+  // whole note is one big "join this" target — the pointer only has to be somewhere on it,
+  // not in a band — and nothing moves while you're over it, so the note you're aiming at
+  // can't dodge out from under the drop. Reordering is left to the gaps, where there is no
+  // note to join. Two groups have no obvious survivor, so a group over a group is never a
+  // join — it falls through to a reorder.
   function canGroup(over) {
-    return !(isGroup(dragged) && isGroup(over));
-  }
-
-  function inGroupBand(over, y) {
-    var box = rowBox(over);
-    var rel = (y - box.top) / (box.bottom - box.top);
-    return rel > GROUP_BAND && rel < 1 - GROUP_BAND;
+    return !!over && over !== dragged && !(isGroup(dragged) && isGroup(over));
   }
 
   // Light up the whole row a drop would fold into. hovered holds it, so drop knows the
@@ -540,30 +533,40 @@
     saveOrder();
   }
 
-  // Rows move as you drag over their edges, so the list you let go of is the list you keep.
-  // Cross into a row's middle instead and the drag turns into a join: that row lights up,
-  // the cursor turns to a copy, and letting go folds the two together.
+  // Slide the dragged row to the boundary nearest the pointer. Only ever called with the
+  // pointer off every joinable note — in a gap, or over the dragged row itself — so a note
+  // being grouped onto never has to move out of the way and can't dodge the drop.
+  function reorderToward(y) {
+    var others = rows().filter(function (memo) { return memo !== dragged; });
+    var before = null;
+    for (var i = 0; i < others.length; i++) {
+      if (y < midpoint(others[i])) { before = others[i]; break; }
+    }
+    if (nextRow(dragged) === before) return;  // already there — don't churn the list
+    content.querySelector('.grid').insertBefore(dragged, before);
+    resync();
+  }
+
+  // Over a note you can join, the drag is a group: that note lights up whole, the cursor
+  // turns to a copy, and nothing moves. Everywhere else — the gaps between notes — it's a
+  // reorder, and the dragged note slides to the boundary you're pointing at.
   content.addEventListener('dragover', function (event) {
     if (!dragged) return;  // dragging a text selection, not a row by its handle
     event.preventDefault();
     var over = event.target.closest('.memo');
-    if (!over || over === dragged) { highlight(null); return; }
-    if (canGroup(over) && inGroupBand(over, event.clientY)) {
+    if (canGroup(over)) {
       highlight(over);
       event.dataTransfer.dropEffect = 'copy';
       return;
     }
     highlight(null);
     event.dataTransfer.dropEffect = 'move';
-    var below = event.clientY > midpoint(over);
-    if (below ? nextRow(over) === dragged : nextRow(dragged) === over) return;
-    over.parentElement.insertBefore(dragged, below ? nextRow(over) : over);
-    resync();
+    reorderToward(event.clientY);
   });
   content.addEventListener('drop', function (event) {
     if (!dragged) return;
     event.preventDefault();
-    var target = hovered;  // the row we'd fold into, set only while over another row's middle
+    var target = hovered;  // the note we'd fold into, set whenever the pointer is over one
     var note = dragged;
     highlight(null);
     if (!target) return;  // an ordinary reorder drop; dragend saves the order it left
