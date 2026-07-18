@@ -14,6 +14,11 @@ __pycache__/
 /google-key.json
 /sheet-names.json
 
+# Google Cloud service-account key (README: "Google Drive per-memo folder links" says to
+# save this outside the repo, but this backstops that in case it ever lands in here anyway)
+highdeas-drive-reader.json
+*.serviceaccount.json
+
 # Local database, the processed-audio bin, and the remembered window geometry
 memos.db
 bin/
