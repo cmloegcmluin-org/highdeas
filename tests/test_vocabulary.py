@@ -50,6 +50,21 @@ def test_corrections_leaves_ordinary_words_that_merely_sound_like_a_term():
     assert corrections(["a", "sauna"], ("Asana",)) == ()
 
 
+def test_corrections_leave_a_word_that_already_spells_the_term():
+    # Half the names worth knowing are ordinary words too. The model spelled this one
+    # right whichever was meant, so there is nothing to fix — capitalising it would be
+    # an opinion about what he was talking about, and usually the wrong one.
+    assert corrections(["an", "apple", "tree"], ("Apple",)) == ()
+
+
+def test_corrections_only_guess_at_a_term_long_enough_for_a_guess_to_mean_anything():
+    # Three letters is too few for "sounds like" to say anything: "note" scores 0.86
+    # against the name "Noe", and "note" is the commonest word in a memo. Short names
+    # are corrected toward only when they're spelled outright.
+    assert corrections(["a", "note", "to", "self"], ("Noe",)) == ()
+    assert corrections(["ask", "noe", "about", "it"], ("Noe",)) == ()
+
+
 def test_corrections_leaves_a_whole_word_the_term_merely_contains():
     # He talks about harmonics constantly, and "harmonic" scores just over the
     # threshold against "xenharmonic" — one contains the other. A complete word the

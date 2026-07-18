@@ -24,6 +24,9 @@ _SENTENCE_END = (".", "!", "?")
 # ordinary speech starts getting rewritten; tighten it and a real miss goes uncaught
 # ("hideas" reads as 0.86 of the way to "Highdeas").
 _THRESHOLD = 0.82
+# Under this many letters, "sounds like" says nothing at all — "note" is 0.86 of the way
+# to the name "Noe" — so a short term is only ever matched by its own spelling.
+_GUESSABLE = 5
 
 
 def read_lexicon(path):
@@ -96,21 +99,27 @@ class _Lexicon:
     def of(cls, terms):
         by_words, spelled = {}, {}
         for term in terms:
-            by_words.setdefault(len(term.split()), []).append(term)
             spelled[_letters(term)] = term
+            if len(_letters(term)) >= _GUESSABLE:
+                by_words.setdefault(len(term.split()), []).append(term)
         # A term of N words may have been heard as one word more than that: the model
         # splits a name it doesn't know, it doesn't invent extra ones.
-        return cls(by_words, spelled, max(by_words) + 1)
+        return cls(by_words, spelled, max(by_words, default=1) + 1)
 
     def match(self, heard, words, threshold):
         """The term this run of `words` words missed, or None.
 
         A run of the term's own word count is matched by ear — it may be spelled any
-        number of ways wrong. A run of any other length has to spell the term outright,
-        letter for letter, or ordinary speech starts getting rewritten: heard as words,
-        "fun times" is a near-perfect match for FunTime, and "a sauna" for Asana."""
-        return (self.spelled.get(_letters(heard))
-                or _closest(heard, self.by_words.get(words, ()), threshold))
+        number of ways wrong. A longer run has to spell the term outright, letter for
+        letter, or ordinary speech starts getting rewritten: heard as words, "fun
+        times" is a near-perfect match for FunTime, and "a sauna" for Asana.
+
+        One word that already spells the term is left as it is. Half the names worth
+        knowing are ordinary words too ("Apple", "Willow", "Maps"), and a memo full of
+        capitalised nouns is a worse read than one that never guessed."""
+        if words > 1 and _letters(heard) in self.spelled:
+            return self.spelled[_letters(heard)]
+        return _closest(heard, self.by_words.get(words, ()), threshold)
 
 
 def _letters(text):
