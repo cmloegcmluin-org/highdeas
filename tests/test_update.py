@@ -12,29 +12,42 @@ from highdeas.update import UpdateChecker
 
 
 class FakeGit:
-    """Records git invocations and scripts their outcomes."""
+    """Records the commands the updater runs and scripts their outcomes."""
 
-    def __init__(self, behind="0", fetch_fails=False, pull_fails=False):
+    def __init__(self, behind="0", fetch_fails=False, pull_fails=False, changed=(),
+                 install_fails=False):
         self.calls = []
         self._behind = behind
         self._fetch_fails = fetch_fails
         self._pull_fails = pull_fails
+        self._changed = list(changed)
+        self._install_fails = install_fails
 
     def __call__(self, cmd, **kwargs):
         self.calls.append(cmd)
         self.kwargs = kwargs
+        if cmd[0] != "git":  # the dependency install
+            return SimpleNamespace(returncode=1 if self._install_fails else 0,
+                                   stdout="", stderr="no network" if self._install_fails else "")
         sub = cmd[3]  # ["git", "-C", <repo>, <subcommand>, ...]
         if sub == "fetch":
             return SimpleNamespace(returncode=1 if self._fetch_fails else 0, stdout="", stderr="")
         if sub == "rev-list":
             return SimpleNamespace(returncode=0, stdout=self._behind + "\n", stderr="")
+        if sub == "rev-parse":
+            return SimpleNamespace(returncode=0, stdout="0ldsha\n", stderr="")
         if sub == "pull":
             return SimpleNamespace(returncode=1 if self._pull_fails else 0,
                                    stdout="", stderr="cannot fast-forward" if self._pull_fails else "")
+        if sub == "diff":
+            return SimpleNamespace(returncode=0, stdout="\n".join(self._changed), stderr="")
         raise AssertionError(f"unexpected git call: {cmd}")
 
     def of(self, sub):
-        return [c for c in self.calls if c[3] == sub]
+        return [c for c in self.calls if c[0] == "git" and c[3] == sub]
+
+    def installs(self):
+        return [c for c in self.calls if c[0] != "git"]
 
 
 def _checker(git, *, gap=600, now=None):
@@ -105,6 +118,41 @@ def test_a_diverged_checkout_refuses_to_update_and_does_not_relaunch(tmp_path):
         checker.update()
 
     assert spawned == []
+
+
+def test_a_pull_that_changes_the_manifest_installs_what_the_new_code_needs():
+    # Both desks pull new code on their own, and neither runs pip afterwards. A
+    # release that adds a package would otherwise land as an app quietly missing it —
+    # on the machine nobody is sitting at, silently, for as long as it takes to notice.
+    git = FakeGit(changed=["pyproject.toml", "src/highdeas/sheet.py"])
+    checker = UpdateChecker("/repo", runner=git, executable="/venv/bin/python",
+                            respawn=lambda: None)
+
+    checker.update()
+
+    assert git.installs() == [
+        ["/venv/bin/python", "-m", "pip", "install", "-e", "/repo", "--quiet"]]
+
+
+def test_a_pull_that_leaves_the_manifest_alone_installs_nothing():
+    # Which is nearly every pull, and pip costs seconds the launch is holding a
+    # splash screen through.
+    git = FakeGit(changed=["src/highdeas/web.py", "README.md"])
+
+    UpdateChecker("/repo", runner=git, respawn=lambda: None).update()
+
+    assert git.installs() == []
+
+
+def test_an_install_that_fails_still_launches_the_new_code():
+    # Offline, or a package that won't build: better the app comes up on what it has
+    # than not at all. Whatever needs the missing package fails where it's used.
+    git = FakeGit(changed=["pyproject.toml"], install_fails=True)
+    spawned = []
+
+    UpdateChecker("/repo", runner=git, respawn=lambda: spawned.append(True)).update()
+
+    assert spawned == [True]
 
 
 # --- becoming current at launch ----------------------------------------------

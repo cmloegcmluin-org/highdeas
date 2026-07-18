@@ -138,8 +138,11 @@ pin `Highdeas.lnk` instead.
 
 **Staying current:** the app updates itself. Every launch fast-forwards to
 `origin/main` first, and code that lands while a window sits open is pulled and
-relaunched automatically once you've left the window alone for a minute. Offline
-machines skip all of it quietly; a diverged checkout launches what it has.
+relaunched automatically once you've left the window alone for a minute. A pull that
+moves `pyproject.toml` installs into that checkout's virtualenv on the way past, so a
+release that adds a package doesn't land as an app quietly missing it — no pull else
+pays for it, since nearly none of them touch the manifest. Offline machines skip all of
+it quietly; a diverged checkout, or an install that won't run, launches what it has.
 
 **A new machine's `.env` needs more than paths:** copy `NOTESNOOK_INBOX_API_KEY`,
 `ASANA_ACCESS_TOKEN`, `ASANA_PARENT_TASKS`, and `HIGHDEAS_UPLOAD_TOKEN` from an

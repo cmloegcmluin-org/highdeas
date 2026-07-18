@@ -14,6 +14,9 @@ from pathlib import Path
 # Keep git from flashing a console window on Windows — the checker runs every
 # few minutes from a windowless (pythonw) process. A no-op (0) elsewhere.
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+# The file that says what the app needs installed. A pull that moves it is a pull
+# whose code wants something this machine's virtualenv may not have yet.
+MANIFEST = "pyproject.toml"
 
 
 def relaunch_command(executable=None, argv=None):
@@ -69,12 +72,13 @@ class UpdateChecker:
     throttle, and a raced double-fetch is merely wasteful."""
 
     def __init__(self, repo_root, *, runner=subprocess.run, min_fetch_gap=600,
-                 clock=time.monotonic, respawn=None):
+                 clock=time.monotonic, respawn=None, executable=None):
         self._repo = str(repo_root)
         self._run = runner
         self._min_fetch_gap = min_fetch_gap
         self._clock = clock
         self._respawn = respawn
+        self._executable = executable or sys.executable
         self._last_fetch = None
 
     def _git(self, *args):
@@ -102,12 +106,44 @@ class UpdateChecker:
             return {"behind": 0}
 
     def pull(self):
-        """Fast-forward to origin/main. --ff-only so a checkout that has
-        somehow diverged refuses loudly instead of merging by surprise; the
-        caller turns the refusal into a notice."""
+        """Fast-forward to origin/main, and install anything the new code needs.
+
+        --ff-only so a checkout that has somehow diverged refuses loudly instead
+        of merging by surprise; the caller turns the refusal into a notice.
+
+        The install belongs here rather than at the call sites: both desks pull
+        by themselves and neither runs pip afterwards, so a release that adds a
+        package would otherwise land as an app quietly missing it — on the
+        machine nobody is sitting at, for as long as it takes to notice."""
+        was = self._git("rev-parse", "HEAD").stdout.strip()
         pulled = self._git("pull", "--ff-only", "origin", "main")
         if pulled.returncode != 0:
             raise RuntimeError(pulled.stderr.strip() or "git pull refused")
+        if self._brought_new_dependencies(was):
+            self._install()
+
+    def _brought_new_dependencies(self, was):
+        """Whether the pull moved the dependency manifest. Nearly no pull does, and
+        pip costs seconds the launch is holding a splash screen through. No previous
+        commit to compare against reads as no change — the app runs on what it has."""
+        if not was:
+            return False
+        changed = self._git("diff", "--name-only", f"{was}..HEAD")
+        return MANIFEST in changed.stdout.split()
+
+    def _install(self):
+        """Bring this checkout's virtualenv up to what the pulled code imports.
+
+        A failure is only a printed line: offline, or a package that won't build,
+        must still leave the app launching on the code it already has, with whatever
+        wants the missing package failing where it is used."""
+        print("Highdeas: installing what the new code needs.")
+        done = self._run(
+            [self._executable, "-m", "pip", "install", "-e", self._repo, "--quiet"],
+            capture_output=True, text=True, creationflags=_NO_WINDOW)
+        if done.returncode != 0:
+            print(f"Highdeas: couldn't install them ({done.stderr.strip()}); "
+                  "launching on what this machine already has.")
 
     def respawn(self):
         """Replace this process with a fresh launch of the pulled code."""
