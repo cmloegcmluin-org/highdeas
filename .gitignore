@@ -10,6 +10,7 @@ __pycache__/
 # Your own vocabulary for transcription — names and terms, some of them people's —
 # with the key that reads the names sheet and the names last read from it
 /lexicon.md
+/lexicon-sources.md
 /google-key.json
 /sheet-names.json
 

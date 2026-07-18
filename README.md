@@ -38,13 +38,21 @@ recording, or a subtask on an Asana task.
    every recording — a name added at nine o'clock fixes the memo recorded at five past —
    and no lexicon means nothing is corrected.
 
-   Some of those names are already written down somewhere that keeps changing, so a
-   column of a **Google Sheet** can join the lexicon: point `HIGHDEAS_NAMES_SHEET` at
-   the sheet (see Setup) and its names are re-read every few minutes rather than copied
-   across by hand. The read signs in as a service account, never interactively, so it
-   works on a machine nobody is sitting at; the last names read are kept beside the
-   lexicon, so a laptop that wakes up away from the network still knows them, and a
-   sheet that can't be reached costs a stale list rather than a lost memo.
+   Some of those names are already written down somewhere that keeps changing, so the
+   columns of **Google Sheets** can join the lexicon too. Which sheets is itself a list
+   beside it — `lexicon-sources.md`, one line each: the sheet's link, then the cells the
+   names are in.
+
+       https://docs.google.com/spreadsheets/d/1AbC_def-123/edit  C2:C
+       https://docs.google.com/spreadsheets/d/1XyZ_ghi-456/edit  'People'!A2:A
+
+   Adding the next source is adding a line — no setting, no release, no restart — and
+   since the file sits in the shared folder, both machines pick it up. The read signs in
+   as a service account (see Setup), never interactively, so it works on a machine
+   nobody is sitting at, and one key opens every sheet on the list. Each sheet is read
+   at most every ten minutes; the last names read are kept beside the lexicon, so a
+   laptop that wakes up away from the network still knows them, and a sheet that can't
+   be reached costs a stale list rather than a lost memo.
 4. **Inbox** — a local Flask page opens in its own native window (Edge WebView2), at the
    size, monitor, and maximized state it was last closed at — maximized until you say
    otherwise. Each memo row leads with the three controls that act on it — a drag grip, a
@@ -169,16 +177,19 @@ right away. Set `HIGHDEAS_DESKTOP=0` to force plain-browser mode.
 4. **Paths** — if your inbox or Drive folders differ from the defaults, set
    `HIGHDEAS_INBOX_DIR` and `HIGHDEAS_DRIVE_BASE` in `.env`.
 5. **Names from a Google Sheet** (optional) — to correct transcripts toward a column of
-   names you already keep in a sheet:
+   names you already keep in a sheet. Once, for the first sheet:
    1. In the [Google Cloud console](https://console.cloud.google.com/), create a project
       and enable the **Google Sheets API** (APIs & Services → Enable APIs).
-   2. **IAM & Admin → Service accounts → Create service account**. Open it, then
+   2. **IAM & Admin → Service accounts → Create service account** (skip both optional
+      steps — Cloud roles have no bearing on a file in Drive). Open it, then
       **Keys → Add key → Create new key → JSON**, and save the download as
       `google-key.json` beside your `lexicon.md`.
-   3. **Share the sheet** with that service account's email (the `client_email` inside
-      the JSON) as **Viewer**. It is a separate account and sees nothing until you do.
-   4. Put the sheet's link in `HIGHDEAS_NAMES_SHEET`, and — if the names aren't in the
-      first tab's third column — the cells in `HIGHDEAS_NAMES_RANGE`.
+
+   Then, for that sheet and every one after it:
+   1. **Share it** with the service account's email — the `client_email` inside that
+      JSON — as **Viewer**. It is a separate account and sees nothing until you do.
+   2. Add a line to `lexicon-sources.md` beside the lexicon: the sheet's link, a space,
+      and the cells the names are in (`C2:C`, or `'People'!A2:A` for another tab).
 
    The key file is a password: keep it out of git (the `.gitignore` covers the default
    name) and off anything shared. It only ever asks Google for the read-only scope.
@@ -263,9 +274,7 @@ Everything but the keys for the destinations you use is optional. Set these in `
 | `HIGHDEAS_DRIVE_FOLDER_URL` | — | That folder's own Drive link (Share -> Copy link), for the bin's Drive icon to open. Empty = the icon does nothing. |
 | `HIGHDEAS_BIN_DIR` | `Highdeas Bin` beside the inbox | Where retired recordings wait (recoverable for 90 days). |
 | `HIGHDEAS_LEXICON` | `lexicon.md` beside the state dir, else in this folder | Your own names and terms, one per line, that each transcript is corrected toward. |
-| `HIGHDEAS_NAMES_SHEET` | — | A Google Sheet (link or id) whose column of names joins the lexicon. Empty = no sheet. |
-| `HIGHDEAS_NAMES_RANGE` | `C2:C` | Which cells hold those names, in A1 notation (quote a tab name to read another). |
-| `HIGHDEAS_GOOGLE_KEY` | `google-key.json` beside the lexicon | Service-account key the sheet is shared with. |
+| `HIGHDEAS_GOOGLE_KEY` | `google-key.json` beside the lexicon | Service-account key the listed sheets are shared with. |
 | `HIGHDEAS_DB` | `memos.db` in this folder | SQLite store of memo state (single-machine mode). |
 | `HIGHDEAS_STATE_DIR` | — | Set to a synced folder to keep memo state as per-memo files shared between machines; the local DB migrates across on first boot. |
 | `HIGHDEAS_CHROME_EXE` / `HIGHDEAS_CHROME_PROFILE` | system Chrome / `Default` | Chrome + profile used to open Drive and Asana links. |

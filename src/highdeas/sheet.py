@@ -26,6 +26,31 @@ _A1 = ":!$'"
 _SHORTEST = 3
 
 
+def read_sources(path):
+    """Every sheet the terms are read from, as `(link, cells)`.
+
+    One per line, in a file beside the lexicon: the sheet's link, then the cells its
+    names are in. That is the whole of adding a source — no setting, no release, and
+    no restart — because there will be many of them, and they arrive one at a time.
+    Blank lines and `#` comments are skipped, and so is a line that names no cells: a
+    link on its own is a half-typed source, not a sheet to read entirely."""
+    try:
+        lines = Path(path).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return ()
+    sources = []
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        # Split once: everything after the link is the cells, spaces and all, since a
+        # tab's name can hold them — "'Sheet 2'!A2:A".
+        link, _, cells = line.partition(" ")
+        if cells.strip():
+            sources.append((link, cells.strip()))
+    return tuple(sources)
+
+
 def spreadsheet_id(sheet):
     """The id of the spreadsheet `sheet` names — given either the id itself or the link
     the sheet was open at when it was copied."""
@@ -87,18 +112,51 @@ def _names_of(cell):
             yield part
 
 
+class SheetTerms:
+    """Every name in every sheet the sources file lists.
+
+    The file is read afresh each time, so a source added to it is read from on the next
+    recording; each sheet named in it keeps its own reader, and thus its own sense of
+    when it was last asked."""
+
+    def __init__(self, sources, *, read, cache, ttl=600, clock=time.monotonic):
+        self._sources = Path(sources)
+        self._read = read
+        self._cache = cache
+        self._ttl = ttl
+        self._clock = clock
+        self._sheets = {}
+
+    def __call__(self):
+        names = ()
+        for link, cells in read_sources(self._sources):
+            names += self._sheet(spreadsheet_id(link), cells)()
+        return names
+
+    def _sheet(self, spreadsheet, cells):
+        """The reader for one sheet, made once and kept — a new one each recording
+        would forget when it last asked, and ask again every time."""
+        source = f"{spreadsheet} {cells}"
+        if source not in self._sheets:
+            self._sheets[source] = SheetNames(
+                lambda: self._read(spreadsheet, cells), source=source,
+                cache=self._cache, ttl=self._ttl, clock=self._clock)
+        return self._sheets[source]
+
+
 class SheetNames:
-    """The sheet's names, kept current without a round trip per recording.
+    """One sheet's names, kept current without a round trip per recording.
 
     Every transcription asks for the terms, and memos arrive in bursts, so the sheet is
     read at most once every `ttl` seconds and the answer held between times."""
 
-    def __init__(self, read, *, cache, ttl=600, clock=time.monotonic):
+    def __init__(self, read, *, source, cache, ttl=600, clock=time.monotonic):
         self._read = read
-        self._cache = Path(cache)
+        self._source = source
+        self._cache = cache
         self._ttl = ttl
         self._clock = clock
-        self._names = _remembered(self._cache)
+        self._names = cache.get(source)
         self._read_at = None
 
     def __call__(self):
@@ -109,20 +167,35 @@ class SheetNames:
             self._read_at = self._clock()
             try:
                 self._names = tuple(self._read())
-                _remember(self._cache, self._names)
+                self._cache.put(self._source, self._names)
             except Exception as exc:  # noqa: BLE001 — a stale name beats a lost memo
-                print(f"Highdeas: keeping the names last read from the sheet ({exc}).")
+                print(f"Highdeas: keeping the names last read from {self._source} ({exc}).")
         return self._names
 
 
-def _remembered(cache):
-    """The names last read from the sheet, so a machine that boots away from the
-    network still knows them. Anything unreadable simply means none yet."""
-    try:
-        return tuple(json.loads(cache.read_text(encoding="utf-8")))
-    except (OSError, ValueError):
-        return ()
+class NameCache:
+    """The names last read from each source, in one file beside the lexicon.
 
+    A machine that boots away from the network still knows them, and — since the file
+    sits in the folder the two machines share — one desk's read warms the other's."""
 
-def _remember(cache, names):
-    cache.write_text(json.dumps(list(names)), encoding="utf-8")
+    def __init__(self, path):
+        self._path = Path(path)
+
+    def get(self, source):
+        return tuple(self._all().get(source, ()))
+
+    def put(self, source, names):
+        remembered = self._all()
+        remembered[source] = list(names)
+        self._path.write_text(json.dumps(remembered, ensure_ascii=False, indent=1),
+                              encoding="utf-8")
+
+    def _all(self):
+        """What is remembered, or nothing at all: an unreadable or foreign file is one
+        cold read of every sheet, never a crash."""
+        try:
+            remembered = json.loads(self._path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        return remembered if isinstance(remembered, dict) else {}

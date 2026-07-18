@@ -609,29 +609,30 @@ def test_build_app_reads_every_transcription_against_the_lexicon_as_it_stands(tm
     assert built["read_terms"]() == ("Sagittal",)
 
 
-def test_the_terms_are_the_lexicon_alone_until_a_sheet_is_named(tmp_path, monkeypatch):
+def test_the_terms_are_the_lexicon_alone_until_a_source_is_listed(tmp_path, monkeypatch):
     state = tmp_path / "state"
     state.mkdir()
     (state / "lexicon.md").write_text("Sagittal\n", encoding="utf-8")
     monkeypatch.setenv("HIGHDEAS_STATE_DIR", str(state))
     monkeypatch.delenv("HIGHDEAS_LEXICON", raising=False)
-    monkeypatch.delenv("HIGHDEAS_NAMES_SHEET", raising=False)
 
     assert terms_source()() == ("Sagittal",)
 
 
-def test_the_names_in_the_sheet_are_terms_besides_the_ones_in_the_lexicon(tmp_path, monkeypatch):
-    # The names worth correcting toward are already kept in a spreadsheet, and it
-    # gains a row most weeks — so they're read from there rather than copied by hand.
+def test_the_names_in_a_listed_sheet_are_terms_besides_the_ones_in_the_lexicon(tmp_path, monkeypatch):
+    # The sheets to read are a list kept beside the lexicon, in the folder both
+    # machines share — one more line adds one more source, with nothing to configure
+    # and nothing to restart, because there will be many of them.
     import highdeas.app as app_mod
     state = tmp_path / "state"
     state.mkdir()
     (state / "lexicon.md").write_text("Sagittal\n", encoding="utf-8")
+    (state / "lexicon-sources.md").write_text(
+        "# the people I see\n"
+        "https://docs.google.com/spreadsheets/d/SHEET_ID/edit?usp=drivesdk C2:C\n",
+        encoding="utf-8")
     monkeypatch.setenv("HIGHDEAS_STATE_DIR", str(state))
     monkeypatch.delenv("HIGHDEAS_LEXICON", raising=False)
-    monkeypatch.delenv("HIGHDEAS_NAMES_RANGE", raising=False)
-    monkeypatch.setenv("HIGHDEAS_NAMES_SHEET",
-                       "https://docs.google.com/spreadsheets/d/SHEET_ID/edit?usp=drivesdk")
     monkeypatch.setenv("HIGHDEAS_GOOGLE_KEY", str(tmp_path / "robot.json"))
     asked = {}
 
@@ -643,8 +644,8 @@ def test_the_names_in_the_sheet_are_terms_besides_the_ones_in_the_lexicon(tmp_pa
     monkeypatch.setattr(app_mod, "fetch_names", fetch)
 
     assert terms_source()() == ("Sagittal", "Marguerite", "Sasha")
-    # The link is what's to hand, so the id comes out of it; the names sit in the
-    # third column of the first tab, under one row of headings.
+    # The link is what's to hand, so the id comes out of it; the cells are the line's.
     assert asked["spreadsheet"] == "SHEET_ID"
     assert asked["cell_range"] == "C2:C"
+    # One key opens every sheet on the list.
     assert asked["session"] == ("SIGNED", str(tmp_path / "robot.json"))

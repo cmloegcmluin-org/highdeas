@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 
 from highdeas.routers import AsanaRouter, DriveMusicRouter, NotesnookRouter, Router, parse_asana_parents
 from highdeas.service import InboxService
-from highdeas.sheet import SheetNames, authorized_session, fetch_names, spreadsheet_id
+from highdeas.sheet import NameCache, SheetTerms, authorized_session, fetch_names
 from highdeas.store import FolderStore, MemoStore, adopt_legacy_db
 from highdeas.transcribe import Transcriber
 from highdeas.update import UpdateChecker
@@ -123,13 +123,12 @@ def _system_prefers_dark():
     return False
 
 
-# The vocabulary's own files, kept together wherever the lexicon lives: the sheet's
-# service-account key, and the names last read from it (so a machine that boots away
-# from the network still knows them).
+# The vocabulary's own files, kept together wherever the lexicon lives: the sheets its
+# terms are also read from, the service-account key that reads them, and the names last
+# read (so a machine that boots away from the network still knows them).
+LEXICON_SOURCES = "lexicon-sources.md"
 GOOGLE_KEY = "google-key.json"
 NAMES_CACHE = "sheet-names.json"
-# The third column of the first tab, under one row of headings — where the names sit.
-DEFAULT_NAMES_RANGE = "C2:C"
 
 
 def lexicon_path():
@@ -147,27 +146,25 @@ def lexicon_path():
 
 def terms_source():
     """What transcription is corrected toward, read afresh for every recording: the
-    hand-kept lexicon, and — when a sheet is named — the names in its column.
+    hand-kept lexicon, and the names in every sheet listed beside it.
 
+    All of it is files in one folder — the sheets to read are a list he edits, not
+    settings — so a new source is a line, live on the next recording, on both machines.
     Built once at startup, but nothing here reaches the network yet: signing in happens
-    inside the read, so a key that is missing or has been rotated costs one failed
-    read (and the names last seen), never a launch."""
-    lexicon = lambda: read_lexicon(lexicon_path())  # noqa: E731 — read per recording
-    sheet = os.environ.get("HIGHDEAS_NAMES_SHEET", "")
-    if not sheet:
-        return lexicon
-    names = SheetNames(_sheet_reader(sheet), cache=lexicon_path().with_name(NAMES_CACHE))
-    return lambda: lexicon() + names()
+    inside the read, so a key that is missing or has been rotated costs one failed read
+    (and the names last seen), never a launch."""
+    sheets = SheetTerms(lexicon_path().with_name(LEXICON_SOURCES), read=_read_sheet,
+                        cache=NameCache(lexicon_path().with_name(NAMES_CACHE)))
+    return lambda: read_lexicon(lexicon_path()) + sheets()
 
 
-def _sheet_reader(sheet):
-    """Reads the configured column of the named spreadsheet, as the service account
-    whose key the sheet is shared with."""
+def _read_sheet(spreadsheet, cells):
+    """One sheet's names, read as the service account it is shared with. One key opens
+    every sheet on the list — sharing the next one with the same address is the whole
+    of adding it."""
     key = os.environ.get("HIGHDEAS_GOOGLE_KEY", "") or str(
         lexicon_path().with_name(GOOGLE_KEY))
-    cell_range = os.environ.get("HIGHDEAS_NAMES_RANGE", DEFAULT_NAMES_RANGE)
-    return lambda: fetch_names(authorized_session(key),
-                               spreadsheet=spreadsheet_id(sheet), cell_range=cell_range)
+    return fetch_names(authorized_session(key), spreadsheet=spreadsheet, cell_range=cells)
 
 
 def build_app():

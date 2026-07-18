@@ -1,10 +1,39 @@
 from highdeas.sheet import (
+    NameCache,
     SheetNames,
+    SheetTerms,
     authorized_session,
     fetch_names,
     names_in,
+    read_sources,
     spreadsheet_id,
 )
+
+
+def test_a_source_is_a_link_and_the_cells_to_read_from_it(tmp_path):
+    # Adding a second sheet has to be adding a line — not another setting, another
+    # release, and a restart.
+    sources = tmp_path / "lexicon-sources.md"
+    sources.write_text(
+        "# Where else the terms come from. One per line: a link, then the cells.\n"
+        "\n"
+        "https://docs.google.com/spreadsheets/d/AAA/edit C2:C\n"
+        "https://docs.google.com/spreadsheets/d/BBB/edit 'Sheet 2'!A2:A\n",
+        encoding="utf-8")
+
+    assert read_sources(sources) == (
+        ("https://docs.google.com/spreadsheets/d/AAA/edit", "C2:C"),
+        ("https://docs.google.com/spreadsheets/d/BBB/edit", "'Sheet 2'!A2:A"),
+    )
+
+
+def test_a_source_naming_no_cells_and_a_file_that_isnt_there_are_no_sources(tmp_path):
+    # Half a line is a typo, not a source; and most machines list none at all.
+    sources = tmp_path / "lexicon-sources.md"
+    sources.write_text("https://docs.google.com/spreadsheets/d/AAA/edit\n", encoding="utf-8")
+
+    assert read_sources(sources) == ()
+    assert read_sources(tmp_path / "nothing-here.md") == ()
 
 
 class FakeResponse:
@@ -94,8 +123,8 @@ def test_the_sheet_is_asked_once_and_then_left_alone_for_a_while(tmp_path):
     # Google once per memo would put a network round trip in front of each one.
     now = [0]
     sheet = FakeSheet(("Marguerite",), ("Marguerite", "Roxana"))
-    names = SheetNames(sheet, cache=tmp_path / "names.json", ttl=600,
-                       clock=lambda: now[0])
+    names = SheetNames(sheet, source="AAA C2:C", cache=NameCache(tmp_path / "names.json"),
+                       ttl=600, clock=lambda: now[0])
 
     assert names() == ("Marguerite",)
     assert names() == ("Marguerite",)
@@ -111,8 +140,8 @@ def test_a_sheet_that_cannot_be_reached_leaves_the_names_it_last_had(tmp_path):
     # name is nothing; a transcription that fails — or waits out a timeout — is a lot.
     now = [0]
     sheet = FakeSheet(("Marguerite",), OSError("no route to host"))
-    names = SheetNames(sheet, cache=tmp_path / "names.json", ttl=600,
-                       clock=lambda: now[0])
+    names = SheetNames(sheet, source="AAA C2:C", cache=NameCache(tmp_path / "names.json"),
+                       ttl=600, clock=lambda: now[0])
     assert names() == ("Marguerite",)
 
     now[0] = 700
@@ -130,12 +159,46 @@ def test_the_names_outlive_the_app_so_a_cold_offline_machine_still_knows_them(tm
     # The names are kept beside the memo state, where the sync engine carries them:
     # this machine's read warms the other one, and a laptop that boots away from the
     # network transcribes against the last list either of them saw.
-    cache = tmp_path / "names.json"
-    SheetNames(FakeSheet(("Marguerite", "Roxana")), cache=cache, clock=lambda: 0)()
+    cache = NameCache(tmp_path / "names.json")
+    SheetNames(FakeSheet(("Marguerite", "Roxana")), source="AAA C2:C", cache=cache,
+               clock=lambda: 0)()
 
-    cold = SheetNames(FakeSheet(OSError("offline")), cache=cache, clock=lambda: 0)
+    cold = SheetNames(FakeSheet(OSError("offline")), source="AAA C2:C",
+                      cache=NameCache(tmp_path / "names.json"), clock=lambda: 0)
 
     assert cold() == ("Marguerite", "Roxana")
+
+
+def test_every_sheet_the_sources_file_lists_gives_up_its_names(tmp_path):
+    # There will be many of these, and they arrive one at a time. Adding the second is
+    # adding a line to the file — which the running app reads for the next recording.
+    sources = tmp_path / "lexicon-sources.md"
+    sources.write_text("https://docs.google.com/spreadsheets/d/AAA/edit C2:C\n",
+                       encoding="utf-8")
+    asked = []
+
+    def read(spreadsheet, cells):
+        asked.append((spreadsheet, cells))
+        return {"AAA": ("Marguerite",), "BBB": ("Ilse", "Roxana")}[spreadsheet]
+
+    terms = SheetTerms(sources, read=read, cache=NameCache(tmp_path / "names.json"),
+                       clock=lambda: 0)
+    assert terms() == ("Marguerite",)
+
+    sources.write_text("https://docs.google.com/spreadsheets/d/AAA/edit C2:C\n"
+                       "https://docs.google.com/spreadsheets/d/BBB/edit 'People'!A2:A\n",
+                       encoding="utf-8")
+
+    assert terms() == ("Marguerite", "Ilse", "Roxana")
+    # ...and the sheet already known isn't asked all over again to get there
+    assert asked == [("AAA", "C2:C"), ("BBB", "'People'!A2:A")]
+
+
+def test_no_sources_file_is_no_sheets_and_no_names(tmp_path):
+    terms = SheetTerms(tmp_path / "lexicon-sources.md", read=None,
+                       cache=NameCache(tmp_path / "names.json"))
+
+    assert terms() == ()
 
 
 def test_the_session_signs_as_the_service_account_and_asks_only_to_read():
