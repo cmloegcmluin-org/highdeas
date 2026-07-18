@@ -64,7 +64,10 @@ class DriveFolderLinker:
         cases rather than ever raising into the request that clicked it."""
         if not self._service_account_file or not self._parent_id or not subfolder_name:
             return ""
-        access_token = self._token(self._service_account_file)
+        try:
+            access_token = self._token(self._service_account_file)
+        except Exception:  # noqa: BLE001 — a missing/invalid key file must fall back quietly, not 500
+            return ""
         if not access_token:
             return ""
         query = (

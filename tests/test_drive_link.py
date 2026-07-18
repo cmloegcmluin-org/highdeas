@@ -105,6 +105,21 @@ def test_link_for_blank_when_the_token_cant_be_obtained():
     assert linker.link_for("_2026_07_17_NOT_YET_PROCESSED_MUSIC") == ""
 
 
+def test_link_for_blank_when_the_key_file_is_missing_or_unreadable(tmp_path):
+    # The real _service_account_token (not stubbed): a HIGHDEAS_GOOGLE_SERVICE_ACCOUNT_FILE
+    # that's mistyped, not yet saved, or holds garbage raises out of google-auth's own file
+    # loading -- before any network call -- and that must fall back quietly too, exactly
+    # like an unreachable/revoked one, not surface as a 500 on the request that clicked
+    # the bin's Drive icon.
+    missing = DriveFolderLinker(str(tmp_path / "does-not-exist.json"), "PARENT_ID")
+    assert missing.link_for("_2026_07_17_NOT_YET_PROCESSED_MUSIC") == ""
+
+    garbage = tmp_path / "not-a-key.json"
+    garbage.write_text("not json{{{")
+    broken = DriveFolderLinker(str(garbage), "PARENT_ID")
+    assert broken.link_for("_2026_07_17_NOT_YET_PROCESSED_MUSIC") == ""
+
+
 def test_link_for_blank_when_the_lookup_fails():
     def blowing_up_get(*args, **kwargs):
         raise ConnectionError("offline")
