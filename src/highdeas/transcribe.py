@@ -7,6 +7,7 @@ from pathlib import Path
 from highdeas.audio import NO_WINDOW as _NO_WINDOW
 from highdeas.audio import locate_ffmpeg as _default_ffmpeg
 from highdeas.nonspeech import mark_nonspeech
+from highdeas.vocabulary import corrections
 
 
 class AudioDecodeError(Exception):
@@ -71,13 +72,44 @@ def _to_words(tokens, timestamps):
     return tuple(word for word in words if word.text)
 
 
+def _spliced(items, fixes, replace):
+    """`items` with each `(index, length, replacement)` of `fixes` applied, `replace`
+    saying what one replacement looks like in this sequence."""
+    out, index = [], 0
+    for at, size, replacement in fixes:
+        out.extend(items[index:at])
+        out.append(replace(items[at], replacement))
+        index = at + size
+    out.extend(items[index:])
+    return out
+
+
+def _corrected(spoken, terms):
+    """`spoken` as it would read had the model known these terms: every near-miss of
+    one swapped for the term it missed, in the text and in the word timings alike. A
+    run of words gathered into a single term keeps the start of the first — the moment
+    the term began — so the editor still lights up as the recording plays."""
+    tokens = spoken.text.split()
+    fixes = corrections(tokens, terms)
+    if not fixes:
+        return spoken  # nothing in the lexicon was misheard — hand back what came
+    heard = [word.text for word in spoken.words]
+    return Transcript(
+        " ".join(_spliced(tokens, fixes, lambda _, term: term)),
+        tuple(_spliced(spoken.words, corrections(heard, terms),
+                       lambda word, term: TimedWord(word.start, term))),
+    )
+
+
 class Transcriber:
     def __init__(self, *, model=None, decode=decode_to_wav,
-                 model_loader=_load_parakeet, model_name=DEFAULT_MODEL):
+                 model_loader=_load_parakeet, model_name=DEFAULT_MODEL,
+                 read_terms=lambda: ()):
         self._model = model
         self._decode = decode
         self._model_loader = model_loader
         self._model_name = model_name
+        self._read_terms = read_terms
 
     def _get_model(self):
         if self._model is None:
@@ -92,6 +124,7 @@ class Transcriber:
         # A relabelled note drops its word timings — there are no real words to light up.
         marked = mark_nonspeech(recognized.text)
         if marked == recognized.text:
-            return Transcript(recognized.text,
-                              _to_words(recognized.tokens, recognized.timestamps))
+            return _corrected(Transcript(recognized.text,
+                                         _to_words(recognized.tokens, recognized.timestamps)),
+                              self._read_terms())
         return Transcript(marked)

@@ -7,6 +7,9 @@ __pycache__/
 # Secrets — never commit
 .env
 
+# Your own vocabulary for transcription — names and terms, some of them people's
+/lexicon.md
+
 # Local database, the processed-audio bin, and the remembered window geometry
 memos.db
 bin/

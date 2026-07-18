@@ -20,6 +20,18 @@ recording, or a subtask on an Asana task.
    before storing: an all-humming note reads `[singing]` (a run of humming inside speech
    is bracketed where it sits), and an empty or wrong-script result reads `[unclear]`.
    Anything that reads as real speech is kept exactly as heard.
+
+   Names it has never heard, though, come back as whatever ordinary words sound closest
+   — "Highdeas" as *high ideas*, a friend's name spelled three ways across three memos —
+   and the model takes no list of words to expect (its Parakeet path has no hotword
+   hook). So the transcript is read against a **lexicon** afterwards: your own terms,
+   one per line, in `lexicon.md` beside the shared state — or wherever
+   `HIGHDEAS_LEXICON` points. A word that near-misses one of them is swapped for it,
+   and a term the model split into ordinary halves ("notes nook") is gathered back into
+   the one word it was spoken as, word timings and all. Only a run that spells the term
+   outright is ever gathered up, so *fun times* stays fun times. The file is re-read for
+   every recording — a name added at nine o'clock fixes the memo recorded at five past —
+   and no lexicon means nothing is corrected.
 4. **Inbox** — a local Flask page opens in its own native window (Edge WebView2), at the
    size, monitor, and maximized state it was last closed at — maximized until you say
    otherwise. Each memo row leads with the three controls that act on it — a drag grip, a
@@ -223,6 +235,7 @@ Everything but the keys for the destinations you use is optional. Set these in `
 | `HIGHDEAS_DRIVE_BASE` | `G:\My Drive\voice memos (top level)` | Where music-routed audio is filed. |
 | `HIGHDEAS_DRIVE_FOLDER_URL` | — | That folder's own Drive link (Share -> Copy link), for the bin's Drive icon to open. Empty = the icon does nothing. |
 | `HIGHDEAS_BIN_DIR` | `Highdeas Bin` beside the inbox | Where retired recordings wait (recoverable for 90 days). |
+| `HIGHDEAS_LEXICON` | `lexicon.md` beside the state dir, else in this folder | Your own names and terms, one per line, that each transcript is corrected toward. |
 | `HIGHDEAS_DB` | `memos.db` in this folder | SQLite store of memo state (single-machine mode). |
 | `HIGHDEAS_STATE_DIR` | — | Set to a synced folder to keep memo state as per-memo files shared between machines; the local DB migrates across on first boot. |
 | `HIGHDEAS_CHROME_EXE` / `HIGHDEAS_CHROME_PROFILE` | system Chrome / `Default` | Chrome + profile used to open Drive and Asana links. |

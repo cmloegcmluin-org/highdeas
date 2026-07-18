@@ -176,6 +176,50 @@ def test_transcriber_keeps_real_speech_and_its_word_timings(tmp_path):
     assert [w.text for w in spoken.words] == ["I", "need", "a", "dusting."]
 
 
+def test_transcriber_swaps_a_missed_term_for_the_word_he_actually_said(tmp_path):
+    # The model has never heard of Highdeas and writes the nearest thing it knows.
+    # His lexicon is what the transcript is read against before it is stored.
+    model = FakeModel(Recognition("An idea for hideas.",
+                                  tokens=[" An", " idea", " for", " hideas", "."],
+                                  timestamps=[0.1, 0.3, 0.6, 0.8, 1.1]))
+
+    spoken = Transcriber(model=model, decode=lambda src: tmp_path / "x.wav",
+                         read_terms=lambda: ("Highdeas",)).transcribe(tmp_path / "a.m4a")
+
+    assert spoken.text == "An idea for Highdeas."
+    assert [w.text for w in spoken.words] == ["An", "idea", "for", "Highdeas."]
+
+
+def test_transcriber_times_a_gathered_up_term_from_the_first_word_of_it(tmp_path):
+    # A compound name comes back as its halves. The editor lights up whole words as
+    # the recording plays, so the pair becomes the one word it was spoken as —
+    # starting when the first half did, not when the second did.
+    model = FakeModel(Recognition("Put it in notes nook.",
+                                  tokens=[" Put", " it", " in", " notes", " nook", "."],
+                                  timestamps=[0.1, 0.4, 0.7, 1.0, 1.4, 1.8]))
+
+    spoken = Transcriber(model=model, decode=lambda src: tmp_path / "x.wav",
+                         read_terms=lambda: ("Notesnook",)).transcribe(tmp_path / "a.m4a")
+
+    assert spoken.text == "Put it in Notesnook."
+    assert [(w.start, w.text) for w in spoken.words] == [
+        (0.1, "Put"), (0.4, "it"), (0.7, "in"), (1.0, "Notesnook."),
+    ]
+
+
+def test_transcriber_asks_for_his_terms_afresh_for_every_recording(tmp_path):
+    # He adds a term because he just watched a memo come out with it wrong, and
+    # nobody restarts an app for that: the very next recording reads against the
+    # list as it stands then.
+    model = FakeModel(Recognition("hideas", tokens=[" hideas"], timestamps=[0.1]))
+    lists = [(), ("Highdeas",)]
+    transcriber = Transcriber(model=model, decode=lambda src: tmp_path / "x.wav",
+                              read_terms=lambda: lists.pop(0))
+
+    assert transcriber.transcribe(tmp_path / "a.m4a").text == "hideas"
+    assert transcriber.transcribe(tmp_path / "b.m4a").text == "Highdeas"
+
+
 def test_load_parakeet_pins_the_cpu_provider(monkeypatch):
     # Left to choose, onnxruntime picks CoreML on macOS, which fails to
     # initialize this external-data model ("model_path must not be empty").

@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from highdeas.app import (
+    PROJECT_ROOT,
     _ingest_continuously,
     _open_when_ready,
     _open_window,
@@ -14,6 +15,7 @@ from highdeas.app import (
     _start_upload_listener,
     _turn_on_context_menus,
     build_app,
+    lexicon_path,
     platform_defaults,
     build_upload_app,
     default_bin_dir,
@@ -558,3 +560,48 @@ def test_the_splash_wears_the_apps_own_system_colors():
     assert "color-scheme: light dark" in _SPLASH_HTML
     assert "background: Canvas" in _SPLASH_HTML
     assert "#0f172a" not in _SPLASH_HTML
+
+
+def test_the_lexicon_sits_beside_the_state_both_machines_share(tmp_path, monkeypatch):
+    # The terms are his, not this PC's: a name taught to one machine has to reach the
+    # other. The shared state folder is the one place both already read.
+    monkeypatch.setenv("HIGHDEAS_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.delenv("HIGHDEAS_LEXICON", raising=False)
+
+    assert lexicon_path() == tmp_path / "state" / "lexicon.md"
+
+
+def test_the_lexicon_can_live_wherever_he_already_keeps_such_a_list(tmp_path, monkeypatch):
+    monkeypatch.setenv("HIGHDEAS_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.setenv("HIGHDEAS_LEXICON", str(tmp_path / "notes" / "my terms.md"))
+
+    assert lexicon_path() == tmp_path / "notes" / "my terms.md"
+
+
+def test_a_lone_machines_lexicon_sits_in_its_checkout(monkeypatch):
+    monkeypatch.delenv("HIGHDEAS_STATE_DIR", raising=False)
+    monkeypatch.delenv("HIGHDEAS_LEXICON", raising=False)
+
+    assert lexicon_path().name == "lexicon.md"
+    assert lexicon_path().parent == PROJECT_ROOT
+
+
+def test_build_app_reads_every_transcription_against_the_lexicon_as_it_stands(tmp_path, monkeypatch):
+    # The terms have to actually reach the transcriber — and be re-read as the list
+    # grows, so a name taught at nine o'clock fixes the memo recorded at five past.
+    import highdeas.app as app_mod
+    inbox, state = tmp_path / "inbox", tmp_path / "state"
+    inbox.mkdir()
+    state.mkdir()
+    monkeypatch.setenv("HIGHDEAS_INBOX_DIR", str(inbox))
+    monkeypatch.setenv("HIGHDEAS_BIN_DIR", str(tmp_path / "bin"))
+    monkeypatch.setenv("HIGHDEAS_DB", str(tmp_path / "memos.db"))
+    monkeypatch.setenv("HIGHDEAS_STATE_DIR", str(state))
+    monkeypatch.delenv("HIGHDEAS_LEXICON", raising=False)
+    built = {}
+    monkeypatch.setattr(app_mod, "Transcriber", lambda **kwargs: built.update(kwargs))
+
+    build_app()
+    (state / "lexicon.md").write_text("Sagittal\n", encoding="utf-8")
+
+    assert built["read_terms"]() == ("Sagittal",)

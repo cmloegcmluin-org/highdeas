@@ -17,6 +17,7 @@ from highdeas.store import FolderStore, MemoStore, adopt_legacy_db
 from highdeas.transcribe import Transcriber
 from highdeas.update import UpdateChecker
 from highdeas.upload import create_upload_app
+from highdeas.vocabulary import read_lexicon
 from highdeas.web import create_app
 from highdeas.window_state import WindowGeometryTracker, load_geometry
 
@@ -121,6 +122,19 @@ def _system_prefers_dark():
     return False
 
 
+def lexicon_path():
+    """The file holding the terms transcription is read against.
+
+    Beside the state both machines share when there is any, so a name taught at one
+    desk reaches the other; in this checkout when Highdeas runs alone. `.env` overrides
+    both — the list can live wherever such a list is already kept."""
+    override = os.environ.get("HIGHDEAS_LEXICON", "")
+    if override:
+        return Path(override)
+    state_dir = os.environ.get("HIGHDEAS_STATE_DIR", "")
+    return Path(state_dir) / "lexicon.md" if state_dir else PROJECT_ROOT / "lexicon.md"
+
+
 def build_app():
     load_dotenv(PROJECT_ROOT / ".env")
     inbox_dir = os.environ.get("HIGHDEAS_INBOX_DIR", platform_defaults().inbox)
@@ -135,7 +149,7 @@ def build_app():
         os.environ.get("ASANA_ACCESS_TOKEN", ""),
         default_parent=asana_parents[0][0] if asana_parents else "",
     )
-    transcriber = Transcriber()
+    transcriber = Transcriber(read_terms=lambda: read_lexicon(lexicon_path()))
     service = InboxService(
         inbox_dir=inbox_dir,
         store=store,
