@@ -2375,6 +2375,51 @@ def test_open_drive_opens_the_memos_own_subfolder_link_when_it_resolves(tmp_path
     assert launched == ["https://drive.google.com/drive/folders/SUBFOLDER_ID"]
 
 
+def test_open_drive_resolves_the_subfolder_link_through_a_real_linker_with_the_drive_api_mocked(tmp_path):
+    # Closer to the real request path than the test above: this wires in an actual
+    # DriveFolderLinker (the same class app._drive_link_resolver builds once a
+    # service account is configured), rather than a bare lambda standing in for it.
+    # Douglas has no real GCP credentials yet, so the Drive API call is mocked at
+    # DriveFolderLinker's own get/token constructor seams instead of reaching the
+    # internet -- see test_drive_link.py for that resolution logic in isolation.
+    from highdeas.drive_link import DriveFolderLinker
+
+    launched = []
+    service = FakeService(binned=[
+        Memo(audio_filename="g.m4a", status="processed", route="drive",
+             drive_subfolder="_2026_07_07_NOT_YET_PROCESSED_MUSIC", processed_at="2026-07-07T01:00"),
+    ])
+    api_calls = []
+
+    class FakeDriveApiResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"files": [{"id": "SUBFOLDER_DRIVE_ID"}]}
+
+    def fake_drive_api_get(url, **kwargs):
+        api_calls.append((url, kwargs))
+        return FakeDriveApiResponse()
+
+    linker = DriveFolderLinker("service-account.json", "PARENT_ID",
+                               get=fake_drive_api_get, token=lambda key: "fake-access-token")
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin"),
+                        open_link=launched.append,
+                        drive_folder_url="https://drive.google.com/drive/folders/TOP_LEVEL",
+                        drive_link_for=linker.link_for).test_client()
+
+    resp = client.post("/open-drive/g.m4a")
+
+    assert resp.status_code == 204
+    assert launched == ["https://drive.google.com/drive/folders/SUBFOLDER_DRIVE_ID"]
+    url, kwargs = api_calls[0]
+    assert url == "https://www.googleapis.com/drive/v3/files"
+    assert kwargs["headers"] == {"Authorization": "Bearer fake-access-token"}
+    assert "'PARENT_ID' in parents" in kwargs["params"]["q"]
+    assert "name = '_2026_07_07_NOT_YET_PROCESSED_MUSIC'" in kwargs["params"]["q"]
+
+
 def test_open_drive_falls_back_to_the_top_level_folder_when_the_subfolder_cant_be_resolved(tmp_path):
     # The subfolder may not have synced up to Drive yet, or the lookup may have
     # failed — either way the icon should still do something useful, not nothing.
@@ -2387,6 +2432,29 @@ def test_open_drive_falls_back_to_the_top_level_folder_when_the_subfolder_cant_b
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin"),
                         open_link=launched.append, drive_folder_url=top_level,
                         drive_link_for=lambda subfolder_name: "").test_client()
+
+    resp = client.post("/open-drive/g.m4a")
+
+    assert resp.status_code == 204
+    assert launched == [top_level]
+
+
+def test_open_drive_falls_back_to_the_top_level_folder_when_no_service_account_is_configured(tmp_path):
+    # The real "haven't set up a service account yet" case: the router still
+    # records drive_subfolder on every Drive memo regardless, but build_app wires
+    # drive_link_for=None whenever HIGHDEAS_GOOGLE_SERVICE_ACCOUNT_FILE isn't set
+    # (see app._drive_link_resolver). The pre-existing top-level link must keep
+    # working exactly as it did before per-memo linking existed.
+    launched = []
+    service = FakeService(binned=[
+        Memo(audio_filename="g.m4a", status="processed", route="drive",
+             drive_subfolder="_2026_07_07_NOT_YET_PROCESSED_MUSIC", processed_at="2026-07-07T01:00"),
+    ])
+    top_level = "https://drive.google.com/drive/folders/TOP_LEVEL"
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin"),
+                        open_link=launched.append, drive_folder_url=top_level).test_client()
+    # drive_link_for deliberately omitted -- defaults to None, exactly like build_app
+    # produces when no service account is configured.
 
     resp = client.post("/open-drive/g.m4a")
 

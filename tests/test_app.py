@@ -204,6 +204,26 @@ def test_drive_link_resolver_wires_up_when_both_are_configured(monkeypatch, tmp_
     assert callable(resolver)
 
 
+def test_drive_link_resolver_wires_the_service_account_file_and_parent_id_into_the_linker(monkeypatch, tmp_path):
+    # Not just "truthy": the resolver's underlying DriveFolderLinker must be pointed
+    # at the exact key file HIGHDEAS_GOOGLE_SERVICE_ACCOUNT_FILE names, and at the
+    # parent ID parsed out of the folder URL -- not swapped, not defaulted, not
+    # somehow pointed at the wrong folder. (DriveFolderLinker's own resolution logic,
+    # including its Drive API call, is covered independently in test_drive_link.py --
+    # its get/token constructor seams are where that call is mocked, since the
+    # defaults this resolver leaves in place are bound once at import time and can't
+    # be swapped back out from here.)
+    import highdeas.app as app_mod
+    key_file = tmp_path / "service-account.json"
+    monkeypatch.setenv("HIGHDEAS_GOOGLE_SERVICE_ACCOUNT_FILE", str(key_file))
+
+    resolver = app_mod._drive_link_resolver("https://drive.google.com/drive/folders/PARENT_ID")
+
+    linker = resolver.__self__
+    assert linker._service_account_file == str(key_file)
+    assert linker._parent_id == "PARENT_ID"
+
+
 def test_default_bin_dir_sits_beside_the_inbox(tmp_path):
     # The bin must live in the same parent folder as the inbox, so retiring a
     # recording (inbox -> bin) moves it *within* the same iCloud tree. Moving a
