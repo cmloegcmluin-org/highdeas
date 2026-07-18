@@ -522,6 +522,32 @@ def test_dragging_a_row_onto_the_middle_of_another_groups_the_two(tmp_path):
     assert "effectAllowed = 'copyMove'" in js
 
 
+def test_grouping_owns_most_of_the_row_and_reordering_only_the_thin_edges(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    js = asset(client, "inbox.js")
+
+    # Grouping is the common intent, so it owns the middle of the row and reorder gets only
+    # the thin strips at top and bottom — otherwise the rows dodge out from under a note you
+    # were only trying to drop onto. GROUP_BAND is that edge fraction, so a smaller number is
+    # a bigger group zone; keeping it well under a third leaves grouping over half the row.
+    band = float(js.split("GROUP_BAND = ")[1].split(";")[0].split("//")[0].strip())
+    assert 0 < band < 0.25
+
+
+def test_the_live_poll_leaves_a_row_in_mid_drag_alone(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    js = asset(client, "inbox.js")
+
+    # A /pending repaint landing mid-drag could replace or remove the very row in the air —
+    # the other machine retired or renamed it — leaving the drag holding a detached node that
+    # the next dragover splices back in, a duplicate of the row. So the poll's merge stands
+    # down while a drag is in progress and reconciles on the next pass instead.
+    merge = js.split("function merge(html)")[1].split("function check(")[0]
+    assert "if (dragged) return;" in merge
+
+
 def test_index_trash_all_asks_for_confirmation(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 

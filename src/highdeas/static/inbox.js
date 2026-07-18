@@ -419,10 +419,12 @@
   var hovered = null;
   var orderBefore = null;  // the order the drag started from, so dragend can record the move
 
-  // A dragged row means "join this" over another row's middle band, and "go here" near its
-  // edges (handled in dragover). Two groups have no obvious survivor, so a group let go over
-  // a group is never a join — only ever a reorder.
-  var GROUP_BAND = 0.34;  // the middle third of a row groups; the edges reorder
+  // A dragged row means "join this" over most of another row, and "go here" only in the thin
+  // strips along its top and bottom. Grouping is the common intent and reordering the rarer
+  // one, so grouping gets the lion's share of the row: a wide, forgiving target that doesn't
+  // make the rows dodge out from under a note you're only trying to drop onto. Two groups have
+  // no obvious survivor, so a group let go over a group is never a join — only ever a reorder.
+  var GROUP_BAND = 0.2;  // group over the middle 60%; reorder only in the top and bottom 20%
 
   function canGroup(over) {
     return !(isGroup(dragged) && isGroup(over));
@@ -776,6 +778,12 @@
   }
 
   function merge(html) {
+    // Never repaint the list out from under a drag in progress. A row this poll would
+    // replace or remove could be the very one in the air — the other machine retired or
+    // renamed it mid-drag — and swapping it leaves `dragged` pointing at a detached node
+    // that the next dragover splices back in, duplicating the row. The drag is brief; the
+    // next poll after it ends reconciles whatever changed.
+    if (dragged) return;
     var incoming = document.createElement('div');
     incoming.innerHTML = html;
     // The "Transcribing N new recordings…" strip lives outside the row merge:
