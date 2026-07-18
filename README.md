@@ -246,17 +246,25 @@ folder by its own Drive-assigned ID — never by name or path — so this needs 
 (if narrow) Google Cloud credential: a service account with read-only access to just
 that one Drive folder.
 
-1. At <https://console.cloud.google.com>, create a project (or pick an existing one),
+1. Make sure `HIGHDEAS_DRIVE_FOLDER_URL` is already set in `.env` — this feature
+   searches *inside* that folder for the dated subfolder to link to, so it's required
+   here, not only as the plain fallback link described above. If it isn't set yet: at
+   drive.google.com, open the "voice memos (top level)" folder, then **Share → Copy
+   link**, and paste that as `HIGHDEAS_DRIVE_FOLDER_URL` in `.env`.
+2. At <https://console.cloud.google.com>, create a project (or pick an existing one),
    then enable the **Google Drive API** for it: APIs & Services → Enable APIs and
    Services → search "Google Drive API" → **Enable**.
-2. **IAM & Admin → Service Accounts → Create Service Account.** Any name works (e.g.
+3. **IAM & Admin → Service Accounts → Create Service Account.** Any name works (e.g.
    `highdeas-drive-reader`). No project-level roles are needed — skip that step and
    click through to Done.
-3. Open the new service account → **Keys** tab → **Add Key → Create new key → JSON**.
+4. Open the new service account → **Keys** tab → **Add Key → Create new key → JSON**.
    This downloads a `.json` key file. Save it somewhere on this PC *outside* the
-   `highdeas` folder — it's a credential, and must never be committed to git.
-4. Set `HIGHDEAS_GOOGLE_SERVICE_ACCOUNT_FILE` in `.env` to that file's full path.
-5. **Share the Drive folder with the service account.** Open the service account's
+   `highdeas` folder — it's a credential, and must never be committed to git. For
+   example, create `C:\Users\<you>\Highdeas Secrets\` and save it there as
+   `highdeas-drive-reader.json`.
+5. Set `HIGHDEAS_GOOGLE_SERVICE_ACCOUNT_FILE` in `.env` to that file's full path
+   (e.g. `HIGHDEAS_GOOGLE_SERVICE_ACCOUNT_FILE=C:\Users\<you>\Highdeas Secrets\highdeas-drive-reader.json`).
+6. **Share the Drive folder with the service account.** Open the service account's
    details page in Cloud Console and copy its email address (looks like
    `highdeas-drive-reader@<project-id>.iam.gserviceaccount.com`). Then at
    drive.google.com, right-click the "voice memos (top level)" folder → **Share** →
@@ -264,10 +272,10 @@ that one Drive folder.
    step is the most likely way this ends up not working: without it, Drive has
    nothing shared with the service account to search, the lookup always finds
    nothing, and the icon silently falls back to the top-level folder link.
-6. Restart Highdeas.
+7. Restart Highdeas.
 
-Repeat steps 3-4 (a new key file, same service account) on any other machine that
-should get per-memo links too; the sharing in step 5 only needs doing once, since
+Repeat steps 4-5 (a new key file, same service account) on any other machine that
+should get per-memo links too; the sharing in step 6 only needs doing once, since
 it's the Drive folder — not the machine — that's granted access.
 
 ## Phone uploads (iOS app)
@@ -347,7 +355,7 @@ Everything but the keys for the destinations you use is optional. Set these in `
 | `ASANA_PARENT_TASKS` | — | `gid=Label` pairs (`;`-separated) the Asana dropdown offers; the first is the default. |
 | `HIGHDEAS_INBOX_DIR` | iCloud `Shortcuts/Highdeas` | Folder the iOS Shortcut drops recordings into. |
 | `HIGHDEAS_DRIVE_BASE` | `G:\My Drive\voice memos (top level)` | Where music-routed audio is filed. |
-| `HIGHDEAS_DRIVE_FOLDER_URL` | — | That folder's own Drive link (Share -> Copy link), for the bin's Drive icon to open. Empty = the icon does nothing. |
+| `HIGHDEAS_DRIVE_FOLDER_URL` | — | That folder's own Drive link (Share -> Copy link), for the bin's Drive icon to open. Empty = the icon does nothing. Also the folder `HIGHDEAS_GOOGLE_SERVICE_ACCOUNT_FILE` below searches inside — required for per-memo links too, not just the fallback. |
 | `HIGHDEAS_GOOGLE_SERVICE_ACCOUNT_FILE` | — | Path to a Google Cloud service account key file, so the bin's Drive icon opens the memo's own dated subfolder instead of always the top-level folder. Empty = the icon always opens the top-level folder. See "Google Drive per-memo folder links" below. |
 | `HIGHDEAS_BIN_DIR` | `Highdeas Bin` beside the inbox | Where retired recordings wait (recoverable for 90 days). |
 | `HIGHDEAS_LEXICON` | `lexicon.md` beside the state dir, else in this folder | Your own names and terms, one per line, that each transcript is corrected toward. |
