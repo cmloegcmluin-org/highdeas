@@ -123,12 +123,20 @@ recording, or a subtask on an Asana task.
      has only its transcript, so that becomes the task's name (falling back to the
      `Note <date> <time>` title when there is no transcript either). Only the text is
      sent — the audio never leaves this PC. The created task's link is kept for the bin.
+   - **Claude** — the note opens as a prompt nobody has sent yet, in whichever Claude the
+     row's dropdown names: **Code**, a Claude Code session in the desktop app started in
+     `HIGHDEAS_CLAUDE_FOLDER`, or **Chat**, a new claude.ai chat in your chosen Chrome
+     profile. A named memo leads with its name, then its transcript. Either way the
+     composer is filled and stops — nothing reaches the model until you read it and press
+     Enter. Only a chat can be opened on a chosen model (a second dropdown, from
+     `HIGHDEAS_CLAUDE_MODELS`); the Code link carries no model, and no link carries an
+     effort level, so both are set in Claude's own composer.
 8. **Retire to the bin** — on Submit, Delete, or being merged into a group, the recording
    leaves the inbox for a local bin, kept beside the inbox by default so the move stays
    inside iCloud and never triggers a per-file "move off iCloud" prompt. The inbox
    therefore only ever holds unprocessed recordings.
 9. **Bin tab** (`/bin`) — lists everything retired (sent to Notesnook, Drive, or Asana,
-   merged into a group, or deleted) with its audio, transcript, and date, plus **Restore**
+   opened in Claude, merged into a group, or deleted) with its audio, transcript, and date, plus **Restore**
    / **Delete** and bulk **Restore all** / **Empty bin**. **Where** names the destination
    that took the memo, and stays empty for the ones that went nowhere; the Drive icon
    opens the Drive folder (`HIGHDEAS_DRIVE_FOLDER_URL`) in your chosen Chrome profile,
@@ -290,7 +298,9 @@ Everything but the keys for the destinations you use is optional. Set these in `
 | `HIGHDEAS_GOOGLE_KEY` | `google-key.json` beside the lexicon | Service-account key the listed sheets are shared with. |
 | `HIGHDEAS_DB` | `memos.db` in this folder | SQLite store of memo state (single-machine mode). |
 | `HIGHDEAS_STATE_DIR` | — | Set to a synced folder to keep memo state as per-memo files shared between machines; the local DB migrates across on first boot. |
-| `HIGHDEAS_CHROME_EXE` / `HIGHDEAS_CHROME_PROFILE` | system Chrome / `Default` | Chrome + profile used to open Drive and Asana links. |
+| `HIGHDEAS_CLAUDE_FOLDER` | this checkout | Directory a **Code** note's session starts in. Claude asks once per directory whether you trust it; when the note isn't about that project, change the directory in Claude's own UI after it opens. |
+| `HIGHDEAS_CLAUDE_MODELS` | Opus 4.8, Sonnet 5, Fable 5, Haiku 4.5 | `id=Label` pairs (`;`-separated) the model dropdown offers; the first is the default. Ids are what claude.ai takes in a link (`claude-sonnet-5`), so this list is replaced, not extended, as models come and go. |
+| `HIGHDEAS_CHROME_EXE` / `HIGHDEAS_CHROME_PROFILE` | system Chrome / `Default` | Chrome + profile used to open Drive, Asana, and Claude chat links. |
 | `HIGHDEAS_DESKTOP` | `1` | `1` = native window, `0` = plain browser. |
 | `HIGHDEAS_PORT` | `5000` | Local port in browser mode. |
 | `HIGHDEAS_UPLOAD_TOKEN` | — | Shared secret the iOS capture app presents to `POST /upload`. Empty = the LAN upload listener never starts. |

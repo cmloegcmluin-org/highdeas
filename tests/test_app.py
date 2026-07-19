@@ -5,6 +5,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import quote
 
 from highdeas.app import (
     PROJECT_ROOT,
@@ -302,6 +303,37 @@ def test_build_app_offers_the_claude_models_the_environment_names(tmp_path, monk
 
     assert '<option value="claude-sonnet-5" >Sonnet 5&nbsp;</option>' in body
     assert '<option value="claude-opus-4-8" >Opus&nbsp;</option>' in body
+
+
+def test_build_app_reads_blank_claude_settings_as_unset(tmp_path, monkeypatch):
+    # .env.example ships both keys present and empty, which is how this project spells
+    # "not set" — so a blank must fall back to the built-in list and this checkout, not
+    # leave an empty dropdown and a session opening in the home directory.
+    import highdeas.app as app_mod
+
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    (inbox / "voice-3.m4a").write_bytes(b"AUDIO")
+    monkeypatch.delenv("HIGHDEAS_STATE_DIR", raising=False)
+    db_path = tmp_path / "memos.db"
+    monkeypatch.setenv("HIGHDEAS_INBOX_DIR", str(inbox))
+    monkeypatch.setenv("HIGHDEAS_BIN_DIR", str(tmp_path / "bin"))
+    monkeypatch.setenv("HIGHDEAS_DB", str(db_path))
+    monkeypatch.setenv("HIGHDEAS_CLAUDE_MODELS", "")
+    monkeypatch.setenv("HIGHDEAS_CLAUDE_FOLDER", "")
+    opened = []
+    monkeypatch.setattr(app_mod, "_deep_link_launcher", lambda: opened.append)
+
+    app, _ = build_app()
+    MemoStore(db_path).upsert(Memo(audio_filename="voice-3.m4a", route="claude"))
+    body = app.test_client().get("/").data.decode()
+    app.test_client().post("/submit/voice-3.m4a",
+                           data={"name": "", "transcript": "hi", "route": "claude",
+                                 "claude_surface": "code"})
+
+    assert "Opus 4.8&nbsp;" in body
+    assert opened == ["claude://code/new?q=hi&folder="
+                      + quote(str(app_mod.PROJECT_ROOT), safe="")]
 
 
 def test_build_app_reads_every_folder_from_the_environment(tmp_path, monkeypatch):

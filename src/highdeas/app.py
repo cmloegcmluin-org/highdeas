@@ -192,10 +192,13 @@ def build_app():
         default_parent=asana_parents[0][0] if asana_parents else "",
     )
     open_link = _chrome_launcher()
-    claude_models = parse_choices(os.environ.get("HIGHDEAS_CLAUDE_MODELS", CLAUDE_MODELS))
+    # Blank reads as unset, the way every other setting here does: `.env.example` ships
+    # its keys present and empty, so `.get(key, default)` would hand back "" and leave
+    # an empty model list and a session opening in the home directory.
+    claude_models = parse_choices(os.environ.get("HIGHDEAS_CLAUDE_MODELS") or CLAUDE_MODELS)
     claude = ClaudeRouter(
         open_browser=open_link, open_deep_link=_deep_link_launcher(),
-        folder=os.environ.get("HIGHDEAS_CLAUDE_FOLDER", str(PROJECT_ROOT)),
+        folder=os.environ.get("HIGHDEAS_CLAUDE_FOLDER") or str(PROJECT_ROOT),
     )
     transcriber = Transcriber(read_terms=terms_source())
     service = InboxService(
