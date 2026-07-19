@@ -88,6 +88,8 @@
   function previewOf(memo) { return memo.querySelector('.transcript'); }
   function nameField(memo) { return memo.querySelector('input[name=name]'); }
   function parentField(memo) { return memo.querySelector('select.asana-parent'); }
+  function surfaceField(memo) { return memo.querySelector('select.claude-surface'); }
+  function modelField(memo) { return memo.querySelector('select.claude-model'); }
   // The note as written — markers and all — which the row carries in an attribute. The
   // preview beside it draws those markers as a real list, the way the editor does, so
   // the cell's own text no longer reads the note back: "- milk" shows as a bullet whose
@@ -105,17 +107,23 @@
   }
   function textOf(memo) { return { name: nameOf(memo), transcript: transcriptOf(memo) }; }
 
-  // Where the note is bound: the lit icon, and — for the one destination that asks —
-  // the task it becomes a subtask of. The two travel together, saved and undone as one.
+  // Where the note is bound: the lit icon, plus whatever that destination asks for on
+  // top of it — the task Asana files it under, which Claude it opens and on what model.
+  // They travel together, saved and undone as one.
   function destinationOf(memo) {
     var parent = parentField(memo);
+    var surface = surfaceField(memo);
+    var model = modelField(memo);
     return {
       route: memo.querySelector('input.route:checked').value,
       parent: parent ? parent.value : '',
+      surface: surface ? surface.value : '',
+      model: model ? model.value : '',
     };
   }
 
-  // The parent-task dropdown only matters, and only shows, while Asana's icon is lit.
+  // Each extra dropdown only matters, and only shows, while its own icon is lit —
+  // and the model list narrows further, since only a chat can be opened on one.
   function setDestination(memo, chosen) {
     memo.querySelectorAll('input.route').forEach(function (radio) {
       radio.checked = radio.value === chosen.route;
@@ -124,6 +132,16 @@
     if (parent) {
       parent.value = chosen.parent;
       parent.hidden = chosen.route !== 'asana';
+    }
+    var surface = surfaceField(memo);
+    var model = modelField(memo);
+    if (surface) {
+      surface.value = chosen.surface || 'chat';
+      surface.hidden = chosen.route !== 'claude';
+    }
+    if (model && surface) {
+      model.value = chosen.model;
+      model.hidden = surface.hidden || chosen.surface === 'code';
     }
     flush(memo);
   }
@@ -140,6 +158,8 @@
       transcript: transcriptOf(memo),
       route: chosen.route,
       asana_parent: chosen.parent,
+      claude_surface: chosen.surface,
+      claude_model: chosen.model,
     });
   }
 
@@ -685,7 +705,6 @@
     memo._served = memo.outerHTML;
     var preview = previewOf(memo);
     var name = nameField(memo);
-    var parent = parentField(memo);
     // The server ships the note as written, in the cell and in the attribute both; the
     // list markers become a real list here, after _served has the server's own shape.
     drawPreview(memo);
@@ -703,8 +722,8 @@
     // Typing a name is the one thing that can wake a button left with nothing to move.
     name.addEventListener('input', function () { syncMove(memo); scheduleSave(memo); });
     name.addEventListener('blur', function () { flush(memo); });
-    // Lighting a destination icon saves it, and so does picking a different parent
-    // task: one recorded step either way, since only one destination has a dropdown.
+    // Lighting a destination icon saves it, and so does answering whatever that
+    // destination then asks: one recorded step either way.
     var was = destinationOf(memo);
     function rebind() {
       var file = memo.dataset.file;
@@ -720,7 +739,9 @@
     memo.querySelectorAll('input.route').forEach(function (radio) {
       radio.addEventListener('change', rebind);
     });
-    if (parent) parent.addEventListener('change', rebind);
+    memo.querySelectorAll('.route-cell select').forEach(function (select) {
+      select.addEventListener('change', rebind);
+    });
     // The whole row is draggable (rows.html marks the .memo), so the note is picked up
     // anywhere along it — the grip, the timestamp, the transcript, the space between. The
     // controls that need the press for themselves keep it: a drag begun on the audio scrubber

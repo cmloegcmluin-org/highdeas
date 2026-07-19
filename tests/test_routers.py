@@ -4,7 +4,7 @@ import pytest
 
 from highdeas.routers import (
     AsanaRouter, ClaudeRouter, DriveMusicRouter, NotesnookRouter, Router,
-    parse_asana_parents, read_asana_tokens, write_docx,
+    parse_choices, read_asana_tokens, write_docx,
 )
 from highdeas.store import Memo
 
@@ -293,7 +293,7 @@ def test_read_asana_tokens_finds_one_token_per_account_the_dropdown_offers():
     env = {"ASANA_ACCESS_TOKEN": "MINE", "ASANA_ACCESS_TOKEN_WORK": "THEIRS",
            "ASANA_ACCESS_TOKEN_UNUSED": "NOBODYS"}
 
-    tokens = read_asana_tokens(parse_asana_parents("111=Songs;WORK:333=Work backlog"), env)
+    tokens = read_asana_tokens(parse_choices("111=Songs;WORK:333=Work backlog"), env)
 
     assert tokens == {"": "MINE", "WORK": "THEIRS"}
 
@@ -304,7 +304,7 @@ def test_read_asana_tokens_reads_an_account_marker_however_it_was_written():
     # marker names the variable, and variables are upper case.
     env = {"ASANA_ACCESS_TOKEN": "MINE", "ASANA_ACCESS_TOKEN_WORK": "THEIRS"}
 
-    tokens = read_asana_tokens(parse_asana_parents("work:333=Work backlog"), env)
+    tokens = read_asana_tokens(parse_choices("work:333=Work backlog"), env)
 
     assert tokens == {"": "MINE", "work": "THEIRS"}
 
@@ -315,22 +315,22 @@ def test_read_asana_tokens_always_looks_for_the_default_account():
     assert read_asana_tokens([], {}) == {"": ""}
 
 
-def test_parse_asana_parents_reads_gid_label_pairs():
+def test_parse_choices_reads_value_label_pairs():
     # The .env format: "task_gid=Label" pairs, ";"-separated, whitespace-tolerant.
     # Order is kept — the first pair is the default parent and leads the dropdown.
     raw = " 1200000000000001 = Song ideas ;1200000000000002=App ideas; "
 
-    assert parse_asana_parents(raw) == [
+    assert parse_choices(raw) == [
         ("1200000000000001", "Song ideas"),
         ("1200000000000002", "App ideas"),
     ]
 
 
-def test_parse_asana_parents_handles_missing_or_bare_config():
-    assert parse_asana_parents("") == []
-    assert parse_asana_parents(None) == []
+def test_parse_choices_handles_missing_or_bare_config():
+    assert parse_choices("") == []
+    assert parse_choices(None) == []
     # A bare gid with no "=Label" still works, labelled by its gid.
-    assert parse_asana_parents("1200000000000001") == [("1200000000000001", "1200000000000001")]
+    assert parse_choices("1200000000000001") == [("1200000000000001", "1200000000000001")]
 
 
 def test_claude_router_opens_a_code_session_through_the_deep_link_handler():
@@ -384,6 +384,18 @@ def test_claude_router_puts_a_notes_name_above_its_transcript_in_the_prompt():
                       name="Group badges", transcript="show the count"))
 
     assert "q=Group%20badges%0A%0Ashow%20the%20count&" in deep[0]
+
+
+def test_claude_router_opens_a_chat_when_the_note_never_said_which_claude():
+    # An untouched Claude note has no surface saved, and the row's dropdown leads with
+    # Chat — so the two have to agree on which one an empty choice means.
+    browser, deep = [], []
+    router = ClaudeRouter(open_browser=browser.append, open_deep_link=deep.append, folder="C:/repo")
+
+    router.route(Memo(audio_filename="a.m4a", route="claude", transcript="hello"))
+
+    assert deep == []
+    assert browser == ["https://claude.ai/new?q=hello"]
 
 
 def test_drive_router_copies_audio_into_dated_folder_and_writes_doc(tmp_path):

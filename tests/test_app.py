@@ -284,6 +284,26 @@ def test_build_app_opens_a_claude_code_session_at_the_configured_folder(tmp_path
                       "&folder=C%3A%5Cprojects%5Cthing"]
 
 
+def test_build_app_offers_the_claude_models_the_environment_names(tmp_path, monkeypatch):
+    # The model list goes stale as models come and go, so .env can replace it without
+    # a code change — the same "value=Label" pairs the Asana parents are configured as.
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    monkeypatch.delenv("HIGHDEAS_STATE_DIR", raising=False)
+    db_path = tmp_path / "memos.db"
+    monkeypatch.setenv("HIGHDEAS_INBOX_DIR", str(inbox))
+    monkeypatch.setenv("HIGHDEAS_BIN_DIR", str(tmp_path / "bin"))
+    monkeypatch.setenv("HIGHDEAS_DB", str(db_path))
+    monkeypatch.setenv("HIGHDEAS_CLAUDE_MODELS", "claude-sonnet-5=Sonnet 5;claude-opus-4-8=Opus")
+
+    app, _ = build_app()
+    MemoStore(db_path).upsert(Memo(audio_filename="voice-3.m4a", route="claude"))
+    body = app.test_client().get("/").data.decode()
+
+    assert '<option value="claude-sonnet-5" >Sonnet 5&nbsp;</option>' in body
+    assert '<option value="claude-opus-4-8" >Opus&nbsp;</option>' in body
+
+
 def test_build_app_reads_every_folder_from_the_environment(tmp_path, monkeypatch):
     inbox, bin_dir, drive = tmp_path / "inbox", tmp_path / "bin", tmp_path / "drive"
     inbox.mkdir()

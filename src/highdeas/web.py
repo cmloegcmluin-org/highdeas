@@ -61,13 +61,21 @@ def _submitted_fields():
     }
 
 
-def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=(), drive_folder_url="",
-               now=datetime.now, updates=None, update_respawn_delay=0.7, rescan=None):
+def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=(), claude_models=(),
+               drive_folder_url="", now=datetime.now, updates=None, update_respawn_delay=0.7,
+               rescan=None):
     app = Flask(__name__)
     app.jinja_env.filters["when"] = _format_when
     app.jinja_env.filters["playable"] = _audio_url
     # The bin's ages are read against the wall clock, so the clock is injectable.
     app.jinja_env.filters["days_in_bin"] = lambda iso: _days_since(iso, now)
+
+    def row_choices():
+        """What a row needs beyond the memos: the choices its dropdowns offer. Three
+        views render these rows — the page, the poll that streams new ones in, and the
+        fragment a merge rebuilds — so a dropdown added to only one of them renders
+        empty in the other two."""
+        return {"asana_parents": asana_parents, "claude_models": claude_models}
 
     @app.errorhandler(Exception)
     def unhandled(exc):
@@ -89,7 +97,7 @@ def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=(), dr
         # poll streams them in, so the first frame never waits on the model.
         return render_template(
             "inbox.html", memos=service.pending(), incoming=service.incoming_count(),
-            asana_parents=asana_parents,
+            **row_choices(),
         )
 
     @app.get("/pending")
@@ -106,8 +114,7 @@ def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=(), dr
         machine notes hung) until the app was restarted. The "check now" button asks
         for an out-of-band scan through /rescan."""
         return render_template("rows.html", memos=service.pending(),
-                               incoming=service.incoming_count(),
-                               asana_parents=asana_parents)
+                               incoming=service.incoming_count(), **row_choices())
 
     @app.post("/rescan")
     def rescan_now():
@@ -196,8 +203,7 @@ def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=(), dr
         """The inbox as it now reads. Grouping and its undo change several rows at once —
         some leave, some come back into the place the server sorts them — so the page takes
         the whole list rather than patching its own guess at it."""
-        return render_template("rows.html", memos=service.pending(),
-                               asana_parents=asana_parents)
+        return render_template("rows.html", memos=service.pending(), **row_choices())
 
     @app.post("/group")
     def group():

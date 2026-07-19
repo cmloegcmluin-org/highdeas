@@ -28,7 +28,7 @@ class Memo:
     asana_url: str = ""
     # Which Claude the note opens in when its route is "claude": "code" for a Claude
     # Code session in the desktop app, "chat" for a new chat in the browser. Empty
-    # means the first surface on the dropdown.
+    # reads as "chat", which is what the dropdown leads with.
     claude_surface: str = ""
     # The model a "chat" note opens on, as the id claude.ai takes in a link
     # ("claude-sonnet-5"). Empty leaves the composer on whatever it defaults to —

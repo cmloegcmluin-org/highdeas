@@ -316,8 +316,9 @@ body:has(#empty-bin:not(:disabled):hover) .row .purge:not(:disabled) { border-co
 .route-pick label:hover .ic { opacity: .6; }
 .route-pick input:focus-visible + .ic { outline: 2px solid #3b82f6; outline-offset: 2px; border-radius: 4px; }
 .route-pick input:checked + .ic { opacity: 1; filter: none; }
-/* The Asana-only extra: which task the note becomes a subtask of. Hidden unless
-   the Asana icon is the lit one, so the other two routes stay a bare icon row.
+/* The extras a destination asks for on top of its icon: the Asana task a note is
+   filed under, which Claude it opens and on what model. Each is hidden unless its
+   own icon is the lit one, so a route that asks nothing stays a bare icon row.
    Canvas, not transparent: Chromium paints the OPEN dropdown list from the select's
    computed colors, and a transparent select gets a white popup under the dark
    theme's light text — white on white. Canvas matches the page behind it anyway.
@@ -325,19 +326,19 @@ body:has(#empty-bin:not(:disabled):hover) .row .purge:not(:disabled) { border-co
    the right edge about twice as tight as the text's 6px left inset and cannot be
    moved, so we draw the chevron at `right 6px` to mirror the text inset. The 20px
    right padding is its zone: the label ellipsizes before running into it. */
-.memo select.asana-parent { width: 100%; box-sizing: border-box; padding: 4px 20px 4px 6px;
-                            font: inherit; font-size: .8rem; color: inherit;
-                            appearance: none; background-color: Canvas;
-                            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='m1 1 4 4 4-4' fill='none' stroke='%23888' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-                            background-repeat: no-repeat; background-position: right 6px center;
-                            background-size: 10px 6px;
-                            border: 1px solid rgba(128,128,128,.4); border-radius: 8px;
-                            text-overflow: ellipsis; }
+.memo .route-cell select { width: 100%; box-sizing: border-box; padding: 4px 20px 4px 6px;
+                           font: inherit; font-size: .8rem; color: inherit;
+                           appearance: none; background-color: Canvas;
+                           background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='m1 1 4 4 4-4' fill='none' stroke='%23888' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+                           background-repeat: no-repeat; background-position: right 6px center;
+                           background-size: 10px 6px;
+                           border: 1px solid rgba(128,128,128,.4); border-radius: 8px;
+                           text-overflow: ellipsis; }
 /* Colors only: in the open list Chromium honors an option's colors and font but not
    its padding — the right-side buffer is a literal no-break space in the label
    (rows.html), the one inset the popup can't ignore. */
-.memo select.asana-parent option { background: Canvas; color: CanvasText; }
-.memo select.asana-parent[hidden] { display: none; }
+.memo .route-cell select option { background: Canvas; color: CanvasText; }
+.memo .route-cell select[hidden] { display: none; }
 
 /* Bin rows */
 .row { display: contents; }

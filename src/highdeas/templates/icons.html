@@ -15,6 +15,12 @@
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="#f06a6a" aria-label="Asana"><circle cx="12" cy="6.5" r="4.4"/><circle cx="4.9" cy="17.4" r="4.4"/><circle cx="19.1" cy="17.4" r="4.4"/></svg>
 {%- endmacro %}
 
+{#- Claude's burst, in its clay orange. Drawn as strokes from one centre rather than
+    as a filled glyph, so it keeps its weight at the 18px the route icons render at. -#}
+{% macro claude() -%}
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" stroke="#d97757" stroke-width="1.8" stroke-linecap="round" aria-label="Claude"><path d="M12 2.8v18.4M3.8 7.25l16.4 9.5M3.8 16.75l16.4-9.5M7.25 3.8l9.5 16.4M16.75 3.8l-9.5 16.4M2.8 12h18.4"/></svg>
+{%- endmacro %}
+
 {#- A paper plane: send this note wherever its destination icon points. Worn by every
     row's Submit and by the column head that presses them all. -#}
 {% macro send() -%}

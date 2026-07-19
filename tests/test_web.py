@@ -150,20 +150,22 @@ def test_index_renders_inbox_controls(tmp_path):
     assert b'class="btn icon move"' in body
 
 
-def test_index_offers_three_destination_icons_with_the_route_checked(tmp_path):
-    # The two-way Notesnook⇄Drive toggle can't say "Asana": each row now carries
-    # three radio-backed icons and the checked (lit) one is the memo's route.
+def test_index_offers_an_icon_per_destination_with_the_route_checked(tmp_path):
+    # The two-way Notesnook⇄Drive toggle couldn't say "Asana", let alone "Claude":
+    # each row carries one radio-backed icon per destination, and the checked (lit)
+    # one is the memo's route.
     service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hi", route="asana")])
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     body = client.get("/").data.decode()
 
     assert 'class="toggle"' not in body and 'name="route" value="drive"' not in body
-    for route in ("notesnook", "drive", "asana"):
+    for route in ("notesnook", "drive", "asana", "claude"):
         assert f'type="radio" class="route" name="route-a.m4a" value="{route}"' in body
     assert 'value="asana" checked' in body
     assert 'value="notesnook" checked' not in body
-    assert "Send to Asana" in body  # each icon labels itself
+    for label in ("Send to Asana", "Open in Claude"):  # each icon labels itself
+        assert label in body
 
 
 def test_asana_rows_offer_the_parent_task_dropdown_others_keep_it_hidden(tmp_path):
@@ -189,17 +191,62 @@ def test_asana_rows_offer_the_parent_task_dropdown_others_keep_it_hidden(tmp_pat
     assert "Song ideas" in client.get("/pending").data.decode()
 
 
-def test_inbox_js_sends_the_picker_fields_and_toggles_the_dropdown(tmp_path):
+def test_claude_rows_offer_the_chat_or_code_dropdown_others_keep_it_hidden(tmp_path):
+    # Claude is one icon holding two destinations, so the row asks which — the same
+    # shape as Asana's parent picker, and hidden the same way until the icon is lit.
+    service = FakeService(pending=[
+        Memo(audio_filename="a.m4a", transcript="hi", route="claude", claude_surface="code"),
+        Memo(audio_filename="b.m4a", transcript="yo", route="notesnook"),
+    ])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data.decode()
+
+    assert body.count('class="claude-surface"') == 2
+    assert '<option value="chat" >Chat&nbsp;</option>' in body
+    assert '<option value="code" selected>Code&nbsp;</option>' in body
+    # a.m4a (claude) shows the picker; b.m4a (notesnook) keeps it hidden until picked.
+    assert body.count('note opens in" hidden>') == 1
+
+
+def test_claude_chat_rows_offer_the_model_dropdown_and_code_rows_do_not(tmp_path):
+    # Only the chat link carries a model — the Code link drops one silently — so the
+    # model picker follows the chat choice rather than the Claude icon.
+    service = FakeService(pending=[
+        Memo(audio_filename="a.m4a", transcript="hi", route="claude",
+             claude_model="claude-sonnet-5"),
+        Memo(audio_filename="b.m4a", transcript="yo", route="claude", claude_surface="code"),
+    ])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin"),
+                        claude_models=[("claude-opus-4-8", "Opus 4.8"),
+                                       ("claude-sonnet-5", "Sonnet 5")]).test_client()
+
+    body = client.get("/").data.decode()
+
+    assert body.count('class="claude-model"') == 2
+    assert '<option value="claude-sonnet-5" selected>Sonnet 5&nbsp;</option>' in body
+    # a.m4a is a chat, so its models show; b.m4a is a Code session, so they don't.
+    assert body.count('chat opens on" hidden>') == 1
+
+
+def test_inbox_js_sends_the_picker_fields_and_toggles_each_dropdown(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     js = asset(client, "inbox.js")
 
-    # Saves and submits carry the lit icon's route and the chosen parent task…
+    # Saves and submits carry the lit icon's route and every choice that route asks for…
     assert "input.route:checked" in js
     assert "asana_parent" in js
-    # …and the dropdown follows the Asana icon: shown when lit, hidden otherwise. One
-    # place puts a row on a destination, so an undone route hides the dropdown too.
+    assert "claude_surface" in js and "claude_model" in js
+    # …and each dropdown follows its icon: shown when lit, hidden otherwise. One place
+    # puts a row on a destination, so an undone route hides the dropdowns too.
     assert "parent.hidden = chosen.route !== 'asana'" in js
+    assert "surface.hidden = chosen.route !== 'claude'" in js
+    # The model list narrows further: a Code session can't be opened on a chosen model.
+    assert "model.hidden = surface.hidden || chosen.surface === 'code'" in js
+    # Every dropdown in the destination cell records its change the way the icons do —
+    # named as a group, so the next one to join the cell is already listened to.
+    assert "'.route-cell select'" in js
 
 
 def test_unlit_destination_icons_go_greyscale_so_the_lit_one_reads_at_a_glance(tmp_path):
@@ -214,11 +261,13 @@ def test_unlit_destination_icons_go_greyscale_so_the_lit_one_reads_at_a_glance(t
     assert "filter: none" in css
 
 
-def test_asana_dropdown_elides_its_text_before_a_caret_inset_like_the_text(tmp_path):
+def test_destination_dropdowns_elide_their_text_before_a_caret_inset_like_the_text(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     css = asset(client, "app.css")
-    rule = css.split("select.asana-parent {")[1].split("}")[0]
+    # One rule for every dropdown the destination cell holds — Asana's parent task,
+    # Claude's chat-or-code and its model — so they can't drift apart on screen.
+    rule = css.split(".route-cell select {")[1].split("}")[0]
 
     # The label must ellipsize before the caret's zone rather than run underneath it…
     assert "text-overflow: ellipsis" in rule
@@ -230,7 +279,7 @@ def test_asana_dropdown_elides_its_text_before_a_caret_inset_like_the_text(tmp_p
     assert "background-position: right 6px center" in rule
 
 
-def test_asana_dropdown_list_pads_its_right_side_with_a_literal_space(tmp_path):
+def test_destination_dropdown_lists_pad_their_right_side_with_a_literal_space(tmp_path):
     service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hi", route="asana")])
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin"),
                         asana_parents=[("111", "Song ideas")]).test_client()
@@ -244,11 +293,11 @@ def test_asana_dropdown_list_pads_its_right_side_with_a_literal_space(tmp_path):
     # is literal text, so the popup cannot refuse it; it widens the list by one
     # space's worth and buffers the longest label off the right edge.
     assert "Song ideas&nbsp;</option>" in body
-    option_rule = css.split("select.asana-parent option {")[1].split("}")[0]
+    option_rule = css.split(".route-cell select option {")[1].split("}")[0]
     assert "padding" not in option_rule  # the ineffective declaration is gone, not kept for show
 
 
-def test_rows_top_align_so_the_asana_dropdown_grows_downward(tmp_path):
+def test_rows_top_align_so_a_destination_dropdown_grows_downward(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     css = asset(client, "app.css")
@@ -260,7 +309,7 @@ def test_rows_top_align_so_the_asana_dropdown_grows_downward(tmp_path):
     assert "align-items: center" not in css.split(".grid {")[1].split("}")[0]
 
 
-def test_asana_dropdown_list_paints_the_system_palette_not_white(tmp_path):
+def test_destination_dropdown_lists_paint_the_system_palette_not_white(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     css = asset(client, "app.css")
@@ -269,9 +318,9 @@ def test_asana_dropdown_list_paints_the_system_palette_not_white(tmp_path):
     # style: a transparent select got a white popup while the options kept the dark
     # theme's light text — white on white. Paint the control and its options with
     # the system palette so the list reads in both themes.
-    assert "select.asana-parent option" in css
+    assert ".route-cell select option" in css
     assert css.count("background: Canvas") >= 2  # the select and its options
-    assert "background: transparent" not in css.split("select.asana-parent")[1].split("}")[0]
+    assert "background: transparent" not in css.split(".route-cell select")[1].split("}")[0]
 
 
 def test_the_move_button_points_the_way_the_text_will_travel(tmp_path):

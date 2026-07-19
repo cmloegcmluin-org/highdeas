@@ -94,22 +94,23 @@ class NotesnookRouter:
         response.raise_for_status()
 
 
-def parse_asana_parents(raw):
-    """Read ASANA_PARENT_TASKS — ";"-separated "task_gid=Label" pairs — into an
-    ordered list of (parent, label). The first pair is the default parent and leads
-    the inbox dropdown. A pair without "=Label" is labelled by the task itself.
+def parse_choices(raw):
+    """Read how .env spells a dropdown — ";"-separated "value=Label" pairs — into an
+    ordered list of (value, label). The first pair leads the dropdown and is what an
+    unanswered note falls back to; a pair without "=Label" is labelled by its value.
 
-    A gid may be prefixed "ACCOUNT:" to say which Asana account holds that task, so
-    a second account's tasks join the same dropdown with nothing to mark them out
-    (see _account_and_gid). The prefix travels with the gid as one value: it is what
-    the dropdown offers and what the memo remembers being bound to."""
-    parents = []
+    Two dropdowns are configured this way. ASANA_PARENT_TASKS names the tasks a note
+    can be filed under, where a gid may carry an "ACCOUNT:" prefix saying which Asana
+    account holds it (see _account_and_gid) — the prefix travels as part of the value,
+    so the row neither shows it nor has to understand it. HIGHDEAS_CLAUDE_MODELS names
+    the models a chat can be opened on, as the ids claude.ai takes in a link."""
+    choices = []
     for pair in (raw or "").split(";"):
-        parent, _, label = pair.partition("=")
-        parent, label = parent.strip(), label.strip()
-        if parent:
-            parents.append((parent, label or parent))
-    return parents
+        value, _, label = pair.partition("=")
+        value, label = value.strip(), label.strip()
+        if value:
+            choices.append((value, label or value))
+    return choices
 
 
 def _account_and_gid(parent):
@@ -206,12 +207,12 @@ class ClaudeRouter:
 
     def route(self, memo):
         prompt = "\n\n".join(part for part in (memo.name, memo.transcript) if part)
-        if memo.claude_surface == "chat":
-            self._open_browser(_link("https://claude.ai/new", q=prompt,
-                                     model=memo.claude_model))
-        else:
+        if memo.claude_surface == "code":
             self._open_deep_link(_link("claude://code/new", q=prompt,
                                        folder=self._folder))
+        else:
+            self._open_browser(_link("https://claude.ai/new", q=prompt,
+                                     model=memo.claude_model))
 
 
 class Router:

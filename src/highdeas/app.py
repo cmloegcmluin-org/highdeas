@@ -12,7 +12,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from highdeas.routers import (
-    AsanaRouter, ClaudeRouter, DriveMusicRouter, NotesnookRouter, Router, parse_asana_parents,
+    AsanaRouter, ClaudeRouter, DriveMusicRouter, NotesnookRouter, Router, parse_choices,
     read_asana_tokens,
 )
 from highdeas.service import InboxService
@@ -133,6 +133,13 @@ LEXICON_SOURCES = "lexicon-sources.md"
 GOOGLE_KEY = "google-key.json"
 NAMES_CACHE = "sheet-names.json"
 
+# The models a note opened as a chat can be opened on, when .env doesn't say. Ids are
+# what claude.ai takes in a link, labels are what the row's dropdown shows. Models come
+# and go faster than this app is edited, so HIGHDEAS_CLAUDE_MODELS replaces the list
+# outright — it is a default, not a floor.
+CLAUDE_MODELS = ("claude-opus-4-8=Opus 4.8;claude-sonnet-5=Sonnet 5;"
+                 "claude-fable-5=Fable 5;claude-haiku-4-5-20251001=Haiku 4.5")
+
 
 def lexicon_path():
     """The file holding the terms transcription is read against.
@@ -179,12 +186,13 @@ def build_app():
     drive_base = os.environ.get("HIGHDEAS_DRIVE_BASE", platform_defaults().drive_base)
     notesnook = NotesnookRouter(os.environ.get("NOTESNOOK_INBOX_API_KEY", ""))
     drive = DriveMusicRouter(inbox_dir, drive_base)
-    asana_parents = parse_asana_parents(os.environ.get("ASANA_PARENT_TASKS", ""))
+    asana_parents = parse_choices(os.environ.get("ASANA_PARENT_TASKS", ""))
     asana = AsanaRouter(
         read_asana_tokens(asana_parents, os.environ),
         default_parent=asana_parents[0][0] if asana_parents else "",
     )
     open_link = _chrome_launcher()
+    claude_models = parse_choices(os.environ.get("HIGHDEAS_CLAUDE_MODELS", CLAUDE_MODELS))
     claude = ClaudeRouter(
         open_browser=open_link, open_deep_link=_deep_link_launcher(),
         folder=os.environ.get("HIGHDEAS_CLAUDE_FOLDER", str(PROJECT_ROOT)),
@@ -199,6 +207,7 @@ def build_app():
     )
     app = create_app(service, inbox_dir=inbox_dir, bin_dir=bin_dir,
                      open_link=open_link, asana_parents=asana_parents,
+                     claude_models=claude_models,
                      drive_folder_url=os.environ.get("HIGHDEAS_DRIVE_FOLDER_URL", ""),
                      updates=UpdateChecker(PROJECT_ROOT),
                      rescan=lambda: _refresh_when_free(service))
