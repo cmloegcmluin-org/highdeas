@@ -176,6 +176,52 @@ def test_transcriber_keeps_real_speech_and_its_word_timings(tmp_path):
     assert [w.text for w in spoken.words] == ["I", "need", "a", "dusting."]
 
 
+def test_transcriber_leaves_out_the_sounds_he_made_while_thinking(tmp_path):
+    # "Um" and "uh" are speech, so nothing relabels them — they simply aren't worth
+    # writing down. The word timings lose them with the text, or the editor would
+    # light up a word the note no longer has.
+    model = FakeModel(Recognition("Um okay, another thing.",
+                                  tokens=[" Um", " okay", ",", " another", " thing", "."],
+                                  timestamps=[0.1, 0.5, 0.7, 0.9, 1.3, 1.6]))
+
+    spoken = Transcriber(model=model, decode=lambda src: tmp_path / "x.wav").transcribe(
+        tmp_path / "a.m4a")
+
+    assert spoken.text == "Okay, another thing."
+    assert [(w.start, w.text) for w in spoken.words] == [
+        (0.5, "Okay,"), (0.9, "another"), (1.3, "thing."),
+    ]
+
+
+def test_transcriber_reads_a_note_of_pure_hesitation_as_unclear(tmp_path):
+    # Started, thought better of, stopped. The sounds go first and what is left is
+    # nothing, which the relabelling below already knows how to show — so it has to
+    # run after them, not before.
+    model = FakeModel(Recognition("Um, uh.", tokens=[" Um", ",", " uh", "."],
+                                  timestamps=[0.2, 0.4, 0.7, 0.9]))
+
+    spoken = Transcriber(model=model, decode=lambda src: tmp_path / "x.wav").transcribe(
+        tmp_path / "a.m4a")
+
+    assert spoken.text == "[unclear]"
+    assert spoken.words == ()
+
+
+def test_transcriber_keeps_the_lines_of_a_grouped_note_it_takes_a_sound_out_of(tmp_path):
+    # He dictates a list and the model lays it out a line per item. Rebuilding the
+    # text from its words would run those lines into one paragraph.
+    model = FakeModel(Recognition("- Um take out trash.\n- Nothing else.",
+                                  tokens=[" -", " Um", " take", " out", " trash", ".",
+                                          " -", " Nothing", " else", "."],
+                                  timestamps=[0.1, 0.3, 0.5, 0.8, 1.0, 1.2,
+                                              1.6, 1.8, 2.1, 2.3]))
+
+    spoken = Transcriber(model=model, decode=lambda src: tmp_path / "x.wav").transcribe(
+        tmp_path / "a.m4a")
+
+    assert spoken.text == "- Take out trash.\n- Nothing else."
+
+
 def test_transcriber_swaps_a_missed_term_for_the_word_he_actually_said(tmp_path):
     # The model has never heard of Highdeas and writes the nearest thing it knows.
     # His lexicon is what the transcript is read against before it is stored.
@@ -208,8 +254,8 @@ def test_transcriber_times_a_gathered_up_term_from_the_first_word_of_it(tmp_path
 
 
 def test_transcriber_keeps_the_lines_of_a_grouped_note_it_corrects_a_term_in(tmp_path):
-    # He dictates a list and the model lays it out a line per item. Rebuilding the text
-    # from its words alone would run those lines into one paragraph.
+    # Same list, corrected rather than trimmed: swapping a term in is no more licence
+    # to reflow his lines than taking a sound out was.
     model = FakeModel(Recognition("- Call notes nook.\n- Nothing else.",
                                   tokens=[" -", " Call", " notes", " nook", ".",
                                           " -", " Nothing", " else", "."],

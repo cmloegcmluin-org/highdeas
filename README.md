@@ -14,12 +14,18 @@ recording, or a subtask on an Asana task.
    content-unique name, so a recycled inbox filename can never collide with a past memo.
 3. **Transcribe** — each recording is transcribed locally (`onnx-asr`, CPU), along with
    the second each word was spoken on. This runs in the background, so the window opens
-   instantly and memos stream in as they finish. The model rarely returns nothing even
-   when it heard no speech — humming comes back as filler ("Mm-hmm"), noise as a
-   confident hallucination (sometimes in another script). So its text is relabelled
-   before storing: an all-humming note reads `[singing]` (a run of humming inside speech
-   is bracketed where it sits), and an empty or wrong-script result reads `[unclear]`.
-   Anything that reads as real speech is kept exactly as heard.
+   instantly and memos stream in as they finish. The "um" and "uh" you say while
+   thinking are speech, so the model writes them down; they are dropped before anything
+   else reads the text, and where one of them opened a sentence the word left standing
+   takes the capital it was carrying. Only a whole word of the sound counts, so
+   *umbrella* and *uh-huh* survive it.
+
+   The model also rarely returns nothing when it heard no speech — humming comes back as
+   filler ("Mm-hmm"), noise as a confident hallucination (sometimes in another script).
+   So its text is relabelled before storing: an all-humming note reads `[singing]` (a run
+   of humming inside speech is bracketed where it sits), and an empty or wrong-script
+   result — a memo that was nothing but hesitation among them — reads `[unclear]`.
+   Anything else that reads as real speech is kept exactly as heard, lines and all.
 
    Names it has never heard, though, come back as whatever ordinary words sound closest
    — "Highdeas" as *high ideas*, a friend's name spelled three ways across three memos —
@@ -113,9 +119,6 @@ recording, or a subtask on an Asana task.
      has only its transcript, so that becomes the task's name (falling back to the
      `Note <date> <time>` title when there is no transcript either). Only the text is
      sent — the audio never leaves this PC. The created task's link is kept for the bin.
-     Tasks in a **second Asana account** sit in that same dropdown: each carries the
-     account it belongs to, and the note is created under that account's own token, so
-     there is nothing extra to pick at submit time.
 8. **Retire to the bin** — on Submit, Delete, or being merged into a group, the recording
    leaves the inbox for a local bin, kept beside the inbox by default so the move stays
    inside iCloud and never triggers a per-file "move off iCloud" prompt. The inbox
@@ -148,8 +151,8 @@ pays for it, since nearly none of them touch the manifest. Offline machines skip
 it quietly; a diverged checkout, or an install that won't run, launches what it has.
 
 **A new machine's `.env` needs more than paths:** copy `NOTESNOOK_INBOX_API_KEY`,
-every `ASANA_ACCESS_TOKEN*`, `ASANA_PARENT_TASKS`, and `HIGHDEAS_UPLOAD_TOKEN` from
-an existing machine's `.env` (and set a machine-appropriate `HIGHDEAS_DRIVE_BASE`),
+`ASANA_ACCESS_TOKEN`, `ASANA_PARENT_TASKS`, and `HIGHDEAS_UPLOAD_TOKEN` from an
+existing machine's `.env` (and set a machine-appropriate `HIGHDEAS_DRIVE_BASE`),
 or submits from that machine fail with auth errors while everything else hums.
 
 **On the Mac:** run `tools/make_mac_app.sh` once — it builds `/Applications/Highdeas.app`
@@ -180,12 +183,6 @@ right away. Set `HIGHDEAS_DESKTOP=0` to force plain-browser mode.
    the tasks new notes can land under as `ASANA_PARENT_TASKS` in `.env`
    (`task_gid=Label` pairs separated by `;` — see `.env.example`; a task's gid is
    the long number in its URL). Needed only to submit memos to Asana.
-
-   **A second Asana account:** run `Set Asana Token.bat` again, give the account a
-   short name when it asks (it saves the token as `ASANA_ACCESS_TOKEN_<NAME>`), and
-   write that name in front of its tasks' gids — `WORK:1200000000000002=Work backlog`.
-   They join the same dropdown, in whatever order you list them; nothing in the inbox
-   says which account a task is in.
 4. **Paths** — if your inbox or Drive folders differ from the defaults, set
    `HIGHDEAS_INBOX_DIR` and `HIGHDEAS_DRIVE_BASE` in `.env`.
 5. **Names from a Google Sheet** (optional) — to correct transcripts toward a column of
@@ -280,8 +277,7 @@ Everything but the keys for the destinations you use is optional. Set these in `
 | --- | --- | --- |
 | `NOTESNOOK_INBOX_API_KEY` | — | Auth for posting notes to Notesnook. |
 | `ASANA_ACCESS_TOKEN` | — | Personal access token for creating Asana subtasks. |
-| `ASANA_ACCESS_TOKEN_<NAME>` | — | A second Asana account's token, under a name you pick (`ASANA_ACCESS_TOKEN_WORK`). |
-| `ASANA_PARENT_TASKS` | — | `gid=Label` pairs (`;`-separated) the Asana dropdown offers; the first is the default. A gid written `NAME:gid` belongs to the account whose token is `ASANA_ACCESS_TOKEN_NAME`. |
+| `ASANA_PARENT_TASKS` | — | `gid=Label` pairs (`;`-separated) the Asana dropdown offers; the first is the default. |
 | `HIGHDEAS_INBOX_DIR` | iCloud `Shortcuts/Highdeas` | Folder the iOS Shortcut drops recordings into. |
 | `HIGHDEAS_DRIVE_BASE` | `G:\My Drive\voice memos (top level)` | Where music-routed audio is filed. |
 | `HIGHDEAS_DRIVE_FOLDER_URL` | — | That folder's own Drive link (Share -> Copy link), for the bin's Drive icon to open. Empty = the icon does nothing. |

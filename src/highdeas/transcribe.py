@@ -7,6 +7,7 @@ from pathlib import Path
 
 from highdeas.audio import NO_WINDOW as _NO_WINDOW
 from highdeas.audio import locate_ffmpeg as _default_ffmpeg
+from highdeas.hesitation import without_hesitations
 from highdeas.nonspeech import mark_nonspeech
 from highdeas.vocabulary import corrections
 
@@ -74,9 +75,10 @@ def _to_words(tokens, timestamps):
 
 
 def _applied(tokens, fixes):
-    """`tokens` as the `(index, length, replacement)` of `fixes` leave them: each token
-    paired with the index it came from, and each corrected run standing as the one term
-    it missed, at the index the run began on — which is to say at the moment it began."""
+    """`tokens` as the `(index, length, replacement)` of `fixes` leave them, in the
+    kept form `_rewritten` reads: each token paired with the index it came from, and
+    each corrected run standing as the one term it missed, at the index the run began
+    on — which is to say at the moment it began."""
     out, index = [], 0
     for at, size, replacement in fixes:
         out.extend((n, tokens[n]) for n in range(index, at))
@@ -105,22 +107,31 @@ def _respaced(text, kept):
     return "".join(out)
 
 
-def _corrected(spoken, terms):
-    """`spoken` as it would read had the model known these terms: every near-miss of
-    one swapped for the term it missed, in the text and in the word timings alike.
+def _rewritten(spoken, edit):
+    """`spoken` as `edit` rewrites it, in the text and in the word timings alike.
+
+    `edit` reads a list of words and answers with the ones worth keeping, each paired
+    with the index it came from. A kept word takes the timing of the index it answers
+    with, so a run gathered into one term lights up from the moment the run began.
 
     The text and the timed words are two tellings of the same speech and need not agree
-    word for word, so each is read against the lexicon on its own terms."""
+    word for word, so each is edited against itself rather than one being read off the
+    other."""
     tokens = spoken.text.split()
-    fixes = corrections(tokens, terms)
-    if not fixes:
-        return spoken  # nothing in the lexicon was misheard — hand back what came
-    heard = [word.text for word in spoken.words]
+    kept = edit(tokens)
+    if kept == tuple(enumerate(tokens)):
+        return spoken  # nothing to rewrite — hand back what came, spacing and all
     return Transcript(
-        _respaced(spoken.text, _applied(tokens, fixes)),
+        _respaced(spoken.text, kept),
         tuple(TimedWord(spoken.words[index].start, token) for index, token
-              in _applied(heard, corrections(heard, terms))),
+              in edit([word.text for word in spoken.words])),
     )
+
+
+def _corrected(spoken, terms):
+    """`spoken` as it would read had the model known these terms: every near-miss of
+    one swapped for the term it missed."""
+    return _rewritten(spoken, lambda words: _applied(words, corrections(words, terms)))
 
 
 class Transcriber:
@@ -141,12 +152,16 @@ class Transcriber:
     def transcribe(self, audio_path):
         wav = self._decode(audio_path)
         recognized = self._get_model().recognize(wav)
+        # He says "um" and "uh" while he thinks and the model writes both down. They go
+        # first, so that a note that was nothing else is left empty for the next step
+        # to read as [unclear].
+        heard = Transcript(recognized.text,
+                           _to_words(recognized.tokens, recognized.timestamps))
+        spoken = _rewritten(heard, without_hesitations)
         # The model rarely returns nothing; it renders humming as filler and noise as a
         # confident hallucination. Relabel those as [singing]/[unclear] before storing.
         # A relabelled note drops its word timings — there are no real words to light up.
-        marked = mark_nonspeech(recognized.text)
-        if marked == recognized.text:
-            return _corrected(Transcript(recognized.text,
-                                         _to_words(recognized.tokens, recognized.timestamps)),
-                              self._read_terms())
+        marked = mark_nonspeech(spoken.text)
+        if marked == spoken.text:
+            return _corrected(spoken, self._read_terms())
         return Transcript(marked)
