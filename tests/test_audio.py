@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from highdeas.audio import AudioError, duration, join
+from highdeas.audio import AudioError, cut, duration, join
 
 
 def _runner(returncode=0, stderr=""):
@@ -63,3 +63,16 @@ def test_join_raises_when_even_re_encoding_fails(tmp_path):
 
     with pytest.raises(AudioError):
         join([tmp_path / "a.m4a"], tmp_path / "out.m4a", ffmpeg_exe="ff", runner=runner)
+
+
+def test_cut_keeps_everything_outside_the_span_and_closes_the_gap(tmp_path):
+    runner = _runner()
+
+    cut(tmp_path / "a.m4a", tmp_path / "out.m4a", 1.5, 4.25, ffmpeg_exe="ff", runner=runner)
+
+    filters = runner.calls[0][runner.calls[0].index("-af") + 1]
+    assert "between(t,1.5,4.25)" in filters
+    # Without restamping, the samples either side keep their old times and the
+    # cut plays back as a silence of exactly the length that was removed.
+    assert "asetpts" in filters
+    assert runner.calls[0][-1].endswith("out.m4a")

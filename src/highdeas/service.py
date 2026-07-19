@@ -13,9 +13,11 @@ from highdeas import audio
 from highdeas.ingest import find_new_recordings, recording_key, recording_time
 from highdeas.store import Memo
 
-# The joined recording is written here before it is named by its content, in the bin
-# rather than the inbox: a half-written file in the inbox would be ingested as a memo.
+# Recordings the app is building are written under these names first, in the bin rather
+# than the inbox: a half-written file in the inbox would be ingested as a memo. A joined
+# one goes on to be named by its content; a cut one replaces the recording it came from.
 _JOINING = "group"
+_CUTTING = "cut"
 
 # How long to wait out another process's grip on a recording the app has to put down.
 # iCloud starts uploading a file the moment it is written, and the page has just been
@@ -41,10 +43,32 @@ def _word_times(words):
     return json.dumps([[word.start, word.text] for word in words], separators=(",", ":"))
 
 
+def _spoken(memo):
+    """A memo's word timings as [[startSeconds, word], …]."""
+    return json.loads(memo.word_times) if memo.word_times else []
+
+
 def _shifted(memo, offset):
     """A note's word timings as they read once its recording starts `offset` seconds in."""
-    spoken = json.loads(memo.word_times) if memo.word_times else []
-    return [[round(start + offset, 3), word] for start, word in spoken]
+    return [[round(start + offset, 3), word] for start, word in _spoken(memo)]
+
+
+def _uncut(spoken, start, end, length):
+    """Word timings with the seconds from `start` to `end` taken out of them.
+
+    A word is spoken until the next one starts, so a cut that touched any part of a
+    word's span takes that word with it, and everything after the cut slides back by
+    the length removed. That is the same overlap the editor selects its words by, so
+    the words a cut takes out of the transcript are exactly the ones it takes out of
+    here."""
+    removed = end - start
+    kept = []
+    for i, (at, word) in enumerate(spoken):
+        until = spoken[i + 1][0] if i + 1 < len(spoken) else length
+        if at < end and until > start:
+            continue
+        kept.append([round(at - removed, 3), word] if at >= end else [at, word])
+    return kept
 
 
 def _merges(memo):
@@ -92,7 +116,7 @@ class InboxService:
     def __init__(self, *, inbox_dir, store, transcriber, bin_dir,
                  find_new=find_new_recordings, route=_no_router, clock=_now,
                  recorded_time=recording_time, join_audio=audio.join,
-                 audio_length=audio.duration, sleep=time.sleep,
+                 audio_length=audio.duration, cut_audio=audio.cut, sleep=time.sleep,
                  sync_settle_scans=12):
         self._inbox_dir = inbox_dir
         self._store = store
@@ -104,6 +128,7 @@ class InboxService:
         self._recorded_time = recorded_time
         self._join_audio = join_audio
         self._audio_length = audio_length
+        self._cut_audio = cut_audio
         self._sleep = sleep
         self._refresh_lock = threading.Lock()
         # How many scans an already-keyed stranger waits for its state file to
@@ -221,6 +246,34 @@ class InboxService:
 
     def edit(self, audio_filename, **fields):
         self._store.update(audio_filename, **fields)
+
+    def cut(self, audio_filename, start, end):
+        """Take the seconds from `start` to `end` out of a memo's recording.
+
+        The recording is where the transcript came from, so a stretch dragged out on the
+        waveform and deleted takes the sound and the words it spoke together: the editor
+        cuts the text it is showing, and this cuts what that text was read from, timings
+        and all.
+
+        The recording keeps its name. That name is a content key earned once at ingest so
+        a recycled inbox filename can't collide with a past recording — not a checksum
+        anything re-reads — so a cut needs no re-keying, and no row, bin entry, or undo
+        step has to be re-pointed at a file that moved."""
+        memo = self._store.get(audio_filename)
+        recording = Path(self._inbox_dir) / audio_filename
+        if memo is None or not recording.exists():
+            raise ValueError("That note's recording is no longer in the inbox.")
+        length = self._audio_length(recording)
+        # Cut into the bin first: the inbox is scanned for new recordings, and a
+        # half-written file there would be ingested as a memo of its own.
+        bin_dir = Path(self._bin_dir)
+        bin_dir.mkdir(parents=True, exist_ok=True)
+        staged = bin_dir / f"{_CUTTING}{Path(audio_filename).suffix}"
+        self._cut_audio(recording, staged, start, end)
+        self._letgo(lambda: staged.replace(recording))
+        self._store.update(audio_filename, word_times=json.dumps(
+            _uncut(_spoken(memo), start, end, length), separators=(",", ":")))
+        return self._store.get(audio_filename)
 
     def reorder(self, audio_filenames):
         """Fix the inbox to the order the user dragged its rows into."""
@@ -387,19 +440,18 @@ class InboxService:
             offset += self._audio_length(source)
         return json.dumps(spoken, separators=(",", ":"))
 
-    def _discard_recording(self, audio_filename):
-        """Drop a recording the app made and no memo plays any more.
+    def _letgo(self, act):
+        """Do something to a recording that something else on the PC may still be holding.
 
-        Windows refuses to delete a file another process has open, and this one has just
-        been handed to two of them: iCloud, which starts uploading it the moment it is
-        written, and the page, which has been streaming it into an <audio> element. Both
-        let go within a moment and neither can be hurried, so wait them out. If the grip
-        outlasts that, say so — the caller has not moved anything yet, and must not."""
-        made = Path(self._inbox_dir) / audio_filename
+        Windows refuses to delete or replace a file another process has open, and these
+        recordings have just been handed to two of them: iCloud, which starts uploading
+        one the moment it is written, and the page, which has been streaming it into an
+        <audio> element. Both let go within a moment and neither can be hurried, so wait
+        them out. If the grip outlasts that, say so — the caller has not moved anything
+        yet, and must not."""
         for attempt in range(_LETGO_TRIES):
             try:
-                made.unlink(missing_ok=True)
-                return
+                return act()
             except PermissionError:
                 if attempt == _LETGO_TRIES - 1:
                     raise RecordingBusy(
@@ -407,6 +459,11 @@ class InboxService:
                         "Try again in a moment."
                     ) from None
                 self._sleep(_LETGO_WAIT)
+
+    def _discard_recording(self, audio_filename):
+        """Drop a recording the app made and no memo plays any more."""
+        made = Path(self._inbox_dir) / audio_filename
+        self._letgo(lambda: made.unlink(missing_ok=True))
 
     def submit(self, audio_filename):
         outcome = self._route(self._store.get(audio_filename)) or {}

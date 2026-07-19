@@ -139,6 +139,21 @@ def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=(), dr
         service.edit(filename, **_submitted_fields())
         return ("", 204)
 
+    @app.post("/cut/<path:filename>")
+    def cut(filename):
+        """Take a stretch of seconds out of a memo's recording — what deleting a
+        selection dragged over the editor's waveform posts.
+
+        The page cuts the words out of the text it is showing and this cuts the sound
+        they were read from, so it answers with the word timings the cut left behind:
+        every word after it is now that much earlier in the recording."""
+        try:
+            memo = service.cut(filename, float(request.form["from"]),
+                               float(request.form["to"]))
+        except ValueError as exc:
+            return (str(exc), 400)
+        return {"words": memo.word_times}
+
     @app.post("/submit/<path:filename>")
     def submit(filename):
         service.edit(filename, **_submitted_fields())

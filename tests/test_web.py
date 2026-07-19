@@ -35,6 +35,8 @@ class FakeService:
         self.ungroup_crash = None
         self.unmerged = []
         self.unmerge_error = None
+        self.cuts = []
+        self.cut_error = None
 
     def refresh(self):
         self.refreshed += 1
@@ -83,6 +85,13 @@ class FakeService:
 
     def edit(self, audio_filename, **fields):
         self.edits.append((audio_filename, fields))
+
+    def cut(self, audio_filename, start, end):
+        if self.cut_error:
+            raise ValueError(self.cut_error)
+        self.cuts.append((audio_filename, start, end))
+        # The words the cut left behind, slid back by what it removed.
+        return Memo(audio_filename=audio_filename, word_times='[[0.0,"one"]]')
 
     def submit(self, audio_filename):
         self.submitted.append(audio_filename)
@@ -1653,6 +1662,33 @@ def test_edit_route_saves_fields_and_returns_204(tmp_path):
     ]
     assert service.submitted == []
     assert resp.status_code == 204
+
+
+def test_cut_route_takes_the_selected_span_out_and_answers_with_the_words_left(tmp_path):
+    # Deleting a waveform selection cuts the sound as well as the text, and the sound
+    # only the server can cut. It answers with the timings the cut left so the page can
+    # keep lighting the right word — every one after the cut is now that much earlier.
+    service = FakeService()
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    resp = client.post("/cut/a.m4a", data={"from": "1.5", "to": "4.25"})
+
+    assert service.cuts == [("a.m4a", 1.5, 4.25)]
+    assert resp.json == {"words": '[[0.0,"one"]]'}
+
+
+def test_cut_route_refuses_a_recording_that_has_left_the_inbox(tmp_path):
+    # Submitted from another window while this one had the editor open: the recording is
+    # in the bin, there is nothing to cut, and the page must be told rather than shown a
+    # cut that never happened.
+    service = FakeService()
+    service.cut_error = "That note's recording is no longer in the inbox."
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    resp = client.post("/cut/a.m4a", data={"from": "1", "to": "2"})
+
+    assert resp.status_code == 400
+    assert b"no longer in the inbox" in resp.data
 
 
 def test_audio_serves_file_from_inbox(tmp_path):

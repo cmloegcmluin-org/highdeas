@@ -70,5 +70,22 @@ def join(sources, dest, *, ffmpeg_exe=None, runner=subprocess.run, locate=locate
     return Path(dest)
 
 
+def cut(source, dest, start, end, *, ffmpeg_exe=None, runner=subprocess.run,
+        locate=locate_ffmpeg):
+    """Write `source` to `dest` with the seconds from `start` to `end` taken out.
+
+    The samples either side are restamped so the two halves meet: without that they
+    keep the times they were recorded at, and the removed stretch plays back as a
+    silence exactly as long as what was cut. Restamping means re-encoding, which the
+    join path already falls back to, so a cut recording is no stranger than a group's."""
+    ffmpeg_exe = ffmpeg_exe or locate()
+    keep = f"aselect='not(between(t,{round(start, 3)},{round(end, 3)}))',asetpts=N/SR/TB"
+    result = _run([ffmpeg_exe, "-y", "-hide_banner", "-i", str(source),
+                   "-af", keep, str(dest)], runner)
+    if result.returncode != 0:
+        raise AudioError(f"ffmpeg could not cut {Path(source).name}: {result.stderr}")
+    return Path(dest)
+
+
 def _quote(source):
     return str(source.resolve()).replace("'", r"'\''")
