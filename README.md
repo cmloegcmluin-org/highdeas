@@ -131,6 +131,15 @@ recording, or a subtask on an Asana task.
      Enter. Only a chat can be opened on a chosen model (a second dropdown, from
      `HIGHDEAS_CLAUDE_MODELS`); the Code link carries no model, and no link carries an
      effort level, so both are set in Claude's own composer.
+     - **Chat notes stack if you don't send them.** claude.ai keeps a single draft for
+       the new-chat composer (IndexedDB, `store:chat-draft:chorus-unified-composer`) and
+       `?q=` **appends** to it rather than replacing it — so a chat note you open and
+       walk away from is still sitting there when the next one arrives, and the two go
+       as one message. No link clears it: not an empty `q`, and not `prompt=`,
+       `replace=`, `reset=`, `new=` or `clear=`, all of which claude.ai ignores. Sending
+       it, or emptying the box by hand, is what clears it. A Code note has no such
+       shared draft — each link fills that session's own composer and replaces whatever
+       the last one left there.
 8. **Retire to the bin** — on Submit, Delete, or being merged into a group, the recording
    leaves the inbox for a local bin, kept beside the inbox by default so the move stays
    inside iCloud and never triggers a per-file "move off iCloud" prompt. The inbox
