@@ -18,7 +18,11 @@ v1 features, agreed with Douglas:
 - **A list of recordings still on the phone**, each playable with a **scrub** slider.
 - **Push** to the server with a retry queue. A recording is cleared from the phone only
   after the server confirms receipt — same principle as the inbox's "keep notes in the
-  inbox unless the server confirms the submit."
+  inbox unless the server confirms the submit." The row outlives its file by a few
+  seconds, marked "Delivered" (`DeliveryReceipts`): the confirmation only comes once the
+  bytes are on the other machine's disk, so nothing was ever at risk when the row
+  vanished with the file — but a thought disappearing off the screen is a fright whatever
+  the truth behind it, and until the desk caught up the note was visible nowhere at all.
 - ~~**Append** more audio to an existing recording~~ — **cut at kickoff** (see the
   settled question below); a later addition is just a new memo, grouped in the inbox.
 

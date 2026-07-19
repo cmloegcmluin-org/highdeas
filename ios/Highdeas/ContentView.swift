@@ -67,7 +67,7 @@ private struct RecordingRow: View {
                     StateLine(state: item.state)
                 }
                 Spacer()
-                if item.state != .recording {
+                if item.canPlay {
                     Button {
                         toggleExpanded()
                     } label: {
@@ -119,6 +119,11 @@ private struct StateLine: View {
         case .blocked(let reason):
             Label(reason, systemImage: "exclamationmark.triangle")
                 .font(.caption).foregroundStyle(.orange)
+        case .delivered:
+            // The recording is on a computer and gone from here. The row says so
+            // for a few seconds before it goes, so a note is never nowhere.
+            Label("Delivered", systemImage: "checkmark.circle.fill")
+                .font(.caption).foregroundStyle(.green)
         }
     }
 }

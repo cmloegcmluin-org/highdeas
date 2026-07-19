@@ -2,9 +2,10 @@ import Foundation
 import SwiftUI
 import HighdeasKit
 
-/// One recording as the list shows it. The list *is* the retry queue: a row
-/// exists exactly as long as the file does, and the file is deleted only when
-/// the server confirms receipt.
+/// One recording as the list shows it. The list is the retry queue with a short
+/// tail: a row exists as long as the file does, the file is deleted only when the
+/// server confirms receipt, and the row then stays a few seconds more to say so
+/// (see DeliveryReceipts) instead of blinking out.
 struct RecordingItem: Identifiable, Equatable {
     enum State: Equatable {
         case recording
@@ -12,6 +13,7 @@ struct RecordingItem: Identifiable, Equatable {
         case awaitingMachine
         case queued
         case blocked(String)
+        case delivered
     }
 
     let fileName: String
@@ -20,6 +22,10 @@ struct RecordingItem: Identifiable, Equatable {
     var state: State
 
     var id: String { fileName }
+
+    /// Whether there is still a recording here to play. One being written and one
+    /// already handed over both have a row and no file behind it.
+    var canPlay: Bool { state != .recording && state != .delivered }
 }
 
 /// The glue: recorder in, disk as truth, queue rules from HighdeasKit,
@@ -41,7 +47,11 @@ final class CaptureModel: ObservableObject {
     let recorder = Recorder()
     let uploader = Uploader()
     private var queue = UploadQueue()
+    /// Rows for recordings already delivered, kept a few seconds so a note never
+    /// disappears from the phone before the desk has it on screen.
+    private var receipts = DeliveryReceipts()
     private var pump: Timer?
+    private var receiptSweep: Timer?
 
     /// Recordings still in flight toward the server live here; recording
     /// happens in a sibling folder so a half-written file can never be
@@ -106,9 +116,25 @@ final class CaptureModel: ObservableObject {
 
     /// Sync with the disk and push whatever is ready. Safe to call often.
     func wake() {
+        receipts.prune(at: Date())
         syncWithDisk()
         pumpQueue()
         rebuildItems()
+        scheduleReceiptSweep()
+    }
+
+    /// Wake again exactly when the oldest receipt stops being true. Left to the
+    /// 5-second heartbeat a delivered row would linger for whatever part of a
+    /// tick it happened to land in, so two notes sent seconds apart would clear
+    /// after visibly different waits.
+    private func scheduleReceiptSweep() {
+        receiptSweep?.invalidate()
+        receiptSweep = nil
+        guard let due = receipts.nextExpiry() else { return }
+        receiptSweep = Timer.scheduledTimer(
+            withTimeInterval: max(0.05, due.timeIntervalSinceNow), repeats: false) { [weak self] _ in
+            Task { @MainActor in self?.wake() }
+        }
     }
 
     /// A finished recording moves from the in-progress folder into the queue's
@@ -168,6 +194,10 @@ final class CaptureModel: ObservableObject {
         // waits for the last machine to answer.
         queue.resolve(fileName, outcome, at: Date())
         if case .confirmed = outcome {
+            // The row stays on for a few seconds to say it arrived, so the note is
+            // never nowhere. Read the recording's own time first: in a moment there
+            // will be no file left to read it from.
+            receipts.confirm(fileName, recordedAt: creationDate(of: fileName), at: Date())
             // Entry first, file second: a crash in between costs one duplicate
             // upload (the server dedupes), never a lost memo.
             try? FileManager.default.removeItem(
@@ -183,6 +213,16 @@ final class CaptureModel: ObservableObject {
                 url: recordingsDirectory.appending(path: entry.fileName),
                 recordedAt: creationDate(of: entry.fileName),
                 state: state(of: entry))
+        }
+        // Delivered rows sit among the rest by the time each was spoken, so a note
+        // that has just landed stays exactly where it was and only its line changes.
+        // Its recorded time is the receipt's: the file it came from is gone.
+        rows += receipts.showing.map { receipt in
+            RecordingItem(
+                fileName: receipt.fileName,
+                url: recordingsDirectory.appending(path: receipt.fileName),
+                recordedAt: receipt.recordedAt,
+                state: .delivered)
         }
         if recorder.isRecording {
             rows.append(RecordingItem(
