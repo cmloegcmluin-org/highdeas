@@ -3,8 +3,8 @@ from pathlib import Path
 import pytest
 
 from highdeas.routers import (
-    AsanaRouter, DriveMusicRouter, NotesnookRouter, Router, parse_asana_parents,
-    read_asana_tokens, write_docx,
+    AsanaRouter, ClaudeRouter, DriveMusicRouter, NotesnookRouter, Router,
+    parse_asana_parents, read_asana_tokens, write_docx,
 )
 from highdeas.store import Memo
 
@@ -161,6 +161,15 @@ def test_router_dispatches_to_drive_when_selected():
     Router(notesnook=notesnook, drive=drive)(Memo(audio_filename="a.m4a", route="drive"))
 
     assert drive.routed == ["a.m4a"]
+    assert notesnook.routed == []
+
+
+def test_router_dispatches_to_claude_when_selected():
+    notesnook, claude = RecordingRouter(), RecordingRouter()
+
+    Router(notesnook=notesnook, claude=claude)(Memo(audio_filename="a.m4a", route="claude"))
+
+    assert claude.routed == ["a.m4a"]
     assert notesnook.routed == []
 
 
@@ -322,6 +331,59 @@ def test_parse_asana_parents_handles_missing_or_bare_config():
     assert parse_asana_parents(None) == []
     # A bare gid with no "=Label" still works, labelled by its gid.
     assert parse_asana_parents("1200000000000001") == [("1200000000000001", "1200000000000001")]
+
+
+def test_claude_router_opens_a_code_session_through_the_deep_link_handler():
+    # The Code pane answers to claude://, which only the OS handler can open — never
+    # the browser, which would try to navigate to the scheme instead.
+    browser, deep = [], []
+    router = ClaudeRouter(open_browser=browser.append, open_deep_link=deep.append,
+                          folder=r"C:\Users\Douglas\workspace\highdeas")
+
+    router.route(Memo(audio_filename="a.m4a", route="claude", claude_surface="code",
+                      transcript="show how many notes a group folded in"))
+
+    assert browser == []
+    assert deep == ["claude://code/new?q=show%20how%20many%20notes%20a%20group%20folded%20in"
+                    "&folder=C%3A%5CUsers%5CDouglas%5Cworkspace%5Chighdeas"]
+
+
+def test_claude_router_opens_a_chat_in_the_browser_at_its_chosen_model():
+    # A chat is an ordinary https link, so it goes through the browser launcher — the
+    # one that picks the Chrome profile Claude is signed into.
+    browser, deep = [], []
+    router = ClaudeRouter(open_browser=browser.append, open_deep_link=deep.append, folder="C:/repo")
+
+    router.route(Memo(audio_filename="a.m4a", route="claude", claude_surface="chat",
+                      claude_model="claude-sonnet-5", transcript="what rhymes with orange"))
+
+    assert deep == []
+    assert browser == ["https://claude.ai/new?q=what%20rhymes%20with%20orange"
+                       "&model=claude-sonnet-5"]
+
+
+def test_claude_router_leaves_an_unchosen_model_out_of_the_link():
+    # "model=" with nothing behind it is not the same as not naming a model, so an
+    # empty choice drops the parameter rather than sending it blank.
+    browser = []
+    router = ClaudeRouter(open_browser=browser.append, open_deep_link=[].append, folder="C:/repo")
+
+    router.route(Memo(audio_filename="a.m4a", route="claude", claude_surface="chat",
+                      transcript="hello"))
+
+    assert browser == ["https://claude.ai/new?q=hello"]
+
+
+def test_claude_router_puts_a_notes_name_above_its_transcript_in_the_prompt():
+    # A prompt is one block of text, so a named note leads with its name — the same
+    # reading order the row and the editor give it.
+    deep = []
+    router = ClaudeRouter(open_browser=[].append, open_deep_link=deep.append, folder="C:/repo")
+
+    router.route(Memo(audio_filename="a.m4a", route="claude", claude_surface="code",
+                      name="Group badges", transcript="show the count"))
+
+    assert "q=Group%20badges%0A%0Ashow%20the%20count&" in deep[0]
 
 
 def test_drive_router_copies_audio_into_dated_folder_and_writes_doc(tmp_path):

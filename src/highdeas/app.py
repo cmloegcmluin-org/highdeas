@@ -12,7 +12,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from highdeas.routers import (
-    AsanaRouter, DriveMusicRouter, NotesnookRouter, Router, parse_asana_parents, read_asana_tokens,
+    AsanaRouter, ClaudeRouter, DriveMusicRouter, NotesnookRouter, Router, parse_asana_parents,
+    read_asana_tokens,
 )
 from highdeas.service import InboxService
 from highdeas.sheet import NameCache, SheetTerms, authorized_session, fetch_names
@@ -183,16 +184,21 @@ def build_app():
         read_asana_tokens(asana_parents, os.environ),
         default_parent=asana_parents[0][0] if asana_parents else "",
     )
+    open_link = _chrome_launcher()
+    claude = ClaudeRouter(
+        open_browser=open_link, open_deep_link=_deep_link_launcher(),
+        folder=os.environ.get("HIGHDEAS_CLAUDE_FOLDER", str(PROJECT_ROOT)),
+    )
     transcriber = Transcriber(read_terms=terms_source())
     service = InboxService(
         inbox_dir=inbox_dir,
         store=store,
         transcriber=transcriber,
         bin_dir=bin_dir,
-        route=Router(notesnook=notesnook, drive=drive, asana=asana),
+        route=Router(notesnook=notesnook, drive=drive, asana=asana, claude=claude),
     )
     app = create_app(service, inbox_dir=inbox_dir, bin_dir=bin_dir,
-                     open_link=_chrome_launcher(), asana_parents=asana_parents,
+                     open_link=open_link, asana_parents=asana_parents,
                      drive_folder_url=os.environ.get("HIGHDEAS_DRIVE_FOLDER_URL", ""),
                      updates=UpdateChecker(PROJECT_ROOT),
                      rescan=lambda: _refresh_when_free(service))
@@ -258,6 +264,15 @@ def _chrome_launcher():
         subprocess.Popen([chrome, f"--profile-directory={profile}", url])
 
     return launch
+
+
+def _deep_link_launcher():
+    """Return a callable that hands a URL to whichever app the OS has registered
+    for its scheme. Chrome can't be used for this: given a "claude://" link it
+    tries to navigate to it, so the Code pane never opens."""
+    if sys.platform == "darwin":
+        return lambda url: subprocess.Popen(["open", url])
+    return os.startfile
 
 
 def _become_current(checker=None):

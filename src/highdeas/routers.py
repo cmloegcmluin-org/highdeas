@@ -1,9 +1,13 @@
-"""Routers that deliver a submitted memo to Notesnook, Google Drive, or Asana."""
+"""Routers that hand a submitted memo to its chosen destination.
+
+Three of them deliver it outright — Notesnook, Google Drive, Asana. The fourth
+opens it in Claude as a prompt nobody has sent yet."""
 import html
 import re
 import shutil
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote, urlencode
 
 import requests
 
@@ -46,16 +50,17 @@ def _text_to_html(text):
     return "".join(parts) or "<p></p>"
 
 
-def _default_title(timestamp):
+def _default_title(memo):
     """Name an unnamed memo the way Notesnook names untitled notes ("Note $date$
-    $time$"), from an ISO timestamp. Notesnook's Inbox API requires a non-empty
-    title, so this always returns one even when the timestamp is missing.
+    $time$"), from when it happened: the moment it was recorded, or failing that
+    the moment the app first saw it. Notesnook's Inbox API requires a non-empty
+    title, so this always returns one even when neither time is known.
 
     The time is to the second, not the minute: two unnamed memos recorded in the
     same minute would otherwise share a title, and same-titled notes collapse to one
     in the inbox — silently dropping every second recording made within a minute."""
     try:
-        made = datetime.fromisoformat(timestamp)
+        made = datetime.fromisoformat(memo.recorded_at or memo.created_at)
     except (TypeError, ValueError):
         return "Voice note"
     hour = made.hour % 12 or 12
@@ -78,7 +83,7 @@ class NotesnookRouter:
             self.ENDPOINT,
             headers={"Authorization": self._api_key, "Content-Type": "application/json"},
             json={
-                "title": memo.name or _default_title(memo.recorded_at or memo.created_at),
+                "title": memo.name or _default_title(memo),
                 "type": "note",
                 "source": self._source,
                 "version": 1,
@@ -167,7 +172,7 @@ class AsanaRouter:
         if memo.name:
             name, notes = memo.name, memo.transcript
         else:
-            name = memo.transcript or _default_title(memo.recorded_at or memo.created_at)
+            name = memo.transcript or _default_title(memo)
             notes = ""
         response = self._post(
             self.ENDPOINT.format(gid=gid),
@@ -180,13 +185,43 @@ class AsanaRouter:
         return {"asana_url": response.json().get("data", {}).get("permalink_url", "")}
 
 
+def _link(base, **params):
+    """`base` with its non-empty `params` as a query string, spaces as %20 rather
+    than "+". An empty value is left out entirely: "model=" with nothing behind it
+    is a request for a model named "", not the absence of a request."""
+    given = {name: value for name, value in params.items() if value}
+    return f"{base}?{urlencode(given, quote_via=quote)}"
+
+
+class ClaudeRouter:
+    """Open the note as an unsent prompt in a new Claude session.
+
+    Nothing is sent: both surfaces fill the composer and stop, so the memo leaves
+    Highdeas as a question waiting to be read rather than as a delivered note."""
+
+    def __init__(self, open_browser, open_deep_link, *, folder=""):
+        self._open_browser = open_browser
+        self._open_deep_link = open_deep_link
+        self._folder = folder
+
+    def route(self, memo):
+        prompt = "\n\n".join(part for part in (memo.name, memo.transcript) if part)
+        if memo.claude_surface == "chat":
+            self._open_browser(_link("https://claude.ai/new", q=prompt,
+                                     model=memo.claude_model))
+        else:
+            self._open_deep_link(_link("claude://code/new", q=prompt,
+                                       folder=self._folder))
+
+
 class Router:
     """Dispatch a memo to the router for its chosen route (Notesnook by default),
     passing through whatever fields that router reports for the store to persist
     (e.g. Asana's link to the created task)."""
 
-    def __init__(self, notesnook, drive=None, asana=None):
-        self._routers = {"notesnook": notesnook, "drive": drive, "asana": asana}
+    def __init__(self, notesnook, drive=None, asana=None, claude=None):
+        self._routers = {"notesnook": notesnook, "drive": drive, "asana": asana,
+                         "claude": claude}
 
     def __call__(self, memo):
         router = self._routers.get(memo.route, self._routers["notesnook"])

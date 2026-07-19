@@ -56,6 +56,8 @@ def _submitted_fields():
         "transcript": request.form["transcript"],
         "route": request.form.get("route", "notesnook"),
         "asana_parent": request.form.get("asana_parent", ""),
+        "claude_surface": request.form.get("claude_surface", ""),
+        "claude_model": request.form.get("claude_model", ""),
     }
 
 

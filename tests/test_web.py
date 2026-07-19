@@ -1498,11 +1498,30 @@ def test_submit_saves_edits_then_submits_and_returns_204(tmp_path):
     # Submit flushes the row's current field values before submitting.
     assert service.edits == [
         ("a.m4a", {"name": "My idea", "transcript": "edited text",
-                   "route": "asana", "asana_parent": "222"})
+                   "route": "asana", "asana_parent": "222",
+                   "claude_surface": "", "claude_model": ""})
     ]
     assert service.submitted == ["a.m4a"]
     # 204 (no redirect): the client removes the row optimistically, no page reload.
     assert resp.status_code == 204
+
+
+def test_submit_carries_the_claude_surface_and_model_the_row_chose(tmp_path):
+    # Which Claude to open, and on which model, are per-note choices like the Asana
+    # parent — so they ride the same save the rest of the row's fields do.
+    service = FakeService()
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    client.post("/submit/a.m4a", data={
+        "name": "", "transcript": "an idea", "route": "claude",
+        "claude_surface": "chat", "claude_model": "claude-sonnet-5",
+    })
+
+    assert service.edits == [
+        ("a.m4a", {"name": "", "transcript": "an idea", "route": "claude",
+                   "asana_parent": "", "claude_surface": "chat",
+                   "claude_model": "claude-sonnet-5"})
+    ]
 
 
 def test_group_route_consolidates_the_posted_notes_and_names_the_group(tmp_path):
@@ -1612,7 +1631,8 @@ def test_submit_defaults_route_to_notesnook_when_fields_are_missing(tmp_path):
     client.post("/submit/a.m4a", data={"name": "X", "transcript": "Y"})
 
     assert service.edits == [("a.m4a", {"name": "X", "transcript": "Y",
-                                        "route": "notesnook", "asana_parent": ""})]
+                                        "route": "notesnook", "asana_parent": "",
+                                        "claude_surface": "", "claude_model": ""})]
 
 
 def test_submit_that_fails_to_route_keeps_the_memo_and_signals_the_client(tmp_path):
@@ -1714,7 +1734,8 @@ def test_edit_route_saves_fields_and_returns_204(tmp_path):
     # Auto-save persists the fields without submitting/routing the memo.
     assert service.edits == [
         ("a.m4a", {"name": "New name", "transcript": "New body",
-                   "route": "drive", "asana_parent": "111"})
+                   "route": "drive", "asana_parent": "111",
+                   "claude_surface": "", "claude_model": ""})
     ]
     assert service.submitted == []
     assert resp.status_code == 204

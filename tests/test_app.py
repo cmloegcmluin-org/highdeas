@@ -254,6 +254,36 @@ def test_build_app_sends_a_memo_to_the_asana_account_its_parent_task_names(tmp_p
     assert kwargs["headers"]["Authorization"] == "Bearer THEIRS"
 
 
+def test_build_app_opens_a_claude_code_session_at_the_configured_folder(tmp_path, monkeypatch):
+    # The Code pane needs a directory to start in, and a voice note has none of its
+    # own, so the wiring has to carry HIGHDEAS_CLAUDE_FOLDER from .env into the link.
+    import highdeas.app as app_mod
+
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    (inbox / "voice-3.m4a").write_bytes(b"AUDIO")
+    monkeypatch.delenv("HIGHDEAS_STATE_DIR", raising=False)
+    db_path = tmp_path / "memos.db"
+    monkeypatch.setenv("HIGHDEAS_INBOX_DIR", str(inbox))
+    monkeypatch.setenv("HIGHDEAS_BIN_DIR", str(tmp_path / "bin"))
+    monkeypatch.setenv("HIGHDEAS_DB", str(db_path))
+    monkeypatch.setenv("HIGHDEAS_CLAUDE_FOLDER", r"C:\projects\thing")
+    opened = []
+    monkeypatch.setattr(app_mod, "_deep_link_launcher", lambda: opened.append)
+
+    app, _ = build_app()
+    MemoStore(db_path).upsert(Memo(audio_filename="voice-3.m4a", route="claude"))
+    response = app.test_client().post(
+        "/submit/voice-3.m4a",
+        data={"name": "", "transcript": "look at the scanner", "route": "claude",
+              "claude_surface": "code"},
+    )
+
+    assert response.status_code == 204
+    assert opened == ["claude://code/new?q=look%20at%20the%20scanner"
+                      "&folder=C%3A%5Cprojects%5Cthing"]
+
+
 def test_build_app_reads_every_folder_from_the_environment(tmp_path, monkeypatch):
     inbox, bin_dir, drive = tmp_path / "inbox", tmp_path / "bin", tmp_path / "drive"
     inbox.mkdir()

@@ -26,6 +26,14 @@ class Memo:
     # The link Asana returned for the task this memo became, so the bin can open it.
     # Empty for other routes and for memos sent before permalinks were stored.
     asana_url: str = ""
+    # Which Claude the note opens in when its route is "claude": "code" for a Claude
+    # Code session in the desktop app, "chat" for a new chat in the browser. Empty
+    # means the first surface on the dropdown.
+    claude_surface: str = ""
+    # The model a "chat" note opens on, as the id claude.ai takes in a link
+    # ("claude-sonnet-5"). Empty leaves the composer on whatever it defaults to —
+    # which is also all a "code" note can do, since the Code link carries no model.
+    claude_model: str = ""
     status: str = "pending"
     created_at: str = ""
     recorded_at: str = ""
