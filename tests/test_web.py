@@ -2180,13 +2180,14 @@ def test_find_filters_both_pages_by_a_rows_whole_name_and_transcript(tmp_path):
 
     # One filter serves both pages: it hides the inbox's .memo rows and the bin's .row
     # rows the same way, matching a row by its name and its transcript wherever each
-    # lives — an editable field or a plain cell, a .transcript preview or a .text block.
+    # lives — an editable field or a plain cell, an inbox row's own copy of the note or
+    # the bin's .text block.
     assert ".memo, .row" in js
     assert "input[name=name]" in js
-    assert ".transcript, .text" in js
-    # The whole transcript, not the clipped preview: .textContent reads the entire note
-    # even where only three lines of it show. Matched case-insensitively as a substring,
-    # the way Ctrl+F reads.
+    assert "dataset.transcript" in js and "'.text'" in js
+    # The whole transcript, not the clipped preview: a row holds the entire note even
+    # where only three lines of it show. Matched case-insensitively as a substring, the
+    # way Ctrl+F reads.
     assert "textContent" in js
     assert "toLowerCase()" in js
     assert "indexOf(term) >= 0" in js
@@ -2254,3 +2255,59 @@ def test_find_is_the_one_script_both_pages_share_for_it(tmp_path):
     assert "/static/find.js" in binned
     assert "/static/inbox.js" not in binned
     assert "/static/history.js" not in binned
+
+
+def test_a_row_carries_its_note_as_written_so_the_preview_can_be_drawn_from_it(tmp_path):
+    # The preview shows a list as a list, so its .textContent no longer reads back the
+    # note ("- milk" renders as a bullet whose text is just "milk"). The row carries the
+    # note as written instead, and that — not the drawn cell — is what the client reads
+    # and saves. Without it, the first auto-save after an edit would strip every marker.
+    service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="- milk\n- eggs")])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data.decode()
+
+    assert 'data-transcript="- milk\n- eggs"' in body
+
+
+def test_what_a_notes_list_lines_mean_is_one_script_the_row_and_the_dialog_share(tmp_path):
+    # The row and the dialog have to draw a note the same way, or the same list reads as
+    # bullets in one place and as dashes in the other. The grammar of a note's lines lives
+    # in one script both of them read, so there is no second copy to drift.
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data.decode()
+    notes = asset(client, "notes.js")
+    editor = asset(client, "editor.js")
+    inbox = asset(client, "inbox.js")
+
+    # It loads ahead of both, since each reads it as it starts.
+    assert body.index("/static/notes.js") < body.index("/static/editor.js")
+    assert body.index("/static/notes.js") < body.index("/static/inbox.js")
+    # The grammar is here and nowhere else.
+    assert "HighdeasNote" in notes
+    assert "[-*\u2022]" in notes
+    assert "[-*\u2022]" not in editor and "[-*\u2022]" not in inbox
+    # And both surfaces draw through it.
+    assert "HighdeasNote.render" in editor and "HighdeasNote.read" in editor
+    assert "HighdeasNote.render" in inbox
+
+
+def test_the_preview_draws_a_list_inside_its_three_line_box(tmp_path):
+    # The preview holds real blocks now, and a browser's own margins around them pushed
+    # the note's first line a whole line down and its indent a third of the way across —
+    # in a box only three lines tall, that is most of the note gone. The preview sets its
+    # own, tighter than the dialog's: the row is a glance, not a page.
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    css = asset(client, "app.css")
+    preview = css.split(".memo .transcript {")[1].split("}")[0]
+    blocks = css.split(".memo .transcript p, .memo .transcript li {")[1].split("}")[0]
+    lists = css.split(".memo .transcript ul, .memo .transcript ol {")[1].split("}")[0]
+
+    assert "margin: 0" in blocks
+    assert "margin: 0" in lists and "padding-left: 1.2em" in lists
+    # Its line breaks are blocks now, not newlines in a run of text, so nothing is left
+    # for pre-wrap to preserve.
+    assert "pre-wrap" not in preview
+

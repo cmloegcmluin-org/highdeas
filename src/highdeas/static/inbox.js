@@ -73,8 +73,21 @@
   function previewOf(memo) { return memo.querySelector('.transcript'); }
   function nameField(memo) { return memo.querySelector('input[name=name]'); }
   function parentField(memo) { return memo.querySelector('select.asana-parent'); }
-  function transcriptOf(memo) { return previewOf(memo).textContent; }
+  // The note as written — markers and all — which the row carries in an attribute. The
+  // preview beside it draws those markers as a real list, the way the editor does, so
+  // the cell's own text no longer reads the note back: "- milk" shows as a bullet whose
+  // text is "milk", and saving that would strip the list on the first auto-save.
+  function transcriptOf(memo) { return memo.dataset.transcript; }
   function nameOf(memo) { return nameField(memo).value; }
+
+  // Redraw the preview from what the row is holding. An empty note draws nothing at all,
+  // leaving the cell :empty for the CSS placeholder.
+  function drawPreview(memo) {
+    var text = transcriptOf(memo);
+    var cell = previewOf(memo);
+    if (text) cell.replaceChildren(window.HighdeasNote.render(text));
+    else cell.replaceChildren();
+  }
   function textOf(memo) { return { name: nameOf(memo), transcript: transcriptOf(memo) }; }
 
   // Where the note is bound: the lit icon, and — for the one destination that asks —
@@ -157,7 +170,8 @@
 
   function setText(memo, text) {
     nameField(memo).value = text.name;
-    previewOf(memo).textContent = text.transcript;
+    memo.dataset.transcript = text.transcript;
+    drawPreview(memo);
     syncMove(memo);
   }
 
@@ -638,6 +652,9 @@
     var preview = previewOf(memo);
     var name = nameField(memo);
     var parent = parentField(memo);
+    // The server ships the note as written, in the cell and in the attribute both; the
+    // list markers become a real list here, after _served has the server's own shape.
+    drawPreview(memo);
     syncMove(memo);
     memo.querySelector('.ungroup').addEventListener('click', function () {
       clearNotice();

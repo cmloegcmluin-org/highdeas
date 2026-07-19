@@ -29,7 +29,11 @@
 <div class="grid inbox body">
   {% for m in memos %}
   {% if not loop.first %}<div class="sep"></div>{% endif %}
+  {#- data-transcript is the note as written, markers and all. The preview beside it draws
+      those markers as a real list, so the cell's text no longer reads the note back —
+      this attribute is what the client saves, and what the find searches. -#}
   <div class="memo" draggable="true" data-file="{{ m.audio_filename }}" data-words="{{ m.word_times }}"
+       data-transcript="{{ m.transcript }}"
        data-kind="{{ 'group' if m.kind == 'group' else 'note' }}">
     {#- The whole row is the drag handle: take hold of the note anywhere — the grip, the
         timestamp, the transcript, the empty space between — and drag it, between two rows to

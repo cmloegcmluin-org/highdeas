@@ -63,18 +63,19 @@ recording, or a subtask on an Asana task.
    size, monitor, and maximized state it was last closed at — maximized until you say
    otherwise. Each memo row leads with the three controls that act on it — a drag grip, a
    select checkbox, a group badge — then when it was recorded, its audio, a transcript
-   preview, a chevron that moves the transcript into the Name field, a Name box, a
-   three-icon destination picker (Notesnook / Drive / Asana — the lit icon is where
-   Submit sends it; lighting Asana reveals a dropdown choosing which task the note lands
-   under), and Submit / Delete. Drag a row by its grip to reorder the list; the row rides
-   under the cursor while you move it. A live item count and a frozen title bar + column
-   headers (carrying **Submit all** / **Trash all**) stay in reach as the list scrolls.
-   Recordings that arrive while the page is open are polled in automatically. A **find**
-   box sits in the title bar between the count and the buttons — its magnifier there from
-   the start, **Ctrl+F** just putting the cursor in it: type and the list narrows to the
-   notes whose name or transcript holds it, reaching the whole transcript (the part the
-   three-line preview clips off included, which the browser's own find can't see), and Esc
-   brings the full list back. The bin carries the same find.
+   preview (drawn the way the editor draws it, so a note's lists read as real bulleted
+   and numbered lists here too), a chevron that moves the transcript into the Name field,
+   a Name box, a three-icon destination picker (Notesnook / Drive / Asana — the lit icon
+   is where Submit sends it; lighting Asana reveals a dropdown choosing which task the
+   note lands under), and Submit / Delete. Drag a row by its grip to reorder the list; the
+   row rides under the cursor while you move it. A live item count and a frozen title bar
+   + column headers (carrying **Submit all** / **Trash all**) stay in reach as the list
+   scrolls. Recordings that arrive while the page is open are polled in automatically. A
+   **find** box sits in the title bar between the count and the buttons — its magnifier
+   there from the start, **Ctrl+F** just putting the cursor in it: type and the list
+   narrows to the notes whose name or transcript holds it, reaching the whole transcript
+   (the part the three-line preview clips off included, which the browser's own find can't
+   see), and Esc brings the full list back. The bin carries the same find.
 5. **Group** — ideas arrive in clusters. Tick a few notes and press the group button above
    the checkboxes: they fold into one memo whose transcript is a bullet per note, in inbox
    order. The group takes a name of its own — the one name among the notes, or, when

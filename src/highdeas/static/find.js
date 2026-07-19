@@ -24,19 +24,27 @@
   }
 
   // What a row is searched by: its name and its transcript, wherever each of them lives.
-  // The inbox keeps the name in an editable field and the bin in a plain cell; the
-  // transcript is a .transcript preview on one page and a .text block on the other. The
-  // whole of it, not the clipped preview — .textContent reads the entire note even where
-  // only three lines of it show, which is the whole point of not leaving this to the
-  // browser's find.
+  // The inbox keeps the name in an editable field and the bin in a plain cell.
+  //
+  // The transcript is the whole note, not the clipped preview — reaching the text a row
+  // only shows three lines of is the whole point of not leaving this to the browser's
+  // find. An inbox row carries the note as written in an attribute, since its preview
+  // draws the list markers as a real list and so no longer reads the note back: "- milk"
+  // becomes a bullet saying "milk", and the cell ran the items together besides. The bin
+  // prints the note plainly, so there the cell IS the note.
+  function noteOf(row) {
+    if (row.dataset.transcript !== undefined) return row.dataset.transcript;
+    var body = row.querySelector('.text');
+    return body ? body.textContent : '';
+  }
+
   function haystack(row) {
     var parts = [];
     var field = row.querySelector('input[name=name]');
     if (field) parts.push(field.value);
     var name = row.querySelector('.name');
     if (name) parts.push(name.textContent);
-    var body = row.querySelector('.transcript, .text');
-    if (body) parts.push(body.textContent);
+    parts.push(noteOf(row));
     return parts.join(' ').toLowerCase();
   }
 

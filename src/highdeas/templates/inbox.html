@@ -58,6 +58,9 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='history.js') }}"></script>
+{#- What a note's lines mean, read by the dialog and by the row's preview alike, so
+    it loads ahead of both. -#}
+<script src="{{ url_for('static', filename='notes.js') }}"></script>
 <script src="{{ url_for('static', filename='editor.js') }}"></script>
 <script src="{{ url_for('static', filename='namer.js') }}"></script>
 <script src="{{ url_for('static', filename='inbox.js') }}"></script>

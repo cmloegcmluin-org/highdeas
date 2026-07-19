@@ -10,9 +10,8 @@
    whatever it was holding on the editor's behalf.
 
    Notes are stored as plain text, so a list is just its Markdown line ("- x",
-   "1. x"). The dialog renders those lines as real <ul>/<ol> to edit, and reads
-   them back out as lines when it reports a change — the routers turn the same
-   lines into HTML for Notesnook and styled paragraphs for a Drive .docx. */
+   "1. x"). notes.js is what those lines mean: the dialog renders them as real
+   <ul>/<ol> to edit and reads them back out as lines when it reports a change. */
 (function () {
   'use strict';
 
@@ -64,70 +63,11 @@
   // <p> is what the rest of the note pipeline speaks.
   try { document.execCommand('defaultParagraphSeparator', false, 'p'); } catch (err) { /* older engine */ }
 
-  /* ---- Markdown lines <-> editable blocks --------------------------------- */
-
-  var BULLET = /^\s*[-*•]\s+(.*)$/;
-  var NUMBER = /^\s*\d+[.)]\s+(.*)$/;
-
-  function renderNote(text) {
-    var frag = document.createDocumentFragment();
-    var list = null;
-    var listTag = null;
-    text.split('\n').forEach(function (line) {
-      var bullet = BULLET.exec(line);
-      var number = bullet ? null : NUMBER.exec(line);
-      var tag = bullet ? 'UL' : (number ? 'OL' : null);
-      if (tag !== listTag) {
-        list = tag ? frag.appendChild(document.createElement(tag)) : null;
-        listTag = tag;
-      }
-      if (list) {
-        var item = document.createElement('li');
-        item.textContent = (bullet || number)[1];
-        list.appendChild(item);
-      } else {
-        var paragraph = document.createElement('p');
-        if (line) paragraph.textContent = line;
-        else paragraph.appendChild(document.createElement('br'));
-        frag.appendChild(paragraph);
-      }
-    });
-    if (!frag.childNodes.length) frag.appendChild(document.createElement('p'));
-    return frag;
-  }
-
-  function flatten(element) {
-    var text = '';
-    Array.prototype.forEach.call(element.childNodes, function (node) {
-      if (node.nodeType === Node.TEXT_NODE) text += node.nodeValue;
-      else if (node.nodeType === Node.ELEMENT_NODE) text += node.tagName === 'BR' ? '\n' : flatten(node);
-    });
-    // Chromium parks a filler <br> at the end of an otherwise empty block.
-    return text.replace(/\n$/, '');
-  }
-
-  function readNote(root) {
-    var lines = [];
-    Array.prototype.forEach.call(root.childNodes, function (node) {
-      if (node.nodeType === Node.TEXT_NODE) {
-        if (node.nodeValue.trim()) lines.push(node.nodeValue);
-      } else if (node.nodeType !== Node.ELEMENT_NODE) {
-        return;
-      } else if (node.tagName === 'UL' || node.tagName === 'OL') {
-        var ordered = node.tagName === 'OL';
-        var index = 0;
-        Array.prototype.forEach.call(node.children, function (item) {
-          if (item.tagName !== 'LI') return;
-          index += 1;
-          lines.push((ordered ? index + '. ' : '- ') + flatten(item).replace(/\n/g, ' '));
-        });
-      } else {
-        flatten(node).split('\n').forEach(function (line) { lines.push(line); });
-      }
-    });
-    while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
-    return lines.join('\n');
-  }
+  // What a note's lines mean is notes.js's, not the dialog's: the inbox row draws the
+  // same note from the same grammar, so a list can't read as bullets here and as dashes
+  // there.
+  var renderNote = window.HighdeasNote.render;
+  var readNote = window.HighdeasNote.read;
 
   /* ---- Matching the spoken words onto the (possibly edited) text ----------- */
 

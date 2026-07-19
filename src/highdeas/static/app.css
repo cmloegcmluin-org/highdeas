@@ -216,9 +216,16 @@ body:has(#empty-bin:not(:disabled):hover) .row .purge:not(:disabled) { border-co
    so the preview never wants to be taller than the row it has to keep still. */
 .memo .transcript { box-sizing: border-box; padding: 8px; font: inherit; cursor: pointer;
                     border: 1px solid rgba(128,128,128,.4); border-radius: 8px;
-                    white-space: pre-wrap; overflow: hidden; height: calc(3 * 1.45em + 18px);
+                    overflow: hidden; height: calc(3 * 1.45em + 18px);
                     display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3;
                     transition: border-color .15s, background .15s; }
+/* The preview draws a note's list lines as a real list, the same as the dialog does — a
+   note that reads as bullets while it is being edited must not read as dashes in the row
+   it came from. It sets its own spacing rather than the dialog's: a browser's margins
+   around these blocks pushed the first line a whole line down and the indent a third of
+   the way across, and the box is only three lines tall to begin with. */
+.memo .transcript p, .memo .transcript li { margin: 0; }
+.memo .transcript ul, .memo .transcript ol { margin: 0; padding-left: 1.2em; }
 .memo .transcript:hover, .memo .transcript:focus-visible { border-color: #3b82f6; }
 .memo .transcript:empty::before { content: "Add a transcript…"; opacity: .45; }
 /* A copy-to-clipboard button that rides inside a field rather than claiming a column of
