@@ -22,6 +22,7 @@ from highdeas.app import (
     build_upload_app,
     default_bin_dir,
 )
+from highdeas.routers import parse_choices
 from highdeas.store import Memo, MemoStore
 from highdeas.window_state import WindowGeometry, load_geometry, save_geometry
 
@@ -283,6 +284,15 @@ def test_build_app_opens_a_claude_code_session_at_the_configured_folder(tmp_path
     assert response.status_code == 204
     assert opened == ["claude://code/new?q=look%20at%20the%20scanner"
                       "&folder=C%3A%5Cprojects%5Cthing"]
+
+
+def test_the_built_in_model_list_runs_strongest_first():
+    # The dropdown is read top-down and its first entry is the default, so the list is
+    # ordered by how much model you get, not alphabetically or by release date.
+    from highdeas.app import CLAUDE_MODELS
+
+    assert [label for _, label in parse_choices(CLAUDE_MODELS)] == [
+        "Fable 5", "Opus 4.8", "Sonnet 5", "Haiku 4.5"]
 
 
 def test_build_app_offers_the_claude_models_the_environment_names(tmp_path, monkeypatch):

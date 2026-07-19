@@ -134,11 +134,12 @@ GOOGLE_KEY = "google-key.json"
 NAMES_CACHE = "sheet-names.json"
 
 # The models a note opened as a chat can be opened on, when .env doesn't say. Ids are
-# what claude.ai takes in a link, labels are what the row's dropdown shows. Models come
-# and go faster than this app is edited, so HIGHDEAS_CLAUDE_MODELS replaces the list
-# outright — it is a default, not a floor.
-CLAUDE_MODELS = ("claude-opus-4-8=Opus 4.8;claude-sonnet-5=Sonnet 5;"
-                 "claude-fable-5=Fable 5;claude-haiku-4-5-20251001=Haiku 4.5")
+# what claude.ai takes in a link, labels are what the row's dropdown shows. Strongest
+# first: the list is read top-down and its head is the default, so the order is how
+# much model you get. Models come and go faster than this app is edited, so
+# HIGHDEAS_CLAUDE_MODELS replaces the list outright — it is a default, not a floor.
+CLAUDE_MODELS = ("claude-fable-5=Fable 5;claude-opus-4-8=Opus 4.8;"
+                 "claude-sonnet-5=Sonnet 5;claude-haiku-4-5-20251001=Haiku 4.5")
 
 
 def lexicon_path():

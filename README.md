@@ -124,9 +124,9 @@ recording, or a subtask on an Asana task.
      `Note <date> <time>` title when there is no transcript either). Only the text is
      sent — the audio never leaves this PC. The created task's link is kept for the bin.
    - **Claude** — the note opens as a prompt nobody has sent yet, in whichever Claude the
-     row's dropdown names: **Code**, a Claude Code session in the desktop app started in
-     `HIGHDEAS_CLAUDE_FOLDER`, or **Chat**, a new claude.ai chat in your chosen Chrome
-     profile. A named memo leads with its name, then its transcript. Either way the
+     row's dropdown names: **Code** (the default), a Claude Code session in the desktop app
+     started in `HIGHDEAS_CLAUDE_FOLDER`, or **Chat**, a new claude.ai chat in your chosen
+     Chrome profile. A named memo leads with its name, then its transcript. Either way the
      composer is filled and stops — nothing reaches the model until you read it and press
      Enter. Only a chat can be opened on a chosen model (a second dropdown, from
      `HIGHDEAS_CLAUDE_MODELS`); the Code link carries no model, and no link carries an
@@ -299,7 +299,7 @@ Everything but the keys for the destinations you use is optional. Set these in `
 | `HIGHDEAS_DB` | `memos.db` in this folder | SQLite store of memo state (single-machine mode). |
 | `HIGHDEAS_STATE_DIR` | — | Set to a synced folder to keep memo state as per-memo files shared between machines; the local DB migrates across on first boot. |
 | `HIGHDEAS_CLAUDE_FOLDER` | this checkout | Directory a **Code** note's session starts in. Claude asks once per directory whether you trust it; when the note isn't about that project, change the directory in Claude's own UI after it opens. |
-| `HIGHDEAS_CLAUDE_MODELS` | Opus 4.8, Sonnet 5, Fable 5, Haiku 4.5 | `id=Label` pairs (`;`-separated) the model dropdown offers; the first is the default. Ids are what claude.ai takes in a link (`claude-sonnet-5`), so this list is replaced, not extended, as models come and go. |
+| `HIGHDEAS_CLAUDE_MODELS` | Fable 5, Opus 4.8, Sonnet 5, Haiku 4.5 | `id=Label` pairs (`;`-separated) the model dropdown offers, strongest first; the first is the default. Ids are what claude.ai takes in a link (`claude-sonnet-5`), so this list is replaced, not extended, as models come and go. |
 | `HIGHDEAS_CHROME_EXE` / `HIGHDEAS_CHROME_PROFILE` | system Chrome / `Default` | Chrome + profile used to open Drive, Asana, and Claude chat links. |
 | `HIGHDEAS_DESKTOP` | `1` | `1` = native window, `0` = plain browser. |
 | `HIGHDEAS_PORT` | `5000` | Local port in browser mode. |
