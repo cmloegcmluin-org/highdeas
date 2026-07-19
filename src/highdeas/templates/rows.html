@@ -5,15 +5,10 @@
     dialog, where the whole note — waveform, spoken-word highlighting, title,
     lists — has room to be worked on. The row carries the memo's word timings so
     the editor can highlight along with the audio without a second request. -#}
-{% from "icons.html" import notesnook, drive, asana, trash, send, spinner, chevron, clipboard, check, grip, kind_cell %}
-
-{#- A copy-to-clipboard button, pinned inside its cell. It carries both the clipboard
-    and the check icon; the client swaps them with a `.copied` class, so confirming a
-    copy costs no DOM surgery. It is the transcript's sibling, never its child: a click
-    on it must not reach the preview's open-the-editor handler. -#}
-{% macro clip(field) -%}
-<button type="button" class="clip" data-copy="{{ field }}" title="Copy {{ field }}" aria-label="Copy {{ field }}"><span class="ic-copy">{{ clipboard() }}</span><span class="ic-ok">{{ check() }}</span></button>
-{%- endmacro %}
+{#- The copy button rides inside its cell, pinned there by CSS. It is the transcript's
+    sibling, never its child: a click on it must not reach the preview's
+    open-the-editor handler. -#}
+{% from "icons.html" import notesnook, drive, asana, trash, send, spinner, chevron, clip, grip, kind_cell %}
 {#- Recordings that have landed but not yet earned a row: named the moment they
     exist, so the handoff from the phone's list to this one never passes through
     "nowhere". Rides the /pending fragment too — inbox.js swaps it by itself,

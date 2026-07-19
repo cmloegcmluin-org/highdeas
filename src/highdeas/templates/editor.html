@@ -6,21 +6,17 @@
     waveform with each spoken word lighting up in the text, the title has room to
     be read whole, and the body is a real rich-text area with bulleted and
     numbered lists. -#}
-{% from "icons.html" import chevron, clipboard, check %}
-
 {#- Two of the row's field controls ride inside the fields here too: a copy button pinned
-    in each. The third — the chevron that moves the text from the field that holds it into
-    the one that doesn't — sits centred in its own row between the two stacked fields
-    (below), where up/down reads the way the text travels. It is unlabelled; editor.js
-    aims and names it. -#}
-{% macro clip(field) -%}
-<button type="button" class="clip editor-clip" data-copy="{{ field }}" title="Copy {{ field }}" aria-label="Copy {{ field }}"><span class="ic-copy">{{ clipboard() }}</span><span class="ic-ok">{{ check() }}</span></button>
-{%- endmacro %}
+    in each, wearing .editor-clip where the row's pins itself by its cell. The third — the
+    chevron that moves the text from the field that holds it into the one that doesn't —
+    sits centred in its own row between the two stacked fields (below), where up/down reads
+    the way the text travels. It is unlabelled; editor.js aims and names it. -#}
+{% from "icons.html" import chevron, clip %}
 <dialog id="editor" class="editor" aria-label="Edit note">
   <div class="editor-head">
     <div class="editor-name-cell">
       <input type="text" id="editor-name" class="editor-name" placeholder="Name…" autocomplete="off" aria-label="Name">
-      {{ clip('name') }}
+      {{ clip('name', 'editor-clip') }}
     </div>
     <button type="button" id="editor-close" class="editor-close" title="Close (Esc)" aria-label="Close">&times;</button>
   </div>
@@ -49,7 +45,7 @@
 
   <div class="editor-body-cell">
     <div id="editor-body" class="editor-body" contenteditable="true" spellcheck="true" aria-label="Transcript"></div>
-    {{ clip('transcript') }}
+    {{ clip('transcript', 'editor-clip') }}
   </div>
 
   <div class="editor-foot">
