@@ -43,7 +43,7 @@
         the first thing the row has to say: when it was recorded. -#}
     <div class="grip" title="Drag to reorder, or onto another note to group" aria-label="Drag to reorder, or onto another note to group">{{ grip() }}</div>
     <div class="when">{{ m.recorded_at | when }}</div>
-    <audio controls src="/audio/{{ m.audio_filename }}"></audio>
+    <audio controls src="{{ m | playable }}"></audio>
     <div class="cell">
       <div class="transcript" role="button" tabindex="0" title="Open the editor" aria-label="Edit transcript">{{ m.transcript }}</div>
       {{ clip('transcript') }}

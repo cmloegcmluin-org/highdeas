@@ -4,10 +4,13 @@
    Notesnook half-finished just to get it out of the inbox.
 
    The caller owns the memo and its persistence; this file owns the dialog. Open it
-   with HighdeasEditor.open({audioUrl, name, transcript, words, onChange, onClose})
+   with HighdeasEditor.open({audioUrl, name, transcript, words, onChange, onCut, onClose})
    and it reports edits back through onChange({name, transcript}), then says once
    through onClose() that it is done with the note — the caller's cue to let go of
-   whatever it was holding on the editor's behalf.
+   whatever it was holding on the editor's behalf. Deleting a stretch of the waveform
+   asks the caller to cut the recording itself, since the recording is the caller's and
+   not the dialog's: onCut({from, to}) answers with {audioUrl, words} — the cut recording
+   to play from here, and the word timings it left behind.
 
    Notes are stored as plain text, so a list is just its Markdown line ("- x",
    "1. x"). notes.js is what those lines mean: the dialog renders them as real
@@ -382,26 +385,26 @@
 
   function setSelection(sel) { selection = sel; drawWave(); }
 
-  // The words whose spoken span overlaps the selection, in text order. Each mark runs
-  // until the next one begins; the last runs to the end of the recording.
-  function selectedMarks() {
+  // The words whose spoken span overlaps `span`, in text order. Each mark runs until the
+  // next one begins; the last runs to the end of the recording. The server takes the same
+  // span out of the word timings by the same overlap, so the words that leave the text
+  // are exactly the ones that leave the timings.
+  function selectedMarks(span) {
     var chosen = [];
     for (var i = 0; i < marks.length; i++) {
       var end = (i + 1 < marks.length) ? marks[i + 1].at : (audio.duration || marks[i].at);
-      if (marks[i].at < selection.to && end > selection.from) chosen.push(marks[i]);
+      if (marks[i].at < span.to && end > span.from) chosen.push(marks[i]);
     }
     return chosen;
   }
 
-  // Delete the transcript under the waveform selection: the recording is the source of
-  // truth, so cutting a stretch of sound cuts the words it produced. Re-align first so
+  // Cut the words a stretch of sound was spoken over out of the text. Re-align first so
   // the marks point at live text nodes, then cut from the first selected word to the
   // last — sweeping up any unmatched words caught between — and one bordering space.
-  function deleteSelection() {
+  function cutWords(span) {
     align();
-    var chosen = selectedMarks();
-    setSelection(null);
-    if (!chosen.length) return;  // a selection over silence has no words to cut
+    var chosen = selectedMarks(span);
+    if (!chosen.length) return;  // a stretch of silence spoke no words to cut
     var first = chosen[0].token;
     var last = chosen[chosen.length - 1].token;
     var range = document.createRange();
@@ -411,10 +414,46 @@
       eatSpace(range);
       range.deleteContents();
       bodyEl.normalize();
-    } catch (err) { return; }  // the text moved under us; leave it be
-    align();
+    } catch (err) { /* the text moved under us; leave it be */ }
+  }
+
+  // Delete the stretch of recording under the waveform selection, and the words it spoke.
+  // The recording is where the transcript came from, so both go or neither does — and
+  // cutting the file is the caller's to do and the one step that can be refused, so the
+  // sound goes first and the text follows it. Taking the words first and being refused
+  // would leave a note whose text no longer describes what it plays.
+  function deleteSelection() {
+    var span = selection;
+    setSelection(null);
+    if (!span || !current) return;
+    var note = current;
+    audio.pause();  // the stretch being played is about to stop being there
+    Promise.resolve(note.onCut({ from: span.from, to: span.to })).then(function (cut) {
+      if (current !== note) return;  // the dialog has moved on to another note
+      cutWords(span);            // by the timings as they were: the span was drawn in their time
+      words = cut.words || [];   // and from here by the ones the cut left, each that much earlier
+      note.audioUrl = cut.audioUrl;
+      align();
+      loadRecording(span.from);
+      scheduleSave();
+    }, function () {
+      // Refused, and the caller has said so: the recording and the text are as they were.
+    });
+  }
+
+  // Play the recording the cut left, landing the playhead at the seam where the sound now
+  // carries on. A cut recording keeps its filename, so the cut answers with a URL of its
+  // own — handed a name it is already holding, a player plays what it has rather than
+  // what is there — and how long the new sound runs isn't known until its metadata is.
+  function loadRecording(at) {
+    audio.src = current.audioUrl;
+    audio.addEventListener('loadedmetadata', function once() {
+      audio.removeEventListener('loadedmetadata', once);
+      audio.currentTime = Math.min(at, audio.duration || 0);
+      tick();
+    });
+    loadWaveform(current.audioUrl);
     paint(audio.currentTime);
-    scheduleSave();
   }
 
   // Widen a range by one bordering space so a deletion doesn't leave a double gap.

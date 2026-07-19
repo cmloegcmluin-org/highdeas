@@ -271,8 +271,12 @@ class InboxService:
         staged = bin_dir / f"{_CUTTING}{Path(audio_filename).suffix}"
         self._cut_audio(recording, staged, start, end)
         self._letgo(lambda: staged.replace(recording))
-        self._store.update(audio_filename, word_times=json.dumps(
-            _uncut(_spoken(memo), start, end, length), separators=(",", ":")))
+        self._store.update(
+            audio_filename,
+            word_times=json.dumps(_uncut(_spoken(memo), start, end, length),
+                                  separators=(",", ":")),
+            cuts=(memo.cuts or 0) + 1,
+        )
         return self._store.get(audio_filename)
 
     def reorder(self, audio_filenames):

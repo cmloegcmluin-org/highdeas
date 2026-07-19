@@ -90,8 +90,9 @@ class FakeService:
         if self.cut_error:
             raise ValueError(self.cut_error)
         self.cuts.append((audio_filename, start, end))
-        # The words the cut left behind, slid back by what it removed.
-        return Memo(audio_filename=audio_filename, word_times='[[0.0,"one"]]')
+        # The words the cut left behind, slid back by what it removed, and the count that
+        # makes the shortened recording a URL no player is already holding.
+        return Memo(audio_filename=audio_filename, word_times='[[0.0,"one"]]', cuts=3)
 
     def submit(self, audio_filename):
         self.submitted.append(audio_filename)
@@ -1674,7 +1675,9 @@ def test_cut_route_takes_the_selected_span_out_and_answers_with_the_words_left(t
     resp = client.post("/cut/a.m4a", data={"from": "1.5", "to": "4.25"})
 
     assert service.cuts == [("a.m4a", 1.5, 4.25)]
-    assert resp.json == {"words": '[[0.0,"one"]]'}
+    # The recording keeps its filename, so the answer names it the way every rebuilt row
+    # will: a URL no player on the page is already holding the old sound for.
+    assert resp.json == {"words": '[[0.0,"one"]]', "audio": "/audio/a.m4a?cut=3"}
 
 
 def test_cut_route_refuses_a_recording_that_has_left_the_inbox(tmp_path):
@@ -1699,6 +1702,19 @@ def test_audio_serves_file_from_inbox(tmp_path):
 
     assert resp.status_code == 200
     assert resp.data == b"AUDIODATA"
+
+
+def test_a_row_plays_its_recording_by_a_name_that_changes_with_every_cut(tmp_path):
+    # A cut recording keeps its filename, so the row rebuilt by the poll asked for the
+    # same URL — and the player went on with the sound it was already holding rather than
+    # the shorter one on disk. The count the memo carries is what makes each rebuild name
+    # a recording the browser has never played.
+    service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hi", cuts=2)])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data.decode()
+
+    assert 'src="/audio/a.m4a?cut=2"' in body
 
 
 def test_delete_route_discards_and_returns_204(tmp_path):

@@ -37,6 +37,10 @@ class Memo:
     # When each transcribed word was spoken, as the JSON the editor reads back:
     # [[startSeconds, word], …]. Empty for memos transcribed before timings existed.
     word_times: str = ""
+    # How many stretches have been cut out of this recording. It keeps its filename
+    # through a cut, so this is what makes the URL the page plays it from a new one —
+    # a player handed a URL it is already holding plays what it has, not what is there.
+    cuts: int = 0
     # "note" or "group": a group's transcript is a bulleted consolidation of the
     # notes merged into it. Memos stored before this column existed read back as
     # None, which is simply "not a group".
@@ -51,7 +55,8 @@ class Memo:
 
 _COLUMNS = [f.name for f in fields(Memo)]
 # Position must compare as a number: in a TEXT column SQLite would sort '10' before '2'.
-_COLUMN_TYPES = {"position": "INTEGER"}
+# The cut count is arithmetic, so it comes back as one rather than as "3".
+_COLUMN_TYPES = {"position": "INTEGER", "cuts": "INTEGER"}
 
 
 def _declaration(column):

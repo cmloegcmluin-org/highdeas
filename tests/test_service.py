@@ -814,6 +814,19 @@ def test_cut_takes_the_span_out_of_the_recording_and_out_of_its_word_timings(tmp
     assert json.loads(memo.word_times) == [[0.0, "one"], [2.0, "four"]]
 
 
+def test_cut_counts_itself_so_the_recording_can_be_asked_for_by_a_name_it_has_not_played(tmp_path):
+    # A cut recording keeps its filename, and a player handed a URL it is already holding
+    # goes on playing what it has — the browser keeps one media resource per URL, not per
+    # file, and a page told not to store the response reused it anyway. So the count rides
+    # with the memo, and every render of the row asks for the recording as it now is.
+    inbox, store = _two_notes(tmp_path, first=b"ABCDE")
+    service = service_with_fake_audio(inbox, store, tmp_path / "bin", clock=lambda: "T")
+
+    assert store.get("a.m4a").cuts == 0
+    assert service.cut("a.m4a", 1.0, 2.0).cuts == 1
+    assert service.cut("a.m4a", 0.0, 1.0).cuts == 2
+
+
 def test_cut_leaves_the_memo_whole_when_the_pc_will_not_let_go_of_the_recording(tmp_path):
     # The page has been streaming this very recording, so the moment the cut has to put
     # it down is the moment Windows is most likely to refuse. Timings written before the

@@ -5,6 +5,7 @@ module is the routes and the glue that binds them to the templates.
 """
 import threading
 from datetime import datetime
+from urllib.parse import quote
 
 from flask import Flask, redirect, render_template, request, send_from_directory
 from werkzeug.exceptions import HTTPException
@@ -37,6 +38,17 @@ def _days_since(iso, now):
     return str(max(0, (now() - since).days))
 
 
+def _audio_url(memo):
+    """Where a memo's recording is played from.
+
+    The cut count rides in the query because a cut rewrites the recording under the same
+    filename, and a player handed a URL it is already holding plays what it has rather
+    than what is on disk — however the response is labelled, and even in a player built
+    fresh. Every render names the recording as it now is, so the row rebuilt by the poll
+    can't put back the sound a cut just removed."""
+    return f"/audio/{quote(memo.audio_filename)}?cut={memo.cuts or 0}"
+
+
 def _submitted_fields():
     """Editable field values shared by auto-save (/edit) and Submit (/submit)."""
     return {
@@ -51,6 +63,7 @@ def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=(), dr
                now=datetime.now, updates=None, update_respawn_delay=0.7, rescan=None):
     app = Flask(__name__)
     app.jinja_env.filters["when"] = _format_when
+    app.jinja_env.filters["playable"] = _audio_url
     # The bin's ages are read against the wall clock, so the clock is injectable.
     app.jinja_env.filters["days_in_bin"] = lambda iso: _days_since(iso, now)
 
@@ -132,6 +145,9 @@ def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=(), dr
 
     @app.get("/audio/<path:filename>")
     def audio(filename):
+        """A pending memo's recording. Cached freely: a cut rewrites the bytes under the
+        same filename, but every page that asks for a cut recording asks by a URL that
+        carries the cut count (see _audio_url), so one URL always means one recording."""
         return send_from_directory(inbox_dir, filename)
 
     @app.post("/edit/<path:filename>")
@@ -145,14 +161,15 @@ def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=(), dr
         selection dragged over the editor's waveform posts.
 
         The page cuts the words out of the text it is showing and this cuts the sound
-        they were read from, so it answers with the word timings the cut left behind:
-        every word after it is now that much earlier in the recording."""
+        they were read from, so it answers with what the page can't work out for itself:
+        the word timings the cut left behind — every word after it is now that much
+        earlier — and the URL to play the shortened recording from."""
         try:
             memo = service.cut(filename, float(request.form["from"]),
                                float(request.form["to"]))
         except ValueError as exc:
             return (str(exc), 400)
-        return {"words": memo.word_times}
+        return {"words": memo.word_times, "audio": _audio_url(memo)}
 
     @app.post("/submit/<path:filename>")
     def submit(filename):

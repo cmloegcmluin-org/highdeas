@@ -604,17 +604,48 @@
   // which left every later edit landing in a row no longer on the page.
   var editing = null;
 
+  // Where this row plays its recording from, as the server named it. A cut rewrites the
+  // recording under the same filename, and a player handed a URL it is already holding
+  // plays what it has rather than what is on disk — so the server counts the cuts into
+  // the URL and the page never builds one of its own.
+  function playable(memo) { return memo.querySelector('audio').getAttribute('src'); }
+
+  // The editor cuts the words out of the text it is showing; the recording they were read
+  // from is the server's to cut, and it answers with the timings the cut left and the URL
+  // the shortened recording plays from. The row keeps both: reopening the note before the
+  // next poll must not light its words by where they used to be, and the row's own player
+  // must stop playing the stretch that has just gone.
+  function cutAudio(memo, span) {
+    var data = new URLSearchParams({ from: span.from, to: span.to });
+    return post(urlFor('/cut/', memo), data).then(function (r) {
+      if (!r.ok) return r.text().then(function (t) { throw new Error(t || 'Failed'); });
+      return r.json();
+    }).then(function (result) {
+      memo.dataset.words = result.words;
+      memo.querySelector('audio').src = result.audio;
+      return { audioUrl: result.audio, words: wordsOf(memo) };
+    });
+  }
+
   function openEditor(memo) {
     if (memo.classList.contains('sending') || !window.HighdeasEditor) return;
     editing = memo;
+    clearNotice();
     window.HighdeasEditor.open({
-      audioUrl: urlFor('/audio/', memo),
+      audioUrl: playable(memo),
       name: nameOf(memo),
       transcript: transcriptOf(memo),
       words: wordsOf(memo),
       onChange: function (note) {
         setText(memo, note);
         scheduleSave(memo);
+      },
+      onCut: function (span) {
+        return cutAudio(memo, span).catch(function (err) {
+          // The editor leaves the recording as it was; say why it is still whole.
+          notify("Couldn't cut that from the recording — the note is unchanged." + describe(err));
+          throw err;
+        });
       },
       onClose: function () { editing = null; },
     });
