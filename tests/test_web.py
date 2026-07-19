@@ -1506,6 +1506,21 @@ def test_index_shows_empty_state_when_the_inbox_is_idle(tmp_path):
     assert b"Transcribing" not in body
 
 
+def test_the_list_catches_up_the_moment_the_window_is_looked_at(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    js = asset(client, "inbox.js")
+
+    # The 5s poll is not 5s when the window is behind something. A page the OS has
+    # hidden — minimized, or covered by another app — has its timers throttled by the
+    # engine to as little as once a minute, and coming back to Highdeas to see whether a
+    # note landed is exactly the moment a stale list is frightening. So looking at the
+    # window asks the server at once, rather than waiting out whatever is left of a
+    # stretched timer.
+    assert "visibilitychange" in js
+    assert "window.addEventListener('focus', check)" in js
+
+
 def test_index_polls_the_pending_endpoint_to_stay_current(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 

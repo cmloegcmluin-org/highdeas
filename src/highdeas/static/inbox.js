@@ -949,6 +949,18 @@
 
   setTimeout(poll, POLL_MS);
 
+  // Every 5 seconds, except when it matters most. A page the OS has hidden — the window
+  // minimized, or another app covering it — has its timers throttled by the engine to as
+  // little as once a minute, and coming back to Highdeas to check that a note landed is
+  // exactly the moment a stale list is frightening. Looking at the window asks the server
+  // then and there instead of waiting out whatever is left of a stretched timer. Both
+  // signals, because they are different moments: uncovering the window is a visibility
+  // change, and clicking into an already-visible one is only a focus.
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) check();
+  });
+  window.addEventListener('focus', check);
+
   // The app keeps itself current: when new code lands on main, the page
   // pulls-and-relaunches — but only once the user has left the window alone
   // for a minute (or it's hidden). Never mid-thought: a restart under a
