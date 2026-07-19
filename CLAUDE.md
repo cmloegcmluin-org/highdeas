@@ -5,6 +5,14 @@ his MacBook. Both apps **self-update from origin/main** (pull at launch, pull-an
 relaunch when idle) — anything you land goes live on his desks within minutes.
 Land accordingly: whole suite green, small single-purpose commits, no WIP.
 
+**The phone is not one of them.** An iOS app cannot pull from git, so landing an
+`ios/` change on `main` reaches the desks and leaves the phone exactly as it was.
+It updates only by `ios/resign.sh` with the iPhone plugged in and *unlocked* — the
+build is long enough that it auto-locks partway, so unlock it again for the install
+step. Until that runs, a phone fix is not fixed, however green the suite is: say so
+rather than reporting it landed. And if you need the phone, **ask for it** — Douglas
+would rather plug it in than have you verify around its absence on a simulator.
+
 ## How work lands
 
 - Work on a branch in a worktree (`git worktree add .claude/worktrees/<name> -b
