@@ -39,6 +39,12 @@ class Memo:
     # up that subfolder's own Drive link instead of always the static top-level folder.
     # Empty for other routes and for memos sent before this was tracked.
     drive_subfolder: str = ""
+    # The native Google Doc DriveMusicRouter filed the transcript into, as the direct
+    # link DriveDocFiler.file_doc returned (see routers.DriveMusicRouter) -- so it lives
+    # somewhere Douglas can be pointed straight back to without hunting for it. Empty
+    # for other routes, for memos with no transcript, and for anything filed instead as
+    # the older local .docx (not configured yet, or a Drive hiccup at submit time).
+    drive_doc_link: str = ""
     status: str = "pending"
     created_at: str = ""
     recorded_at: str = ""

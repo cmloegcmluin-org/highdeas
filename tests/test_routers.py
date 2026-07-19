@@ -421,6 +421,104 @@ def test_drive_router_copies_audio_into_dated_folder_and_writes_doc(tmp_path):
     assert docs == [(folder / "Korok Dance.docx", "la la la")]
 
 
+def test_drive_router_files_a_native_google_doc_instead_of_docx_when_configured(tmp_path):
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    drive = tmp_path / "drive"
+    drive.mkdir()
+    (inbox / "voice-3.m4a").write_bytes(b"AUDIO")
+    docs = []
+    doc_calls = []
+
+    def file_doc(subfolder_name, title, html):
+        doc_calls.append((subfolder_name, title, html))
+        return "https://docs.google.com/document/d/DOC_ID/edit"
+
+    router = DriveMusicRouter(
+        inbox, drive,
+        today=lambda: "2026_07_07",
+        write_doc=lambda path, text: docs.append((Path(path), text)),
+        file_doc=file_doc,
+    )
+
+    outcome = router.route(Memo(audio_filename="voice-3.m4a", name="Korok Dance", transcript="la la la"))
+
+    assert docs == []  # no local .docx once a native Doc was actually filed
+    assert doc_calls == [("_2026_07_07_NOT_YET_PROCESSED_MUSIC", "Korok Dance", "<p>la la la</p>")]
+    assert outcome == {"drive_subfolder": "_2026_07_07_NOT_YET_PROCESSED_MUSIC",
+                       "drive_doc_link": "https://docs.google.com/document/d/DOC_ID/edit"}
+
+
+def test_drive_router_titles_an_unnamed_memos_doc_the_way_notesnook_titles_untitled_notes(tmp_path):
+    # Same _default_title as NotesnookRouter and AsanaRouter use for an unnamed memo --
+    # one implementation of "what do we call this" for all three, not a fourth guess.
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    drive = tmp_path / "drive"
+    drive.mkdir()
+    (inbox / "voice-9.m4a").write_bytes(b"AUDIO")
+    doc_calls = []
+
+    def file_doc(subfolder_name, title, html):
+        doc_calls.append(title)
+        return "https://docs.google.com/document/d/DOC_ID/edit"
+
+    router = DriveMusicRouter(inbox, drive, today=lambda: "2026_07_07", file_doc=file_doc)
+
+    router.route(Memo(audio_filename="voice-9.m4a", name="", transcript="hi",
+                      recorded_at="2026-07-07T15:04:05"))
+
+    assert doc_calls == ["Note 2026-07-07 3:04:05 PM"]
+
+
+def test_drive_router_falls_back_to_docx_when_doc_filing_returns_blank(tmp_path):
+    # Not configured (file_doc is None), or configured but a Drive hiccup returned ""
+    # -- either way the transcript must not be lost, so the old local .docx write is
+    # still the fallback rather than nothing at all.
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    drive = tmp_path / "drive"
+    drive.mkdir()
+    (inbox / "voice-4.m4a").write_bytes(b"AUDIO")
+    docs = []
+
+    router = DriveMusicRouter(
+        inbox, drive,
+        today=lambda: "2026_07_07",
+        write_doc=lambda path, text: docs.append((Path(path), text)),
+        file_doc=lambda subfolder_name, title, html: "",
+    )
+
+    outcome = router.route(Memo(audio_filename="voice-4.m4a", name="Song", transcript="la la"))
+
+    folder = drive / "_2026_07_07_NOT_YET_PROCESSED_MUSIC"
+    assert docs == [(folder / "Song.docx", "la la")]
+    assert outcome["drive_doc_link"] == ""
+
+
+def test_drive_router_never_calls_doc_filing_when_transcript_is_blank(tmp_path):
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    drive = tmp_path / "drive"
+    drive.mkdir()
+    (inbox / "voice-6.m4a").write_bytes(b"AUDIO")
+    doc_calls = []
+    docs = []
+
+    router = DriveMusicRouter(
+        inbox, drive,
+        today=lambda: "2026_07_07",
+        write_doc=lambda path, text: docs.append(path),
+        file_doc=lambda *a: doc_calls.append(a),
+    )
+
+    outcome = router.route(Memo(audio_filename="voice-6.m4a", name="Song", transcript="   "))
+
+    assert doc_calls == []
+    assert docs == []
+    assert outcome["drive_doc_link"] == ""
+
+
 def _drive_router(inbox, drive, **kwargs):
     inbox.mkdir(exist_ok=True)
     drive.mkdir(exist_ok=True)
@@ -452,7 +550,7 @@ def test_drive_router_reports_which_subfolder_it_filed_the_memo_into(tmp_path):
 
     outcome = router.route(Memo(audio_filename="v.m4a", name="Song", transcript=""))
 
-    assert outcome == {"drive_subfolder": "_2026_07_07_NOT_YET_PROCESSED_MUSIC"}
+    assert outcome == {"drive_subfolder": "_2026_07_07_NOT_YET_PROCESSED_MUSIC", "drive_doc_link": ""}
 
 
 def test_drive_router_sanitizes_illegal_filename_characters(tmp_path):
