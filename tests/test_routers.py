@@ -3,7 +3,8 @@ from pathlib import Path
 import pytest
 
 from highdeas.routers import (
-    AsanaRouter, DriveMusicRouter, NotesnookRouter, Router, parse_asana_parents, write_docx,
+    AsanaRouter, DriveMusicRouter, NotesnookRouter, Router, parse_asana_parents,
+    read_asana_tokens, write_docx,
 )
 from highdeas.store import Memo
 
@@ -189,7 +190,7 @@ def test_router_dispatches_to_asana_and_returns_its_outcome():
 
 def test_asana_router_creates_a_subtask_under_the_memos_chosen_parent():
     post = FakePost(body={"data": {"gid": "42", "permalink_url": "https://app.asana.com/0/0/42/f"}})
-    router = AsanaRouter("PAT", default_parent="111", post=post)
+    router = AsanaRouter({"": "PAT"}, default_parent="111", post=post)
 
     outcome = router.route(Memo(audio_filename="a.m4a", name="Bassline idea",
                                 transcript="dum dum da dum", route="asana", asana_parent="222"))
@@ -210,10 +211,25 @@ def test_asana_router_falls_back_to_the_default_parent_when_none_chosen():
     # it lands under the first configured task rather than failing.
     post = FakePost(body={"data": {}})
 
-    AsanaRouter("PAT", default_parent="111", post=post).route(
+    AsanaRouter({"": "PAT"}, default_parent="111", post=post).route(
         Memo(audio_filename="a.m4a", name="X", transcript="y", route="asana"))
 
     assert post.calls[0][0] == "https://app.asana.com/api/1.0/tasks/111/subtasks"
+
+
+def test_asana_router_opens_a_parent_with_the_token_of_the_account_it_names():
+    # Two Asana accounts, one dropdown: a parent written "account:gid" is created
+    # under that account's own token, so the second account's tasks sit beside the
+    # first's with nothing in the UI to say they are elsewhere.
+    post = FakePost(body={"data": {}})
+    router = AsanaRouter({"": "MINE", "WORK": "THEIRS"}, default_parent="111", post=post)
+
+    router.route(Memo(audio_filename="a.m4a", name="X", transcript="y",
+                      route="asana", asana_parent="WORK:333"))
+
+    url, kwargs = post.calls[0]
+    assert url == "https://app.asana.com/api/1.0/tasks/333/subtasks"
+    assert kwargs["headers"]["Authorization"] == "Bearer THEIRS"
 
 
 def test_asana_router_explains_missing_setup_instead_of_calling_asana():
@@ -222,10 +238,10 @@ def test_asana_router_explains_missing_setup_instead_of_calling_asana():
     post = FakePost()
 
     with pytest.raises(RuntimeError, match="ASANA_ACCESS_TOKEN"):
-        AsanaRouter("", default_parent="111", post=post).route(
+        AsanaRouter({"": ""}, default_parent="111", post=post).route(
             Memo(audio_filename="a.m4a", route="asana", asana_parent="222"))
     with pytest.raises(RuntimeError, match="ASANA_PARENT_TASKS"):
-        AsanaRouter("PAT", post=post).route(Memo(audio_filename="a.m4a", route="asana"))
+        AsanaRouter({"": "PAT"}, post=post).route(Memo(audio_filename="a.m4a", route="asana"))
     assert post.calls == []
 
 
@@ -235,7 +251,7 @@ def test_asana_router_names_unnamed_memo_by_its_transcript():
     # It moves into the name, leaving the notes empty rather than repeating itself.
     post = FakePost(body={"data": {}})
 
-    AsanaRouter("PAT", default_parent="1", post=post).route(
+    AsanaRouter({"": "PAT"}, default_parent="1", post=post).route(
         Memo(audio_filename="a.m4a", name="", transcript="call the plumber back",
              recorded_at="2026-07-07T15:45:00", route="asana"))
 
@@ -247,7 +263,7 @@ def test_asana_router_titles_an_empty_memo_with_its_recording_time():
     # fall back to the recording-time convention shared with Notesnook.
     post = FakePost(body={"data": {}})
 
-    AsanaRouter("PAT", default_parent="1", post=post).route(
+    AsanaRouter({"": "PAT"}, default_parent="1", post=post).route(
         Memo(audio_filename="a.m4a", name="", transcript="",
              recorded_at="2026-07-07T15:45:00", route="asana"))
 
@@ -258,8 +274,36 @@ def test_asana_router_raises_on_error_response():
     post = FakePost(status_code=403)
 
     with pytest.raises(RuntimeError):
-        AsanaRouter("PAT", default_parent="1", post=post).route(
+        AsanaRouter({"": "PAT"}, default_parent="1", post=post).route(
             Memo(audio_filename="a.m4a", name="X", transcript="y", route="asana"))
+
+
+def test_read_asana_tokens_finds_one_token_per_account_the_dropdown_offers():
+    # The second account's token lives under its own name, so both accounts' tasks
+    # can sit in one dropdown. Only the accounts actually offered are looked for.
+    env = {"ASANA_ACCESS_TOKEN": "MINE", "ASANA_ACCESS_TOKEN_WORK": "THEIRS",
+           "ASANA_ACCESS_TOKEN_UNUSED": "NOBODYS"}
+
+    tokens = read_asana_tokens(parse_asana_parents("111=Songs;WORK:333=Work backlog"), env)
+
+    assert tokens == {"": "MINE", "WORK": "THEIRS"}
+
+
+def test_read_asana_tokens_reads_an_account_marker_however_it_was_written():
+    # Environment lookups are case-sensitive on the Mac and not on Windows, so a
+    # lowercased marker would submit fine at one desk and 401 at the other. The
+    # marker names the variable, and variables are upper case.
+    env = {"ASANA_ACCESS_TOKEN": "MINE", "ASANA_ACCESS_TOKEN_WORK": "THEIRS"}
+
+    tokens = read_asana_tokens(parse_asana_parents("work:333=Work backlog"), env)
+
+    assert tokens == {"": "MINE", "work": "THEIRS"}
+
+
+def test_read_asana_tokens_always_looks_for_the_default_account():
+    # Nothing configured yet still asks for the unsuffixed token, so the router can
+    # name that variable when a submit finds it missing.
+    assert read_asana_tokens([], {}) == {"": ""}
 
 
 def test_parse_asana_parents_reads_gid_label_pairs():

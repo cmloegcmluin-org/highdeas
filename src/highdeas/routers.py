@@ -91,37 +91,76 @@ class NotesnookRouter:
 
 def parse_asana_parents(raw):
     """Read ASANA_PARENT_TASKS — ";"-separated "task_gid=Label" pairs — into an
-    ordered list of (gid, label). The first pair is the default parent and leads
-    the inbox dropdown. A pair without "=Label" is labelled by its gid."""
+    ordered list of (parent, label). The first pair is the default parent and leads
+    the inbox dropdown. A pair without "=Label" is labelled by the task itself.
+
+    A gid may be prefixed "ACCOUNT:" to say which Asana account holds that task, so
+    a second account's tasks join the same dropdown with nothing to mark them out
+    (see _account_and_gid). The prefix travels with the gid as one value: it is what
+    the dropdown offers and what the memo remembers being bound to."""
     parents = []
     for pair in (raw or "").split(";"):
-        gid, _, label = pair.partition("=")
-        gid, label = gid.strip(), label.strip()
-        if gid:
-            parents.append((gid, label or gid))
+        parent, _, label = pair.partition("=")
+        parent, label = parent.strip(), label.strip()
+        if parent:
+            parents.append((parent, label or parent))
     return parents
+
+
+def _account_and_gid(parent):
+    """Split a dropdown value into the account holding the task and the task's gid.
+    "WORK:333" is task 333 in the "WORK" account; a bare "333" is the account the
+    app has always had, whose token is the unsuffixed ASANA_ACCESS_TOKEN."""
+    account, marked, gid = parent.partition(":")
+    return (account, gid) if marked else ("", parent)
+
+
+def _asana_token_variable(account):
+    """The .env variable holding an account's token — ASANA_ACCESS_TOKEN for the
+    unnamed default, ASANA_ACCESS_TOKEN_WORK for "work".
+
+    Upper-cased because that is what the marker names: a variable. Environment
+    lookups are case-sensitive on the Mac and not on Windows, so a marker taken
+    literally would submit fine at one desk and 401 at the other."""
+    return f"ASANA_ACCESS_TOKEN_{account.upper()}" if account else "ASANA_ACCESS_TOKEN"
+
+
+def read_asana_tokens(parents, env):
+    """The access token for every account the offered parents name, read from `env`.
+    Each account is one more personal access token; only the accounts actually on
+    the dropdown are looked for, so a second one costs nothing until a task names
+    it. The default account is always among them, so a submit with nothing
+    configured can still name the variable to fill in."""
+    accounts = {""} | {_account_and_gid(parent)[0] for parent, _ in parents}
+    return {account: env.get(_asana_token_variable(account), "") for account in accounts}
 
 
 class AsanaRouter:
     """Create the memo's text as a subtask of its chosen Asana parent task
-    (POST /tasks/{parent}/subtasks). Only the text goes to Asana — the note's
+    (POST /tasks/{gid}/subtasks). Only the text goes to Asana — the note's
     name and transcript; the recording itself stays local and retires to the
     bin like every other route. Reports the created task's permalink for the
-    memo's record, so the bin icon can open the task."""
+    memo's record, so the bin icon can open the task.
 
-    ENDPOINT = "https://app.asana.com/api/1.0/tasks/{parent}/subtasks"
+    Holds one token per Asana account, since a parent task names the account it
+    belongs to: two accounts are two tokens behind one dropdown."""
 
-    def __init__(self, token, *, default_parent="", post=requests.post):
-        self._token = token
+    ENDPOINT = "https://app.asana.com/api/1.0/tasks/{gid}/subtasks"
+
+    def __init__(self, tokens, *, default_parent="", post=requests.post):
+        self._tokens = tokens
         self._default_parent = default_parent
         self._post = post
 
     def route(self, memo):
-        if not self._token:
-            raise RuntimeError("Asana access token not set — put ASANA_ACCESS_TOKEN in .env.")
         parent = memo.asana_parent or self._default_parent
         if not parent:
             raise RuntimeError("No Asana parent task configured — put ASANA_PARENT_TASKS in .env.")
+        account, gid = _account_and_gid(parent)
+        token = self._tokens.get(account, "")
+        if not token:
+            raise RuntimeError("Asana access token not set — put "
+                               f"{_asana_token_variable(account)} in .env.")
         # A named memo keeps its transcript as the task's notes. An unnamed one has
         # only its transcript, so that becomes the name — a readable task rather than
         # a generic date title — and the notes are left empty rather than repeating it.
@@ -131,8 +170,8 @@ class AsanaRouter:
             name = memo.transcript or _default_title(memo.recorded_at or memo.created_at)
             notes = ""
         response = self._post(
-            self.ENDPOINT.format(parent=parent),
-            headers={"Authorization": f"Bearer {self._token}", "Content-Type": "application/json"},
+            self.ENDPOINT.format(gid=gid),
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
             params={"opt_fields": "permalink_url"},
             json={"data": {"name": name, "notes": notes}},
             timeout=30,

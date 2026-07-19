@@ -54,7 +54,8 @@
     </div>
     {#- Three radio-backed destination icons — the checked one is lit. Lighting Asana
         reveals the one extra decision that route needs: which configured task the
-        note becomes a subtask of. -#}
+        note becomes a subtask of. Tasks from a second Asana account sit in that same
+        list, marked only in the config that named them — the row can't tell. -#}
     <div class="route-cell">
       <div class="route-pick" role="radiogroup" aria-label="Destination">
         <label title="Send to Notesnook"><input type="radio" class="route" name="route-{{ m.audio_filename }}" value="notesnook" {{ 'checked' if m.route not in ('drive', 'asana') }}><span class="ic">{{ notesnook() }}</span></label>
@@ -64,7 +65,7 @@
       <select class="asana-parent" aria-label="Task the note becomes a subtask of" {{ '' if m.route == 'asana' else 'hidden' }}>
         {#- The trailing &nbsp; is the open list's right-side buffer: Chromium ignores
             padding on <option>, but it can't ignore a character of the label. -#}
-        {% for gid, label in asana_parents %}<option value="{{ gid }}" {{ 'selected' if m.asana_parent == gid }}>{{ label }}&nbsp;</option>
+        {% for parent, label in asana_parents %}<option value="{{ parent }}" {{ 'selected' if m.asana_parent == parent }}>{{ label }}&nbsp;</option>
         {% endfor %}
       </select>
     </div>

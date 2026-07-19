@@ -11,7 +11,9 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from highdeas.routers import AsanaRouter, DriveMusicRouter, NotesnookRouter, Router, parse_asana_parents
+from highdeas.routers import (
+    AsanaRouter, DriveMusicRouter, NotesnookRouter, Router, parse_asana_parents, read_asana_tokens,
+)
 from highdeas.service import InboxService
 from highdeas.sheet import NameCache, SheetTerms, authorized_session, fetch_names
 from highdeas.store import FolderStore, MemoStore, adopt_legacy_db
@@ -178,7 +180,7 @@ def build_app():
     drive = DriveMusicRouter(inbox_dir, drive_base)
     asana_parents = parse_asana_parents(os.environ.get("ASANA_PARENT_TASKS", ""))
     asana = AsanaRouter(
-        os.environ.get("ASANA_ACCESS_TOKEN", ""),
+        read_asana_tokens(asana_parents, os.environ),
         default_parent=asana_parents[0][0] if asana_parents else "",
     )
     transcriber = Transcriber(read_terms=terms_source())

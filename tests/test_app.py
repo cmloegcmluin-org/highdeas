@@ -213,6 +213,47 @@ def test_build_app_prefers_the_folder_store_and_migrates_the_db_once(tmp_path, m
     assert [m.name for m in service.pending()] == ["renamed on the other machine"]
 
 
+def test_build_app_sends_a_memo_to_the_asana_account_its_parent_task_names(tmp_path, monkeypatch):
+    # Both Asana accounts hang off one dropdown, so the wiring has to carry a
+    # second token all the way from .env to the request: a parent marked with an
+    # account is created under that account's own token, never the first one's.
+    import highdeas.app as app_mod
+
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    (inbox / "voice-3.m4a").write_bytes(b"AUDIO")
+    monkeypatch.delenv("HIGHDEAS_STATE_DIR", raising=False)
+    db_path = tmp_path / "memos.db"
+    monkeypatch.setenv("HIGHDEAS_INBOX_DIR", str(inbox))
+    monkeypatch.setenv("HIGHDEAS_BIN_DIR", str(tmp_path / "bin"))
+    monkeypatch.setenv("HIGHDEAS_DB", str(db_path))
+    monkeypatch.setenv("ASANA_ACCESS_TOKEN", "MINE")
+    monkeypatch.setenv("ASANA_ACCESS_TOKEN_WORK", "THEIRS")
+    monkeypatch.setenv("ASANA_PARENT_TASKS", "111=Song ideas;WORK:333=Work backlog")
+    sent = []
+
+    def fake_post(url, **kwargs):
+        sent.append((url, kwargs))
+        return SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"data": {}})
+
+    real_router = app_mod.AsanaRouter
+    monkeypatch.setattr(app_mod, "AsanaRouter",
+                        lambda tokens, **kwargs: real_router(tokens, post=fake_post, **kwargs))
+
+    app, _ = build_app()
+    MemoStore(db_path).upsert(Memo(audio_filename="voice-3.m4a", route="asana"))
+    response = app.test_client().post(
+        "/submit/voice-3.m4a",
+        data={"name": "Standup note", "transcript": "", "route": "asana",
+              "asana_parent": "WORK:333"},
+    )
+
+    assert response.status_code == 204
+    url, kwargs = sent[0]
+    assert url == "https://app.asana.com/api/1.0/tasks/333/subtasks"
+    assert kwargs["headers"]["Authorization"] == "Bearer THEIRS"
+
+
 def test_build_app_reads_every_folder_from_the_environment(tmp_path, monkeypatch):
     inbox, bin_dir, drive = tmp_path / "inbox", tmp_path / "bin", tmp_path / "drive"
     inbox.mkdir()
