@@ -193,11 +193,15 @@ final class CaptureModel: ObservableObject {
         // The queue arbitrates the fan-out: first confirmation wins, failure
         // waits for the last machine to answer.
         queue.resolve(fileName, outcome, at: Date())
-        if case .confirmed = outcome {
+        if case .confirmed = outcome, let recordedAt = recordedDate(of: fileName) {
             // The row stays on for a few seconds to say it arrived, so the note is
             // never nowhere. Read the recording's own time first: in a moment there
-            // will be no file left to read it from.
-            receipts.confirm(fileName, recordedAt: creationDate(of: fileName), at: Date())
+            // will be no file left to read it from — and if there is no file to read
+            // it from now, this is a late echo of a delivery already seen and gone
+            // (a background outcome replayed on relaunch), not a note just landed.
+            // Announcing that one would put "Delivered" at the foot of the list,
+            // dated distantPast, about a recording the phone finished with long ago.
+            receipts.confirm(fileName, recordedAt: recordedAt, at: Date())
             // Entry first, file second: a crash in between costs one duplicate
             // upload (the server dedupes), never a lost memo.
             try? FileManager.default.removeItem(
@@ -217,7 +221,14 @@ final class CaptureModel: ObservableObject {
         // Delivered rows sit among the rest by the time each was spoken, so a note
         // that has just landed stays exactly where it was and only its line changes.
         // Its recorded time is the receipt's: the file it came from is gone.
-        rows += receipts.showing.map { receipt in
+        //
+        // Unless it isn't: if the delete after a confirmation failed, the disk scan
+        // takes the file back into the queue, and the row it owns there is the true
+        // one — the recording really is still here and really will be pushed again.
+        // A receipt shown alongside it would be a second row under the same id,
+        // which is a promise to SwiftUI that this code does not get to break.
+        let stillPending = Set(queue.pending.map(\.fileName))
+        rows += receipts.showing.filter { !stillPending.contains($0.fileName) }.map { receipt in
             RecordingItem(
                 fileName: receipt.fileName,
                 url: recordingsDirectory.appending(path: receipt.fileName),
@@ -249,8 +260,15 @@ final class CaptureModel: ObservableObject {
     }
 
     private func creationDate(of fileName: String) -> Date {
+        recordedDate(of: fileName) ?? .distantPast
+    }
+
+    /// When the recording was spoken, or nil if there is no longer a file to ask.
+    /// A row built from the queue can fall back to distantPast and merely sort
+    /// oddly; a receipt cannot, because a receipt is a claim that this recording
+    /// just left the phone.
+    private func recordedDate(of fileName: String) -> Date? {
         let url = recordingsDirectory.appending(path: fileName)
-        let values = try? url.resourceValues(forKeys: [.creationDateKey])
-        return values?.creationDate ?? .distantPast
+        return (try? url.resourceValues(forKeys: [.creationDateKey]))?.creationDate
     }
 }
