@@ -19,6 +19,11 @@ __pycache__/
 highdeas-drive-reader.json
 *.serviceaccount.json
 
+# Same backstop, for the OAuth client secret and refresh-token files "Google Drive
+# native Doc filing" has Douglas save outside the repo (README + agent-inbox/gdoc-export.txt)
+highdeas-drive-docs-client.json
+highdeas-drive-docs-token.json
+
 # Local database, the processed-audio bin, and the remembered window geometry
 memos.db
 bin/
