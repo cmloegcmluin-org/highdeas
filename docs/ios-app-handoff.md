@@ -18,11 +18,18 @@ v1 features, agreed with Douglas:
 - **A list of recordings still on the phone**, each playable with a **scrub** slider.
 - **Push** to the server with a retry queue. A recording is cleared from the phone only
   after the server confirms receipt — same principle as the inbox's "keep notes in the
-  inbox unless the server confirms the submit." The row outlives its file by a few
+  inbox unless the server confirms the submit." The row outlives its file by eight
   seconds, marked "Delivered" (`DeliveryReceipts`): the confirmation only comes once the
   bytes are on the other machine's disk, so nothing was ever at risk when the row
   vanished with the file — but a thought disappearing off the screen is a fright whatever
   the truth behind it, and until the desk caught up the note was visible nowhere at all.
+  Eight is measured: the desk can *list* the recording within ten milliseconds of the 2xx
+  (the upload renames into the inbox before answering, and `/pending` counts it with a
+  directory scan), but an open page only asks every five seconds, so the wait is the
+  looking. Eight is that poll plus three seconds of overlap — both screens showing the
+  note at once, which is the only shape with no gap in it. **The phone does not
+  self-update**: the desktops pull from `main`, but a new iOS build reaches the phone
+  only by running `ios/resign.sh` with it plugged in.
 - ~~**Append** more audio to an existing recording~~ — **cut at kickoff** (see the
   settled question below); a later addition is just a new memo, grouped in the inbox.
 

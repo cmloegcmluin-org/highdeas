@@ -34,10 +34,18 @@ public struct DeliveryReceipt: Equatable, Identifiable, Sendable {
 public struct DeliveryReceipts: Equatable, Sendable {
     /// How long a delivered recording goes on showing.
     ///
-    /// Long enough to look up from the phone and find the note already on the
-    /// desk — the desktop draws its outline the moment the recording lands, and
-    /// catches up the instant its window is looked at — and short enough that a
-    /// morning's dictation doesn't leave a screen of receipts to scroll past.
+    /// Measured, not guessed. The desk is not slow to *have* the recording: the
+    /// upload renames the file into the inbox before it answers, and the page's
+    /// /pending counts it with a plain directory scan, so it is listable within
+    /// ten milliseconds of the 2xx. What takes time is the looking — the open
+    /// page asks every five seconds, so a note that lands just after one ask
+    /// waits nearly all of the next interval to be drawn.
+    ///
+    /// Eight seconds is that five-second poll plus three of overlap: a stretch
+    /// where the note is on both screens at once, which is what actually settles
+    /// the fright — the phone letting go before the desk takes hold is the whole
+    /// problem, and an overlap is the only shape that has no gap in it. Short
+    /// enough, still, that a morning's dictation leaves no screen of receipts.
     public static let linger: TimeInterval = 8
 
     public private(set) var showing: [DeliveryReceipt]
