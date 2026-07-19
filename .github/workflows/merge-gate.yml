@@ -1,7 +1,7 @@
 name: merge gate
 run-name: gating
 
-# The gate every PR must pass before it may land. `main`'s ruleset requires this check
+# The gate every PR must pass before it may land. `main`'s ruleset requires these checks
 # AND that the branch be up to date with `main`, so the run that gates a merge is a run
 # on this branch already rebased onto the `main` it lands on.
 on:
@@ -9,7 +9,16 @@ on:
 
 jobs:
     suite:
-        runs-on: ubuntu-latest
+        # The two desks this app actually runs on, and nothing else. A Linux runner is
+        # cheaper but tests a machine that does not exist: it failed on `os.startfile`,
+        # which is exactly right on Windows and unreachable on either real desk. Running
+        # both means a path or a launcher that only breaks on the Mac is caught here
+        # rather than on his laptop.
+        strategy:
+            fail-fast: false
+            matrix:
+                os: [windows-latest, macos-latest]
+        runs-on: ${{ matrix.os }}
         steps:
             - uses: actions/checkout@v4
             - uses: actions/setup-python@v5
