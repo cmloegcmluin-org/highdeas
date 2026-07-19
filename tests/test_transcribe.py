@@ -207,6 +207,21 @@ def test_transcriber_times_a_gathered_up_term_from_the_first_word_of_it(tmp_path
     ]
 
 
+def test_transcriber_keeps_the_lines_of_a_grouped_note_it_corrects_a_term_in(tmp_path):
+    # He dictates a list and the model lays it out a line per item. Rebuilding the text
+    # from its words alone would run those lines into one paragraph.
+    model = FakeModel(Recognition("- Call notes nook.\n- Nothing else.",
+                                  tokens=[" -", " Call", " notes", " nook", ".",
+                                          " -", " Nothing", " else", "."],
+                                  timestamps=[0.1, 0.3, 0.6, 1.0, 1.2,
+                                              1.6, 1.8, 2.1, 2.3]))
+
+    spoken = Transcriber(model=model, decode=lambda src: tmp_path / "x.wav",
+                         read_terms=lambda: ("Notesnook",)).transcribe(tmp_path / "a.m4a")
+
+    assert spoken.text == "- Call Notesnook.\n- Nothing else."
+
+
 def test_transcriber_asks_for_his_terms_afresh_for_every_recording(tmp_path):
     # He adds a term because he just watched a memo come out with it wrong, and
     # nobody restarts an app for that: the very next recording reads against the

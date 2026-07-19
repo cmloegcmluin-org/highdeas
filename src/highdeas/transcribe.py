@@ -1,4 +1,5 @@
 """Transcribe voice-memo audio locally with NVIDIA Parakeet (via onnx-asr)."""
+import re
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -72,32 +73,53 @@ def _to_words(tokens, timestamps):
     return tuple(word for word in words if word.text)
 
 
-def _spliced(items, fixes, replace):
-    """`items` with each `(index, length, replacement)` of `fixes` applied, `replace`
-    saying what one replacement looks like in this sequence."""
+def _applied(tokens, fixes):
+    """`tokens` as the `(index, length, replacement)` of `fixes` leave them: each token
+    paired with the index it came from, and each corrected run standing as the one term
+    it missed, at the index the run began on — which is to say at the moment it began."""
     out, index = [], 0
     for at, size, replacement in fixes:
-        out.extend(items[index:at])
-        out.append(replace(items[at], replacement))
+        out.extend((n, tokens[n]) for n in range(index, at))
+        out.append((at, replacement))
         index = at + size
-    out.extend(items[index:])
-    return out
+    out.extend((n, tokens[n]) for n in range(index, len(tokens)))
+    return tuple(out)
+
+
+def _respaced(text, kept):
+    """`text` with only `kept` left of it: each survivor spelled as `kept` spells it,
+    in the place it was, spaced from its neighbours exactly as it was.
+
+    The spacing has to be carried rather than rebuilt. He dictates lists, and the model
+    lays one out a line per item — join the surviving words with single spaces and his
+    list comes back as a paragraph."""
+    if not kept:
+        return ""
+    spans = [word.span() for word in re.finditer(r"\S+", text)]
+    out = [text[:spans[0][0]]]
+    for place, (index, token) in enumerate(kept):
+        if place:
+            out.append(text[spans[index - 1][1]:spans[index][0]])
+        out.append(token)
+    out.append(text[spans[-1][1]:])
+    return "".join(out)
 
 
 def _corrected(spoken, terms):
     """`spoken` as it would read had the model known these terms: every near-miss of
-    one swapped for the term it missed, in the text and in the word timings alike. A
-    run of words gathered into a single term keeps the start of the first — the moment
-    the term began — so the editor still lights up as the recording plays."""
+    one swapped for the term it missed, in the text and in the word timings alike.
+
+    The text and the timed words are two tellings of the same speech and need not agree
+    word for word, so each is read against the lexicon on its own terms."""
     tokens = spoken.text.split()
     fixes = corrections(tokens, terms)
     if not fixes:
         return spoken  # nothing in the lexicon was misheard — hand back what came
     heard = [word.text for word in spoken.words]
     return Transcript(
-        " ".join(_spliced(tokens, fixes, lambda _, term: term)),
-        tuple(_spliced(spoken.words, corrections(heard, terms),
-                       lambda word, term: TimedWord(word.start, term))),
+        _respaced(spoken.text, _applied(tokens, fixes)),
+        tuple(TimedWord(spoken.words[index].start, token) for index, token
+              in _applied(heard, corrections(heard, terms))),
     )
 
 
