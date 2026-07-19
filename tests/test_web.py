@@ -553,6 +553,19 @@ def test_the_live_poll_leaves_a_row_in_mid_drag_alone(tmp_path):
     assert "if (dragged) return;" in merge
 
 
+def test_the_live_poll_leaves_alone_the_row_whose_editor_is_open(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    js = asset(client, "inbox.js")
+
+    # The editor reports its edits through a closure over the row's node, and while it is
+    # open focus sits on the dialog — outside the row — so none of the other busy signals
+    # hold. That left the poll free to replace the node between debounce flushes, and
+    # every later edit landed in a row no longer on the page, lost without a word.
+    assert "editing = memo" in js.split("function openEditor(memo)")[1].split("\n  }")[0]
+    assert "memo === editing" in js.split("function busy(memo)")[1].split("\n  }")[0]
+
+
 def test_index_trash_all_asks_for_confirmation(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
@@ -1041,6 +1054,19 @@ def test_the_editor_saves_on_the_way_out_rather_than_after_it_has_closed(tmp_pat
     # way to closing.
     assert "function closeEditor" in script
     assert "dialog.addEventListener('cancel', teardown)" in script
+
+
+def test_the_editor_says_it_has_closed_so_the_inbox_lets_the_row_go(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    # A pin held past the close is worse than no pin: that row would never take another
+    # repaint from the other desk. So the dialog reports its own teardown — once, on
+    # whichever exit ran — and the inbox lets the row go on that word. It comes after
+    # the final flush, so the last edit is delivered while the row is still held.
+    teardown = asset(client, "editor.js").split("function teardown()")[1].split("\n  }")[0]
+    assert teardown.index("flush();") < teardown.index("onClose")
+    assert teardown.index("onClose") < teardown.index("current = null;")
+    assert "editing = null" in asset(client, "inbox.js").split("function openEditor(memo)")[1].split("\n  }")[0]
 
 
 def test_a_click_off_the_editor_closes_it(tmp_path):

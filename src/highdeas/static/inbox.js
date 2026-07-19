@@ -584,8 +584,15 @@
     catch (err) { return []; }
   }
 
+  // The row the editor is open on. It reports edits through a closure over this node, so
+  // the poll must not swap the node out from under it: focus while the dialog is open
+  // sits outside the row, and between debounce flushes nothing else marks the row busy,
+  // which left every later edit landing in a row no longer on the page.
+  var editing = null;
+
   function openEditor(memo) {
     if (memo.classList.contains('sending') || !window.HighdeasEditor) return;
+    editing = memo;
     window.HighdeasEditor.open({
       audioUrl: urlFor('/audio/', memo),
       name: nameOf(memo),
@@ -595,6 +602,7 @@
         setText(memo, note);
         scheduleSave(memo);
       },
+      onClose: function () { editing = null; },
     });
   }
 
@@ -775,6 +783,7 @@
 
   function busy(memo) {
     if (memo._timer) return true;  // an edit is waiting on the auto-save timer
+    if (memo === editing) return true;  // its editor is open, and edits into it
     if (memo.contains(document.activeElement)) return true;
     var audio = memo.querySelector('audio');
     return !!(audio && !audio.paused);

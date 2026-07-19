@@ -4,8 +4,10 @@
    Notesnook half-finished just to get it out of the inbox.
 
    The caller owns the memo and its persistence; this file owns the dialog. Open it
-   with HighdeasEditor.open({audioUrl, name, transcript, words, onChange}) and it
-   reports edits back through onChange({name, transcript}).
+   with HighdeasEditor.open({audioUrl, name, transcript, words, onChange, onClose})
+   and it reports edits back through onChange({name, transcript}), then says once
+   through onClose() that it is done with the note — the caller's cue to let go of
+   whatever it was holding on the editor's behalf.
 
    Notes are stored as plain text, so a list is just its Markdown line ("- x",
    "1. x"). The dialog renders those lines as real <ul>/<ol> to edit, and reads
@@ -468,6 +470,8 @@
     frame = null;
     if (highlight) highlight.clear();
     flush();
+    // After the flush, so the last edit reaches the caller while it still holds the note.
+    if (current.onClose) current.onClose();
     current = null;
     words = [];
     marks = [];
