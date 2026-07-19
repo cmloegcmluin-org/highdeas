@@ -386,16 +386,16 @@ def test_claude_router_puts_a_notes_name_above_its_transcript_in_the_prompt():
     assert "q=Group%20badges%0A%0Ashow%20the%20count&" in deep[0]
 
 
-def test_claude_router_opens_a_chat_when_the_note_never_said_which_claude():
+def test_claude_router_opens_a_code_session_when_the_note_never_said_which_claude():
     # An untouched Claude note has no surface saved, and the row's dropdown leads with
-    # Chat — so the two have to agree on which one an empty choice means.
+    # Code — so the two have to agree on which one an empty choice means.
     browser, deep = [], []
     router = ClaudeRouter(open_browser=browser.append, open_deep_link=deep.append, folder="C:/repo")
 
     router.route(Memo(audio_filename="a.m4a", route="claude", transcript="hello"))
 
-    assert deep == []
-    assert browser == ["https://claude.ai/new?q=hello"]
+    assert browser == []
+    assert deep == ["claude://code/new?q=hello&folder=C%3A%2Frepo"]
 
 
 def test_drive_router_copies_audio_into_dated_folder_and_writes_doc(tmp_path):

@@ -68,15 +68,15 @@
         {% for parent, label in asana_parents %}<option value="{{ parent }}" {{ 'selected' if m.asana_parent == parent }}>{{ label }}&nbsp;</option>
         {% endfor %}
       </select>
-      {#- Claude is one icon over two destinations, so it asks which. Chat leads, and
-          is what an untouched note opens in. -#}
+      {#- Claude is one icon over two destinations, so it asks which. Code leads, and
+          is what a note that never answered opens in. -#}
       <select class="claude-surface" aria-label="Which Claude the note opens in" {{ '' if m.route == 'claude' else 'hidden' }}>
-        <option value="chat" {{ 'selected' if m.claude_surface != 'code' }}>Chat&nbsp;</option>
-        <option value="code" {{ 'selected' if m.claude_surface == 'code' }}>Code&nbsp;</option>
+        <option value="code" {{ 'selected' if m.claude_surface != 'chat' }}>Code&nbsp;</option>
+        <option value="chat" {{ 'selected' if m.claude_surface == 'chat' }}>Chat&nbsp;</option>
       </select>
       {#- Only a chat can be opened on a chosen model: the Code link carries no model,
           so a Code note has nothing here to pick and the list stays out of its way. -#}
-      <select class="claude-model" aria-label="Model the chat opens on" {{ '' if m.route == 'claude' and m.claude_surface != 'code' else 'hidden' }}>
+      <select class="claude-model" aria-label="Model the chat opens on" {{ '' if m.route == 'claude' and m.claude_surface == 'chat' else 'hidden' }}>
         {% for model, label in claude_models %}<option value="{{ model }}" {{ 'selected' if m.claude_model == model }}>{{ label }}&nbsp;</option>
         {% endfor %}
       </select>

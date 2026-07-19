@@ -136,12 +136,12 @@
     var surface = surfaceField(memo);
     var model = modelField(memo);
     if (surface) {
-      surface.value = chosen.surface || 'chat';
+      surface.value = chosen.surface || 'code';
       surface.hidden = chosen.route !== 'claude';
     }
     if (model && surface) {
       model.value = chosen.model;
-      model.hidden = surface.hidden || chosen.surface === 'code';
+      model.hidden = surface.hidden || chosen.surface !== 'chat';
     }
     flush(memo);
   }

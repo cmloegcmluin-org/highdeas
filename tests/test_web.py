@@ -191,11 +191,11 @@ def test_asana_rows_offer_the_parent_task_dropdown_others_keep_it_hidden(tmp_pat
     assert "Song ideas" in client.get("/pending").data.decode()
 
 
-def test_claude_rows_offer_the_chat_or_code_dropdown_others_keep_it_hidden(tmp_path):
+def test_claude_rows_lead_with_code_and_keep_the_dropdown_hidden_elsewhere(tmp_path):
     # Claude is one icon holding two destinations, so the row asks which — the same
     # shape as Asana's parent picker, and hidden the same way until the icon is lit.
     service = FakeService(pending=[
-        Memo(audio_filename="a.m4a", transcript="hi", route="claude", claude_surface="code"),
+        Memo(audio_filename="a.m4a", transcript="hi", route="claude"),
         Memo(audio_filename="b.m4a", transcript="yo", route="notesnook"),
     ])
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
@@ -203,8 +203,11 @@ def test_claude_rows_offer_the_chat_or_code_dropdown_others_keep_it_hidden(tmp_p
     body = client.get("/").data.decode()
 
     assert body.count('class="claude-surface"') == 2
-    assert '<option value="chat" >Chat&nbsp;</option>' in body
+    # Code leads the list, and is what a note that never answered opens in.
+    surface = body.split('class="claude-surface"')[1].split("</select>")[0]
+    assert surface.index('value="code"') < surface.index('value="chat"')
     assert '<option value="code" selected>Code&nbsp;</option>' in body
+    assert '<option value="chat" >Chat&nbsp;</option>' in body
     # a.m4a (claude) shows the picker; b.m4a (notesnook) keeps it hidden until picked.
     assert body.count('note opens in" hidden>') == 1
 
@@ -214,7 +217,7 @@ def test_claude_chat_rows_offer_the_model_dropdown_and_code_rows_do_not(tmp_path
     # model picker follows the chat choice rather than the Claude icon.
     service = FakeService(pending=[
         Memo(audio_filename="a.m4a", transcript="hi", route="claude",
-             claude_model="claude-sonnet-5"),
+             claude_surface="chat", claude_model="claude-sonnet-5"),
         Memo(audio_filename="b.m4a", transcript="yo", route="claude", claude_surface="code"),
     ])
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin"),
@@ -242,8 +245,9 @@ def test_inbox_js_sends_the_picker_fields_and_toggles_each_dropdown(tmp_path):
     # puts a row on a destination, so an undone route hides the dropdowns too.
     assert "parent.hidden = chosen.route !== 'asana'" in js
     assert "surface.hidden = chosen.route !== 'claude'" in js
-    # The model list narrows further: a Code session can't be opened on a chosen model.
-    assert "model.hidden = surface.hidden || chosen.surface === 'code'" in js
+    # The model list narrows further: a Code session can't be opened on a chosen model,
+    # and Code is what a note that never answered the surface question falls back to.
+    assert "model.hidden = surface.hidden || chosen.surface !== 'chat'" in js
     # Every dropdown in the destination cell records its change the way the icons do —
     # named as a group, so the next one to join the cell is already listened to.
     assert "'.route-cell select'" in js

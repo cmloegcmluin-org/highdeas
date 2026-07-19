@@ -207,12 +207,12 @@ class ClaudeRouter:
 
     def route(self, memo):
         prompt = "\n\n".join(part for part in (memo.name, memo.transcript) if part)
-        if memo.claude_surface == "code":
-            self._open_deep_link(_link("claude://code/new", q=prompt,
-                                       folder=self._folder))
-        else:
+        if memo.claude_surface == "chat":
             self._open_browser(_link("https://claude.ai/new", q=prompt,
                                      model=memo.claude_model))
+        else:
+            self._open_deep_link(_link("claude://code/new", q=prompt,
+                                       folder=self._folder))
 
 
 class Router:
