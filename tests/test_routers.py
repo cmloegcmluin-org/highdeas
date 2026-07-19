@@ -1,10 +1,11 @@
+from datetime import datetime
 from pathlib import Path
 
 import pytest
 
 from highdeas.routers import (
-    AsanaRouter, ClaudeRouter, DriveMusicRouter, NotesnookRouter, Router,
-    parse_choices, read_asana_tokens, write_docx,
+    DATE_FORMAT, AsanaRouter, ClaudeRouter, DriveMusicRouter, NotesnookRouter, Router,
+    drive_subfolder_name, parse_choices, read_asana_tokens, write_docx,
 )
 from highdeas.store import Memo
 
@@ -472,3 +473,16 @@ def test_drive_router_falls_back_to_audio_stem_when_unnamed(tmp_path):
     router.route(Memo(audio_filename="voice-5.m4a", name="", transcript=""))
 
     assert (tmp_path / "drive" / "_2026_07_07_NOT_YET_PROCESSED_MUSIC" / "voice-5.m4a").exists()
+
+
+def test_drive_subfolder_name_builds_the_dated_folder_name():
+    # A free function, not just an f-string inline in route() — so anything that needs
+    # to reconstruct a past subfolder name (the backfill script) can produce a
+    # byte-for-byte identical result from a date string alone, no router involved.
+    assert drive_subfolder_name("2026_07_07") == "_2026_07_07_NOT_YET_PROCESSED_MUSIC"
+
+
+def test_date_format_matches_what_today_produces():
+    # DATE_FORMAT is the exact strftime format _today() uses to build that date
+    # string in the first place — shared so nothing can reimplement it differently.
+    assert datetime(2026, 7, 7).strftime(DATE_FORMAT) == "2026_07_07"

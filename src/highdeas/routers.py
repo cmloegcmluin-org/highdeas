@@ -231,8 +231,22 @@ class Router:
         return None
 
 
+DATE_FORMAT = "%Y_%m_%d"
+
+
 def _today():
-    return datetime.now().strftime("%Y_%m_%d")
+    return datetime.now().strftime(DATE_FORMAT)
+
+
+def drive_subfolder_name(date_str):
+    """The dated Drive subfolder name a music memo is filed into, given a
+    DATE_FORMAT date string. Pulled out of DriveMusicRouter.route() as its own
+    function so anything reconstructing a *past* subfolder name — the backfill
+    script (scripts/backfill_drive_subfolders.py) for a memo routed before
+    drive_subfolder was tracked — can call the exact same code route() does,
+    from a date it recovers from that memo's own stored processed_at, instead
+    of maintaining a second copy of this format that could drift out of sync."""
+    return f"_{date_str}_NOT_YET_PROCESSED_MUSIC"
 
 
 def _sanitize_filename(name):
@@ -271,7 +285,7 @@ class DriveMusicRouter:
         self._copy = copy
 
     def route(self, memo):
-        subfolder_name = f"_{self._today()}_NOT_YET_PROCESSED_MUSIC"
+        subfolder_name = drive_subfolder_name(self._today())
         folder = self._base / subfolder_name
         folder.mkdir(parents=True, exist_ok=True)
         source = self._inbox / memo.audio_filename
