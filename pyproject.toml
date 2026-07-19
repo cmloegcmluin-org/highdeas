@@ -26,5 +26,8 @@ dev = ["pytest>=8"]
 highdeas = ["templates/*.html", "static/*"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+# "scripts" (not just "src"): scripts/backfill_drive_subfolders.py is a standalone
+# tool, not part of the highdeas package, but its tests import it directly the same
+# way tests import highdeas — no install, no package prefix.
+pythonpath = ["src", "scripts"]
 testpaths = ["tests"]
