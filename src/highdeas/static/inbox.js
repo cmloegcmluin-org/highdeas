@@ -53,6 +53,12 @@
 
   function rows() { return Array.prototype.slice.call(content.querySelectorAll('.memo')); }
 
+  // Everything the list draws a line between: its notes, and the outlines standing in for
+  // the recordings still being transcribed. An outline is a member of the list only for
+  // that — everything a row is asked to do (counted, submitted, trashed, dragged, saved
+  // into an order) goes through rows(), which is notes alone.
+  function listed() { return Array.prototype.slice.call(content.querySelectorAll('.memo, .transcribing')); }
+
   // Grouping and its undo take the whole list back from the server, so a row element is
   // only ever on loan. A step that has to touch a row again names it and looks it up when
   // it runs, and shrugs if the row has since left the list.
@@ -73,12 +79,13 @@
   }
 
   // Separators sit between rows, so they describe the current order: rebuild them from
-  // the DOM after anything is added, removed, or dragged into a new place.
+  // the DOM after anything is added, removed, or dragged into a new place. They run
+  // between the outlines at the top too, so what is coming reads as part of the list.
   function resync() {
     var grid = content.querySelector('.grid');
     if (grid) {
       grid.querySelectorAll('.sep').forEach(function (el) { el.remove(); });
-      rows().forEach(function (memo, i) { if (i) grid.insertBefore(sep(), memo); });
+      listed().forEach(function (el, i) { if (i) grid.insertBefore(sep(), el); });
     }
     updateCount();
   }
@@ -245,12 +252,13 @@
   }
 
   // A submitted note is in Notesnook, a trashed one is in the bin. Neither comes back, so
-  // no step recorded before it left has a row to be walked back onto.
+  // no step recorded before it left has a row to be walked back onto. A list still holding
+  // outlines is not an empty inbox — notes are on their way into it.
   function removeRow(memo) {
     var grid = memo.closest('.grid');
     undoStack.clear();
     memo.remove();
-    if (grid && !grid.querySelector('.memo')) showEmpty();
+    if (grid && !grid.querySelector('.memo, .transcribing')) showEmpty();
     else resync();
   }
 
@@ -871,24 +879,28 @@
     if (dragged) return;
     var incoming = document.createElement('div');
     incoming.innerHTML = html;
-    // The "Transcribing N new recordings…" strip lives outside the row merge:
-    // it has no state worth preserving, so the server's word replaces the
-    // page's whole. It appears the moment a recording lands, which is what
-    // spares the gap between the phone letting go and the row existing.
-    var strip = incoming.querySelector('.transcribing');
-    var shown = content.querySelector('.transcribing');
-    if (strip && !shown) {
-      content.insertBefore(strip, content.firstChild);
-    } else if (!strip && shown) {
-      shown.remove();
-    } else if (strip && shown && strip.textContent !== shown.textContent) {
-      shown.replaceWith(strip);
+    var grid = content.querySelector('.grid');
+    var changed = false;
+    // The outlines of recordings still being transcribed live outside the row merge: they
+    // hold no state worth preserving — nothing typed into one, nothing focused — so the
+    // server's set replaces the page's whole rather than being reconciled one at a time.
+    // One recording fewer is one outline fewer, and the row that took its place arrives in
+    // the same pass. They stand where rows will be, so they go back in at the top, above
+    // every real row. An outline appears the moment a recording lands, which is what spares
+    // the gap between the phone letting go and the row existing.
+    var outlines = incoming.querySelectorAll('.transcribing');
+    var standing = content.querySelectorAll('.transcribing');
+    if (outlines.length !== standing.length) {
+      if (!grid) { location.reload(); return; }  // no list yet: reload to build it and the frozen header
+      standing.forEach(function (el) { el.remove(); });
+      var lead = grid.firstChild;
+      outlines.forEach(function (outline) { grid.insertBefore(outline, lead); });
+      changed = true;
     }
     var arriving = {};
     incoming.querySelectorAll('.memo').forEach(function (memo) {
       arriving[memo.dataset.file] = memo;
     });
-    var changed = false;
     rows().forEach(function (memo) {
       var file = memo.dataset.file;
       var next = arriving[file];
@@ -906,12 +918,11 @@
     });
     var fresh = Object.keys(arriving).filter(function (file) { return !retired[file]; });
     if (fresh.length) {
-      var grid = content.querySelector('.grid');
       if (!grid) { location.reload(); return; }  // empty page: reload to build the grid + frozen header
       // Fresh notes join the top, matching where the server sorts an unplaced memo — and
-      // where the "Transcribing…" line that announced them is already sitting. They go in
-      // above the row that led a moment ago, so they keep the server's order among
-      // themselves and a hand-arranged inbox is added to rather than reshuffled.
+      // right under the outline that stood for them a moment ago. They go in above the row
+      // that led until now, so they keep the server's order among themselves and a
+      // hand-arranged inbox is added to rather than reshuffled.
       var first = rows()[0] || null;
       fresh.forEach(function (file) {
         grid.insertBefore(arriving[file], first);
@@ -919,7 +930,10 @@
       });
       changed = true;
     }
-    if (changed) resync();
+    // A list left with nothing in it says so, rather than standing as a bare grid under its
+    // column headers: the last note can be retired from the other machine, and the last
+    // waiting recording can go without ever becoming one.
+    if (changed) { if (listed().length) resync(); else showEmpty(); }
   }
 
   function check() {

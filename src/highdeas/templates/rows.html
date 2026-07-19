@@ -9,21 +9,30 @@
     sibling, never its child: a click on it must not reach the preview's
     open-the-editor handler. -#}
 {% from "icons.html" import notesnook, drive, asana, claude, trash, send, spinner, chevron, clip, grip, kind_cell %}
-{#- Recordings that have landed but not yet earned a row: named the moment they
-    exist, so the handoff from the phone's list to this one never passes through
-    "nowhere". Rides the /pending fragment too — inbox.js swaps it by itself,
-    outside the row merge. -#}
-{% if incoming %}
-<p class="transcribing">Transcribing {{ incoming }} new recording{{ 's' if incoming != 1 else '' }}…</p>
-{% endif %}
-{% if not memos %}
-  {% if not incoming %}
-  <p class="empty">Your inbox is empty. Record a memo and it'll show up here.</p>
-  {% endif %}
+{% if not memos and not incoming %}
+<p class="empty">Your inbox is empty. Record a memo and it'll show up here.</p>
 {% else %}
 <div class="grid inbox body">
-  {% for m in memos %}
+  {#- Recordings that have landed but not yet earned a row, one outline each: the place a
+      row will take, held from the moment its recording exists, so the handoff from the
+      phone's list to this one never passes through "nowhere" and nothing below moves when
+      the real row lands in it. They sit on the grid's own columns, at the top where the
+      newest note goes. Ride the /pending fragment too — inbox.js swaps the set by itself,
+      outside the row merge, and counts none of them as notes. -#}
+  {% for _ in range(incoming) %}
   {% if not loop.first %}<div class="sep"></div>{% endif %}
+  <div class="transcribing">
+    <div></div>
+    <div class="transcribing-mark short"></div>
+    <div class="transcribing-mark"></div>
+    <div class="transcribing-note">Transcribing…</div>
+    <div></div>
+    <div class="transcribing-mark"></div>
+    <div class="transcribing-mark short"></div>
+  </div>
+  {% endfor %}
+  {% for m in memos %}
+  {% if incoming or not loop.first %}<div class="sep"></div>{% endif %}
   {#- data-transcript is the note as written, markers and all. The preview beside it draws
       those markers as a real list, so the cell's text no longer reads the note back —
       this attribute is what the client saves, and what the find searches. -#}

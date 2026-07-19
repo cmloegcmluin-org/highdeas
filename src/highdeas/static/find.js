@@ -51,23 +51,44 @@
   function query() { return input.value.trim().toLowerCase(); }
 
   // The line between two rows is a separate element sitting before the lower one, so a
-  // hidden row would strand its line. Show the separator above a row only when that row
-  // shows AND a row already showed above it: no line leads the first match, and exactly
-  // one sits between any two. Only classes are toggled here — never the child list — so
-  // the observer below never trips on this work.
+  // hidden row would strand its line. It hides and shows with the row below it.
+  function lineAbove(row) {
+    var before = row.previousElementSibling;
+    return before && before.classList.contains('sep') ? before : null;
+  }
+
+  // The inbox stands an outline at the top of the list for each recording still being
+  // transcribed. There is nothing in one to match, so a search takes them out along with
+  // the rows it misses rather than leaving row-shaped things that answer to nothing typed;
+  // an empty box brings them back with everything else. They are not results, so they are
+  // counted in neither half of the tally.
+  function outlines() {
+    return Array.prototype.slice.call(content.querySelectorAll('.transcribing'));
+  }
+
+  // Show the separator above a row only when that row shows AND something already showed
+  // above it: no line leads the list, and exactly one sits between any two of its members.
+  // Only classes are toggled here — never the child list — so the observer below never
+  // trips on this work.
   function apply() {
     var term = query();
     var filtering = term.length > 0;
     var all = rows();
+    var coming = outlines();
     var shown = 0;
-    var seen = false;
+    // An outline standing above the rows is something already shown, so the first row
+    // still gets its line. A search hides them, and the first match leads again.
+    var seen = !filtering && coming.length > 0;
+    coming.forEach(function (outline) {
+      outline.classList.toggle('find-miss', filtering);
+      var line = lineAbove(outline);
+      if (line) line.classList.toggle('find-miss', filtering);
+    });
     all.forEach(function (row) {
       var hit = !filtering || haystack(row).indexOf(term) >= 0;
       row.classList.toggle('find-miss', !hit);
-      var before = row.previousElementSibling;
-      if (before && before.classList.contains('sep')) {
-        before.classList.toggle('find-miss', !(hit && seen));
-      }
+      var line = lineAbove(row);
+      if (line) line.classList.toggle('find-miss', !(hit && seen));
       if (hit) { shown += 1; seen = true; }
     });
     report(filtering, shown, all.length);

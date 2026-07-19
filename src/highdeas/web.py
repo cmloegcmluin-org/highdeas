@@ -70,12 +70,24 @@ def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=(), cl
     # The bin's ages are read against the wall clock, so the clock is injectable.
     app.jinja_env.filters["days_in_bin"] = lambda iso: _days_since(iso, now)
 
-    def row_choices():
-        """What a row needs beyond the memos: the choices its dropdowns offer. Three
-        views render these rows — the page, the poll that streams new ones in, and the
-        fragment a merge rebuilds — so a dropdown added to only one of them renders
-        empty in the other two."""
-        return {"asana_parents": asana_parents, "claude_models": claude_models}
+    def rows_now():
+        """Everything it takes to draw the inbox: the memos in it, the recordings still
+        becoming memos, and the choices a row's dropdowns offer.
+
+        Three views render these rows — the page, the poll that streams new ones in, and
+        the fragment a merge rebuilds — and each of them replaces what it renders whole,
+        so anything handed to only one of them goes missing from the other two: a dropdown
+        renders empty, and a merge wipes the outlines of the recordings being transcribed
+        off the page. One call answers all three."""
+        return {"memos": service.pending(), "incoming": service.incoming_count(),
+                "asana_parents": asana_parents, "claude_models": claude_models}
+
+    def _inbox_rows():
+        """The inbox as it now reads: a row per memo, an outline per recording still
+        becoming one. Grouping and its undo change several rows at once — some leave, some
+        come back into the place the server sorts them — so the page takes the whole list
+        rather than patching its own guess at it."""
+        return render_template("rows.html", **rows_now())
 
     @app.errorhandler(Exception)
     def unhandled(exc):
@@ -95,10 +107,7 @@ def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=(), cl
         # No rescan here: the page must paint instantly from what's already stored.
         # The app's background scan transcribes waiting recordings and the /pending
         # poll streams them in, so the first frame never waits on the model.
-        return render_template(
-            "inbox.html", memos=service.pending(), incoming=service.incoming_count(),
-            **row_choices(),
-        )
+        return render_template("inbox.html", **rows_now())
 
     @app.get("/pending")
     def pending():
@@ -113,8 +122,7 @@ def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=(), cl
         decode — the bug where a peer's freshly-synced memo sat unseen (and same-
         machine notes hung) until the app was restarted. The "check now" button asks
         for an out-of-band scan through /rescan."""
-        return render_template("rows.html", memos=service.pending(),
-                               incoming=service.incoming_count(), **row_choices())
+        return _inbox_rows()
 
     @app.post("/rescan")
     def rescan_now():
@@ -198,12 +206,6 @@ def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=(), cl
         """Persist the order a drag-and-drop left the inbox rows in, top to bottom."""
         service.reorder(request.form.getlist("order"))
         return ("", 204)
-
-    def _inbox_rows():
-        """The inbox as it now reads. Grouping and its undo change several rows at once —
-        some leave, some come back into the place the server sorts them — so the page takes
-        the whole list rather than patching its own guess at it."""
-        return render_template("rows.html", memos=service.pending(), **row_choices())
 
     @app.post("/group")
     def group():

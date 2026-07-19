@@ -33,7 +33,10 @@
     <div class="notice">{{ config.PHONE_UPLOADS_OFF }}</div>
     {% endif %}
     {% block banners %}{% endblock %}
-    {% if memos %}{% block headrow %}{% endblock %}{% endif %}
+    {#- The column heads belong to the list, so they stand whenever the list does — and the
+        inbox's list stands for a recording still being transcribed as well as for a memo,
+        since its outline sits on those same columns. The bin has no incoming. -#}
+    {% if memos or incoming %}{% block headrow %}{% endblock %}{% endif %}
   </div>
   <main id="content">{% block content %}{% endblock %}</main>
   {#- Both pages destroy things, so both ask first, and both ask in their own voice. -#}

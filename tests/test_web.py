@@ -651,6 +651,56 @@ def test_the_live_poll_leaves_alone_the_row_whose_editor_is_open(tmp_path):
     assert "memo === editing" in js.split("function busy(memo)")[1].split("\n  }")[0]
 
 
+def test_the_poll_replaces_the_outlines_whole_and_keeps_them_above_the_rows(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    js = asset(client, "inbox.js")
+
+    # An outline holds no state worth preserving — no edit, no focus, nothing typed — so the
+    # server's set replaces the page's whole rather than being reconciled one at a time. One
+    # recording fewer is one outline fewer, and the row that took its place arrives in the
+    # same pass. They stand where rows will be, so they go back in above every real one.
+    merge = js.split("function merge(html)")[1].split("function check(")[0]
+    assert "querySelectorAll('.transcribing')" in merge
+    assert "grid.insertBefore(outline, lead)" in merge
+    # The list can empty without anyone here touching it — the last note retired from the
+    # other machine, the last waiting recording gone without ever becoming one — and left
+    # to itself it stood as a bare grid under its column headers, saying nothing.
+    assert "showEmpty()" in merge
+
+
+def test_a_search_takes_the_outlines_out_with_the_rows_it_misses(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    js = asset(client, "find.js")
+
+    # An outline holds nothing to match, so a filtered list must not go on showing
+    # row-shaped things that answer to nothing typed — and they are not results, so they
+    # stay out of the tally too. Clearing the box brings them back with everything else.
+    assert "querySelectorAll('.transcribing')" in js
+    # One standing above the rows is already something shown, so the first matching row
+    # still gets the line above it. Without that the line vanished the first time a search
+    # was cleared and never came back.
+    assert "coming.length" in js.split("var seen =")[1].split("\n")[0]
+    assert ".grid .transcribing.find-miss" in asset(client, "app.css")
+
+
+def test_an_outline_is_drawn_into_the_list_but_is_never_a_note(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    js = asset(client, "inbox.js")
+
+    # The line between two rows runs between the outlines too, and between the last of them
+    # and the first real row, so what is coming reads as part of the list rather than a block
+    # floating above it. Everything else a row is asked to do — being counted, submitted,
+    # trashed, dragged, saved into an order — reaches .memo alone.
+    assert "querySelectorAll('.memo')" in js.split("function rows()")[1].split("\n")[0]
+    assert "querySelectorAll('.memo, .transcribing')" in js.split("function listed()")[1].split("\n")[0]
+    assert "listed()" in js.split("function resync()")[1].split("\n  }")[0]
+    # And a list still holding outlines is not an empty inbox, however few notes are in it.
+    assert "'.memo, .transcribing'" in js.split("function removeRow(memo)")[1].split("\n  }")[0]
+
+
 def test_a_note_the_poll_brings_in_joins_the_top_of_the_list(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
@@ -1053,13 +1103,19 @@ def test_the_action_columns_hand_their_spare_width_to_the_scrubber(tmp_path):
 def test_every_inbox_row_is_the_same_height_whether_or_not_it_has_a_transcript(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
-    preview = asset(client, "app.css").split(".memo .transcript {")[1].split("}")[0]
+    css = asset(client, "app.css")
+    preview = css.split(".memo .transcript {")[1].split("}")[0]
 
     # A min-height grew the row from one line to three as the note filled up, so the
     # list jumped every time text crossed the arrow. The preview is a fixed three-line
     # box now: the whole note is one click away in the editor, so it never needs more.
+    # The three lines are measured at :root, where the outline of a row still being
+    # transcribed reads the same figure.
     assert "min-height" not in preview
-    assert "height: calc(3 * 1.45em" in preview
+    assert "height: var(--preview)" in preview
+    # In rem, not em: a custom property's em is measured against whoever reads it, and the
+    # outline of a row still being transcribed reads this one through its own smaller type.
+    assert "--preview: calc(3 * 1.45rem" in css.split(":root {")[1].split("}")[0]
     assert "-webkit-line-clamp: 3" in preview
 
 
@@ -1387,25 +1443,28 @@ def test_inbox_row_leaves_the_timestamp_blank_when_the_recording_time_is_unknown
     assert '<div class="when"></div>' in body
 
 
-def test_index_shows_a_transcribing_hint_while_recordings_await(tmp_path):
-    # Opened with an empty store but recordings still waiting in the inbox, the page
-    # says they're being transcribed rather than the misleading "Your inbox is empty".
+def test_the_list_stands_up_for_a_recording_that_has_no_row_yet(tmp_path):
+    # Opened with an empty store but a recording still waiting in the inbox, the page draws
+    # the list its outline sits in — column headers and all — rather than the misleading
+    # "Your inbox is empty". An outline off the grid would sit on none of the columns its
+    # row is about to land on, which is the whole point of it.
     service = FakeService(pending=[], incoming=1)
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
-    body = client.get("/").data
+    body = client.get("/").data.decode()
 
-    # The visible empty-state is the transcribing hint, not the idle message.
-    assert b"Transcribing 1 new recording" in body
-    assert b'<p class="empty">Your inbox is empty' not in body
+    assert body.count('class="transcribing"') == 1
+    assert "grid inbox body" in body and "grid inbox headrow" in body
+    assert '<p class="empty">Your inbox is empty' not in body
 
 
-def test_a_landed_recording_is_visible_before_transcription_finishes(tmp_path):
+def test_a_landed_recording_holds_its_own_place_before_transcription_finishes(tmp_path):
     # The nerve-wracking window: the phone's row disappears on delivery, but the
     # desktop showed nothing until transcription finished — for cold starts, model
-    # warm-up plus the take itself. The strip names the landed recordings the moment
-    # they exist, above the rows, and it rides the /pending fragment so the open
-    # page picks it up on the next poll.
+    # warm-up plus the take itself. Each landed recording holds the place its row will
+    # take from the moment it exists: one outline apiece, so two waiting recordings read
+    # as two notes coming rather than one sentence about them. It rides the /pending
+    # fragment so the open page picks it up on the next poll.
     service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hi")], incoming=2)
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
@@ -1413,8 +1472,28 @@ def test_a_landed_recording_is_visible_before_transcription_finishes(tmp_path):
     fragment = client.get("/pending").data.decode()
 
     for body in (page, fragment):
-        assert '<p class="transcribing">Transcribing 2 new recordings…</p>' in body
-    assert page.index('class="transcribing"') < page.index('grid inbox body')
+        assert body.count('class="transcribing"') == 2
+        assert body.count("Transcribing…") == 2
+    # Inside the grid, so an outline sits on the very columns its row will; and above the
+    # rows, where the newest note goes.
+    assert page.index("grid inbox body") < page.index('class="transcribing"')
+    assert page.index('class="transcribing"') < page.index('class="memo"')
+
+
+def test_an_outline_is_built_to_the_size_of_the_row_it_will_become(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    css = asset(client, "app.css")
+
+    # Nothing below an outline may move when the real row lands in its place, so the two are
+    # the same size by construction rather than by a pair of matched numbers that drift
+    # apart: the same subgrid over the same ten columns, and the three-line preview's height
+    # written once and read by both. That preview is the tallest thing in a row, so it is
+    # what sets the height of one.
+    assert "grid-template-columns: subgrid" in css.split(".transcribing {")[1].split("}")[0]
+    assert "--preview:" in css
+    for rule in (".memo .transcript {", ".transcribing-note {"):
+        assert "height: var(--preview)" in css.split(rule)[1].split("}")[0]
 
 
 def test_index_shows_empty_state_when_the_inbox_is_idle(tmp_path):
