@@ -188,7 +188,7 @@ def build_app():
     store = _build_store(db_path)
     drive_base = os.environ.get("HIGHDEAS_DRIVE_BASE", platform_defaults().drive_base)
     notesnook = NotesnookRouter(os.environ.get("NOTESNOOK_INBOX_API_KEY", ""))
-    drive = DriveMusicRouter(inbox_dir, drive_base)
+    drive = DriveMusicRouter(inbox_dir, drive_base, file_doc=_drive_doc_filer())
     asana_parents = parse_choices(os.environ.get("ASANA_PARENT_TASKS", ""))
     asana = AsanaRouter(
         read_asana_tokens(asana_parents, os.environ),
