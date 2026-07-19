@@ -286,6 +286,23 @@ def test_build_app_opens_a_claude_code_session_at_the_configured_folder(tmp_path
                       "&folder=C%3A%5Cprojects%5Cthing"]
 
 
+def test_the_deep_link_launcher_hands_a_url_to_the_macs_opener(monkeypatch):
+    # The Mac is the one platform this app runs on that nothing here executes: the
+    # Windows desk hands claude:// to the shell itself, the Mac shells out to `open`.
+    # Pin the command, so the branch that only ever runs at the other desk is at least
+    # spelled right — whether Claude has registered the scheme there is that desk's own
+    # answer, and only that desk can give it.
+    import highdeas.app as app_mod
+
+    monkeypatch.setattr(app_mod.sys, "platform", "darwin")
+    launched = []
+    monkeypatch.setattr(app_mod.subprocess, "Popen", launched.append)
+
+    app_mod._deep_link_launcher()("claude://code/new?q=hi")
+
+    assert launched == [["open", "claude://code/new?q=hi"]]
+
+
 def test_the_built_in_model_list_runs_strongest_first():
     # The dropdown is read top-down and its first entry is the default, so the list is
     # ordered by how much model you get, not alphabetically or by release date.
