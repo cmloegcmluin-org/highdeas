@@ -117,18 +117,19 @@ class MemoStore:
     def list_pending(self):
         """Every memo still in the inbox, in the order the inbox shows them.
 
-        A memo the user dragged into place leads with its position. Everything else has
-        no position and falls back to recording time, then ingest time as a stable
-        tiebreak: an untouched inbox reads oldest-to-newest by when each memo was
-        recorded, regardless of the order a startup catch-up (which scans the inbox by
-        filename) happened to ingest them in. Unplaced memos sort after placed ones, so a
-        recording that lands after a reorder joins the end rather than jumping the queue.
-        The bin re-sorts its own view by processed_at, so this ordering only shapes the
-        inbox."""
+        Newest first, so a memo arrives at the top — where the "Transcribing…" line that
+        announced it was already sitting. A memo the user has not dragged leads, by
+        recording time, then ingest time as a stable tiebreak: recording time and not
+        ingest, because a startup catch-up scans the inbox by filename (voice-10 before
+        voice-2), which is neither recording order nor the live poll's arrival order. The
+        memos they did drag follow, in the order they dragged them into, so a recording
+        that lands after a reorder settles on top of that arrangement rather than into the
+        middle of it. The bin re-sorts its own view by processed_at, so this ordering only
+        shapes the inbox."""
         with self._lock:
             rows = self._conn.execute(
                 "SELECT * FROM memos WHERE status = 'pending' "
-                "ORDER BY position IS NULL, position, recorded_at, created_at"
+                "ORDER BY position IS NOT NULL, position, recorded_at DESC, created_at DESC"
             ).fetchall()
         return [_row_to_memo(row) for row in rows]
 
@@ -186,14 +187,6 @@ def adopt_legacy_db(db_path, folder_store):
     for memo in memos:
         folder_store.upsert(memo)
     return len(memos)
-
-
-def _pending_order(memo):
-    """The inbox order (see MemoStore.list_pending): dragged memos lead by
-    position; the rest follow by recorded time, then ingest time."""
-    return (memo.position is None,
-            memo.position if memo.position is not None else 0,
-            memo.recorded_at, memo.created_at)
 
 
 class FolderStore:
@@ -258,7 +251,12 @@ class FolderStore:
     def list_pending(self):
         with self._lock:
             pending = [m for m in self._all() if m.status == "pending"]
-        return sorted(pending, key=_pending_order)
+        # The inbox order, spelled out (see MemoStore.list_pending): the memos the user
+        # has not dragged, newest first, then the ones they have, as they placed them.
+        undragged = [m for m in pending if m.position is None]
+        dragged = [m for m in pending if m.position is not None]
+        return (sorted(undragged, key=lambda m: (m.recorded_at, m.created_at), reverse=True)
+                + sorted(dragged, key=lambda m: m.position))
 
     def list_retired(self):
         with self._lock:

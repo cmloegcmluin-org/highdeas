@@ -566,7 +566,8 @@
   }
 
   // Re-seat the rows in a remembered order. A note that arrived from the poll since then
-  // was never in it, and stays at the end where the server puts an unplaced memo.
+  // was never in it, and leads, where the server puts an unplaced memo — this saves the
+  // order it lands in, so sweeping it to the end would pin it there.
   function applyOrder(files) {
     var grid = content.querySelector('.grid');
     if (!grid) return;
@@ -574,7 +575,7 @@
     files.forEach(function (file, i) { rank[file] = i; });
     function placeOf(memo) {
       var place = rank[memo.dataset.file];
-      return place === undefined ? files.length : place;  // unranked: a note that arrived since
+      return place === undefined ? -1 : place;  // unranked: a note that arrived since
     }
     rows().sort(function (a, b) { return placeOf(a) - placeOf(b); })
       .forEach(function (memo) { grid.appendChild(memo); });
@@ -907,10 +908,13 @@
     if (fresh.length) {
       var grid = content.querySelector('.grid');
       if (!grid) { location.reload(); return; }  // empty page: reload to build the grid + frozen header
-      // Fresh notes join the end, matching where the server sorts an unplaced memo, so a
-      // hand-arranged inbox isn't reshuffled by a recording that lands mid-session.
+      // Fresh notes join the top, matching where the server sorts an unplaced memo — and
+      // where the "Transcribing…" line that announced them is already sitting. They go in
+      // above the row that led a moment ago, so they keep the server's order among
+      // themselves and a hand-arranged inbox is added to rather than reshuffled.
+      var first = rows()[0] || null;
       fresh.forEach(function (file) {
-        grid.appendChild(arriving[file]);
+        grid.insertBefore(arriving[file], first);
         wire(arriving[file]);
       });
       changed = true;

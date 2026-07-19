@@ -70,11 +70,12 @@ def test_known_filenames_returns_stored_filenames(store):
     assert store.known_filenames() == {"a.m4a", "b.m4a"}
 
 
-def test_list_pending_filters_and_orders_by_recorded_at(store):
-    # Order by when each memo was recorded, not when it was ingested, so the inbox
-    # list always reads oldest-to-newest. Ingestion order can't be trusted: a startup
-    # catch-up scans the inbox by filename (voice-10 before voice-2), which is neither
-    # recording order nor consistent with the live poll's arrival order.
+def test_list_pending_filters_and_orders_newest_first(store):
+    # The inbox reads newest-to-oldest, so a memo lands at the top — where the
+    # "Transcribing…" line that announced it was already sitting. Order by when each
+    # memo was recorded, not when it was ingested: a startup catch-up scans the inbox
+    # by filename (voice-10 before voice-2), which is neither recording order nor
+    # consistent with the live poll's arrival order.
     store.upsert(Memo(audio_filename="b.m4a", status="pending",
                       recorded_at="2026-07-07T02:00", created_at="2026-07-07T08:00"))
     store.upsert(Memo(audio_filename="a.m4a", status="pending",
@@ -84,8 +85,8 @@ def test_list_pending_filters_and_orders_by_recorded_at(store):
 
     pending = store.list_pending()
 
-    # a was recorded first though ingested last, so it still sorts ahead of b.
-    assert [m.audio_filename for m in pending] == ["a.m4a", "b.m4a"]
+    # a was ingested last but recorded first, so it still sorts below b.
+    assert [m.audio_filename for m in pending] == ["b.m4a", "a.m4a"]
 
 
 def test_reorder_pins_pending_memos_to_the_given_order(store):
@@ -99,9 +100,10 @@ def test_reorder_pins_pending_memos_to_the_given_order(store):
     assert [m.audio_filename for m in store.list_pending()] == ["c.m4a", "a.m4a", "b.m4a"]
 
 
-def test_a_memo_with_no_position_lists_after_the_reordered_ones(store):
-    # A recording that arrives after the user has arranged the inbox joins the end,
-    # rather than jumping into the middle on its recorded time.
+def test_a_memo_with_no_position_lists_above_the_reordered_ones(store):
+    # A recording that arrives after the user has arranged the inbox lands on top of the
+    # arrangement, where the "Transcribing…" line announced it — never dropped into the
+    # middle of it on its recorded time, which is why that arrangement is pinned at all.
     store.upsert(Memo(audio_filename="a.m4a", status="pending", recorded_at="2026-07-07T01:00"))
     store.upsert(Memo(audio_filename="b.m4a", status="pending", recorded_at="2026-07-07T02:00"))
     store.reorder(["b.m4a", "a.m4a"])
@@ -109,7 +111,7 @@ def test_a_memo_with_no_position_lists_after_the_reordered_ones(store):
     store.upsert(Memo(audio_filename="fresh.m4a", status="pending", recorded_at="2026-07-07T00:30"))
 
     assert [m.audio_filename for m in store.list_pending()] == [
-        "b.m4a", "a.m4a", "fresh.m4a"]
+        "fresh.m4a", "b.m4a", "a.m4a"]
 
 
 def test_reorder_stays_numeric_past_the_tenth_memo(store):

@@ -651,6 +651,20 @@ def test_the_live_poll_leaves_alone_the_row_whose_editor_is_open(tmp_path):
     assert "memo === editing" in js.split("function busy(memo)")[1].split("\n  }")[0]
 
 
+def test_a_note_the_poll_brings_in_joins_the_top_of_the_list(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    js = asset(client, "inbox.js")
+
+    # The server lists an unplaced memo first (store.list_pending) and the "Transcribing…"
+    # line that announced it sits above the grid, so a row spliced in mid-session has to
+    # land there too. Appended to the end it turned up at the far side of the list from
+    # where it had just been promised.
+    merge = js.split("function merge(html)")[1].split("function check(")[0]
+    assert "grid.insertBefore(arriving[file], first)" in merge
+    assert "grid.appendChild(" not in merge
+
+
 def test_index_trash_all_asks_for_confirmation(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
@@ -895,6 +909,19 @@ def test_the_inbox_records_the_four_actions_that_can_be_walked_back(tmp_path):
     # Undoing has to persist, or the row reads back the way it was before the undo.
     assert "flush(memo)" in js.split("\n  function apply(")[1].split("\n  function ")[0]
     assert "saveOrder()" in js.split("\n  function applyOrder(")[1].split("\n  function ")[0]
+
+
+def test_undoing_a_drag_leaves_a_note_that_arrived_since_on_top(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    js = asset(client, "inbox.js")
+
+    # Walking a drag back re-seats the rows in an order a note arriving since was never in,
+    # and then saves the result — pinning wherever it was put. So it has to fall where the
+    # server would put an unplaced memo, on top, rather than be swept to the end of a list
+    # by the undo of a drag it had nothing to do with.
+    place = js.split("function placeOf(memo)")[1].split("\n    }")[0]
+    assert "? -1 :" in place and "files.length" not in place
 
 
 def test_a_step_names_the_row_it_touched_rather_than_holding_it(tmp_path):

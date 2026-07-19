@@ -88,6 +88,16 @@ def _step(memos, group=None):
             "transcript": group.transcript if group else ""}
 
 
+def _spoken_order(memos):
+    """The notes a merge takes in, ordered by when each was recorded.
+
+    A group reads — and plays — from the first thing said to the last, whichever way
+    the rows above it happen to be stacked. The inbox lists newest first, so the two
+    orders are opposites, and taking the list's would hand back a consolidated note
+    that runs backwards. Ingest time breaks a tie, as it does in the inbox."""
+    return sorted(memos, key=lambda memo: (memo.recorded_at, memo.created_at))
+
+
 def _sole_name(memos):
     """The name a fresh group takes on its own: the one name among its notes, or none.
 
@@ -287,11 +297,11 @@ class InboxService:
         """Consolidate the named pending notes into a single group memo.
 
         A group is a memo the app makes, not a note promoted out of the pile. Every note
-        picked becomes a bullet — in inbox order, not the order they were ticked — and
-        every one of them retires to the bin. What stands in their place is a new memo
-        whose recording is theirs joined end to end, carrying their word timings slid to
-        where each lands in it. It sits where the topmost note sat, bound for the same
-        destination.
+        picked becomes a bullet — in the order they were recorded, not the order they
+        were ticked — and every one of them retires to the bin. What stands in their
+        place is a new memo whose recording is theirs joined end to end, carrying their
+        word timings slid to where each lands in it. It sits where the topmost note sat,
+        bound for the same destination.
 
         The group takes a name of its own. One note named among the picks and its name
         rises to the group; several named and the page has already asked which — its
@@ -315,21 +325,26 @@ class InboxService:
             self._retire(memo.audio_filename, "grouped")
         if group is None:
             return self._found_group(chosen, name)
-        trail = _merges(group) + [_step(absorbed, group)]
+        spoken = _spoken_order(absorbed)
+        trail = _merges(group) + [_step(spoken, group)]
         return self._rejoin(group, trail, name=group.name, transcript="\n".join(
-            [group.transcript.rstrip(), *(_bullet(memo, group.name) for memo in absorbed)]))
+            [group.transcript.rstrip(), *(_bullet(memo, group.name) for memo in spoken)]))
 
     def _found_group(self, members, name=None):
         """Make the memo that stands in the place of the notes it was folded from.
 
         Its name is the caller's pick when given, else the one name among the notes (or
-        none when they are all nameless or several are named without a pick)."""
+        none when they are all nameless or several are named without a pick).
+
+        `members` arrives in inbox order, so its first is the topmost note — the slot the
+        group takes. What it says runs the other way, from the first thing spoken."""
         group_name = _sole_name(members) if name is None else name
-        lead, trail = members[0], [_step(members)]
+        lead, spoken = members[0], _spoken_order(members)
+        trail = [_step(spoken)]
         joined = self._join_members(trail, Path(lead.audio_filename).suffix)
         self._store.upsert(Memo(
             audio_filename=joined,
-            transcript="\n".join(_bullet(memo, group_name) for memo in members),
+            transcript="\n".join(_bullet(memo, group_name) for memo in spoken),
             name=group_name,
             kind="group",
             route=lead.route,
@@ -479,8 +494,9 @@ class InboxService:
     def restore(self, audio_filename):
         """Bring a binned recording back into the inbox as a pending memo.
 
-        It rejoins the end of the list rather than the slot it once held, since the
-        inbox it left may have been rearranged since.
+        It rejoins the top of the list rather than the slot it once held, since the
+        inbox it left may have been rearranged since — and the top is where the inbox
+        puts everything that has just turned up.
 
         Realign the memo and its file with the recording's content key on the way
         in: a memo retired before content-keying is stored under its raw inbox

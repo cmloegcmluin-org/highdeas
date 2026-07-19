@@ -343,9 +343,10 @@ def test_restore_moves_audio_back_to_inbox_and_marks_pending(tmp_path):
     assert (inbox / memo.audio_filename).read_bytes() == b"A"  # back in the inbox, playable
 
 
-def test_restore_drops_a_memos_old_position_so_it_lands_at_the_end(tmp_path):
+def test_restore_drops_a_memos_old_position_so_it_lands_at_the_top(tmp_path):
     # A memo carries the slot it was dragged into. Coming back from the bin it must
-    # forget it, or it reappears in the middle of a since-rearranged inbox.
+    # forget it, or it reappears buried in a since-rearranged inbox instead of on top,
+    # where everything else that has just turned up waits.
     inbox = tmp_path / "inbox"
     inbox.mkdir()
     bin_dir = tmp_path / "bin"
@@ -354,16 +355,16 @@ def test_restore_drops_a_memos_old_position_so_it_lands_at_the_end(tmp_path):
     store = MemoStore(tmp_path / "memos.db")
     store.upsert(Memo(audio_filename="here.m4a", status="pending"))
     store.upsert(Memo(audio_filename="old.m4a", status="deleted", processed_at="2026-07-07T03:00"))
-    store.reorder(["old.m4a", "here.m4a"])  # old.m4a used to lead the inbox
+    store.reorder(["here.m4a", "old.m4a"])  # old.m4a used to trail the inbox
 
     InboxService(inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
                   bin_dir=bin_dir).restore("old.m4a")
 
-    # Restore re-keys the recording, so identify it by what it isn't: it trails the
-    # memo that stayed, instead of reclaiming its old leading slot.
+    # Restore re-keys the recording, so identify it by what it isn't: it leads the memo
+    # that stayed, instead of reclaiming the trailing slot it was dragged into.
     pending = store.list_pending()
     assert len(pending) == 2
-    assert pending[0].audio_filename == "here.m4a"
+    assert pending[1].audio_filename == "here.m4a"
 
 
 def test_restoring_a_legacy_named_memo_does_not_duplicate_it_on_the_next_refresh(tmp_path):
@@ -781,7 +782,7 @@ def test_group_refuses_a_selection_holding_two_groups(tmp_path):
     with pytest.raises(ValueError):
         service.group(["g1.m4a", "g2.m4a"])
 
-    assert [m.audio_filename for m in service.pending()] == ["g1.m4a", "g2.m4a"]
+    assert [m.audio_filename for m in service.pending()] == ["g2.m4a", "g1.m4a"]
     assert store.get("g1.m4a").transcript == "- one"
 
 
@@ -861,7 +862,8 @@ def test_unmerge_walks_back_the_last_merge_and_leaves_the_ones_before_it(tmp_pat
     assert group.audio_filename == left
     assert group.transcript == "- one\n- two"
     assert (inbox / left).read_bytes() == b"AAABB"
-    assert [m.transcript for m in service.pending()] == ["- one\n- two", "three"]
+    # c was recorded last, so the inbox lists it above the group it just left.
+    assert [m.transcript for m in service.pending()] == ["three", "- one\n- two"]
     assert (inbox / "c.m4a").read_bytes() == b"C"
 
 
@@ -876,7 +878,7 @@ def test_unmerge_of_the_merge_that_made_the_group_takes_the_group_with_it(tmp_pa
 
     assert store.get(group.audio_filename) is None
     assert not (inbox / group.audio_filename).exists()
-    assert [m.audio_filename for m in service.pending()] == ["a.m4a", "b.m4a"]
+    assert [m.audio_filename for m in service.pending()] == ["b.m4a", "a.m4a"]
     assert (inbox / "a.m4a").read_bytes() == b"AAA"
     assert service.binned() == []
 
@@ -921,7 +923,7 @@ def test_unmerge_waits_out_a_recording_that_is_only_briefly_held(tmp_path):
 
     assert waits and not refusals  # it waited, and then the file let go
     assert store.get(group.audio_filename) is None
-    assert [m.audio_filename for m in service.pending()] == ["a.m4a", "b.m4a"]
+    assert [m.audio_filename for m in service.pending()] == ["b.m4a", "a.m4a"]
 
 
 def test_unmerge_refuses_a_memo_that_is_not_a_group(tmp_path):
@@ -948,7 +950,7 @@ def test_ungroup_breaks_a_group_back_into_its_separate_notes(tmp_path):
     service.ungroup(group.audio_filename)
 
     # Both notes are back in the inbox, exactly as they read before the merge.
-    assert [m.audio_filename for m in service.pending()] == ["a.m4a", "b.m4a"]
+    assert [m.audio_filename for m in service.pending()] == ["b.m4a", "a.m4a"]
     lead = store.get("a.m4a")
     assert (lead.kind, lead.name, lead.transcript, lead.status) == ("note", "Verse", "one", "pending")
     assert (inbox / "b.m4a").read_bytes() == b"BB"
@@ -969,8 +971,10 @@ def test_ungroup_returns_every_note_dragged_into_an_existing_group(tmp_path):
 
     service.ungroup(grown.audio_filename)
 
-    assert [m.audio_filename for m in service.pending()] == ["a.m4a", "b.m4a", "c.m4a"]
-    assert [m.transcript for m in service.pending()] == ["one", "two", "three"]
+    # Handed back to an inbox that lists newest first, so they read the other way from
+    # the bullets they were — which run from the first thing said to the last.
+    assert [m.audio_filename for m in service.pending()] == ["c.m4a", "b.m4a", "a.m4a"]
+    assert [m.transcript for m in service.pending()] == ["three", "two", "one"]
     assert sorted(p.name for p in inbox.iterdir()) == ["a.m4a", "b.m4a", "c.m4a"]
 
 
