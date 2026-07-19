@@ -1245,6 +1245,21 @@ def test_opening_the_editor_hushes_the_players_left_running_behind_it(tmp_path):
     assert opening.index("hushPage();") < opening.index("audio.play()")
 
 
+def test_deleting_words_in_the_transcript_cuts_the_sound_they_were_spoken_over(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    script = asset(client, "editor.js")
+    # It has to read both ways: a stretch dragged out of the waveform takes its words, and
+    # words taken out of the text take their stretch. The doomed range is read before the
+    # engine edits it — a moment later the marks point at text that is gone.
+    listener = script.split("bodyEl.addEventListener('beforeinput'")[1].split("\n  });")[0]
+    assert "getTargetRanges" in listener
+    # Typing over a selection replaces it, and a correction must not cost the recording.
+    assert "inputType.indexOf('delete') !== 0" in listener
+    # Half a word deleted leaves letters on the page for its sound to still belong to.
+    assert "function holdsWord" in script
+
+
 def test_the_editor_saves_on_the_way_out_rather_than_after_it_has_closed(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 

@@ -686,8 +686,10 @@
       },
       onCut: function (span) {
         return cutAudio(memo, span).catch(function (err) {
-          // The editor leaves the recording as it was; say why it is still whole.
-          notify("Couldn't cut that from the recording — the note is unchanged." + describe(err));
+          // Whichever way round the cut was asked for, what survives it is the recording:
+          // the waveform's gesture hasn't touched the text yet, and the text's has already
+          // taken the words. So the sentence is about the sound, which is still all there.
+          notify("Couldn't cut that from the recording — it still plays that stretch." + describe(err));
           throw err;
         });
       },

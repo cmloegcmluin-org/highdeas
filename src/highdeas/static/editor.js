@@ -417,34 +417,84 @@
     } catch (err) { /* the text moved under us; leave it be */ }
   }
 
-  // Delete the stretch of recording under the waveform selection, and the words it spoke.
-  // The recording is where the transcript came from, so both go or neither does — and
-  // cutting the file is the caller's to do and the one step that can be refused, so the
-  // sound goes first and the text follows it. Taking the words first and being refused
-  // would leave a note whose text no longer describes what it plays.
-  function deleteSelection() {
-    var span = selection;
-    setSelection(null);
-    if (!span || !current) return;
+  // Whether `range` holds the whole of a word. Half a word deleted leaves letters on the
+  // page for its sound to still belong to, so only a word taken whole takes its sound.
+  function holdsWord(range, token) {
+    var word = document.createRange();
+    try {
+      word.setStart(token.node, token.from);
+      word.setEnd(token.node, token.to);
+    } catch (err) {
+      return false;  // the node was edited out from under us; the next align() fixes it
+    }
+    return range.compareBoundaryPoints(Range.START_TO_START, word) <= 0 &&
+           range.compareBoundaryPoints(Range.END_TO_END, word) >= 0;
+  }
+
+  // The stretch of recording the words inside a text range were spoken over — the other
+  // way round from selectedMarks, which reads a stretch of sound off into words. From the
+  // first word the range holds until the word after the last of them gives way, or to the
+  // end of the recording when the last of them is the last thing said. Null when the range
+  // holds no whole word: a letter taken out of one is not the word leaving the note.
+  function spokenOver(range) {
+    var first = null;
+    var last = -1;
+    for (var i = 0; i < marks.length; i++) {
+      if (!holdsWord(range, marks[i].token)) continue;
+      if (first === null) first = marks[i];
+      last = i;
+    }
+    if (first === null) return null;
+    var after = marks[last + 1];
+    if (!after && !audio.duration) return null;  // nothing yet says where the last word ends
+    return { from: first.at, to: after ? after.at : audio.duration };
+  }
+
+  // Take a stretch out of the recording, and the words spoken over it out of the text.
+  // The two are one note in two forms, so both go or neither does — and cutting the file
+  // is the caller's to do and the one step that can be refused, which is why the sound
+  // goes first. `cutText` is how the words go, for the gesture that hasn't taken them
+  // yet: the waveform's cuts them here, where a deletion in the text already has.
+  function cutSound(span, cutText) {
+    if (!current) return;
     var note = current;
+    var at = afterCut(audio.currentTime, span);
     audio.pause();  // the stretch being played is about to stop being there
     Promise.resolve(note.onCut({ from: span.from, to: span.to })).then(function (cut) {
       if (current !== note) return;  // the dialog has moved on to another note
-      cutWords(span);            // by the timings as they were: the span was drawn in their time
-      words = cut.words || [];   // and from here by the ones the cut left, each that much earlier
+      if (cutText) cutText();     // by the timings as they were: the span is in their time
+      words = cut.words || [];    // and from here by the ones the cut left, each earlier
       note.audioUrl = cut.audioUrl;
       align();
-      loadRecording(span.from);
+      loadRecording(at);
       scheduleSave();
     }, function () {
-      // Refused, and the caller has said so: the recording and the text are as they were.
+      // Refused, and the caller has said so. The recording is as it was either way — the
+      // waveform's words are still there unasked-for, and the text's are already gone.
     });
   }
 
-  // Play the recording the cut left, landing the playhead at the seam where the sound now
-  // carries on. A cut recording keeps its filename, so the cut answers with a URL of its
-  // own — handed a name it is already holding, a player plays what it has rather than
-  // what is there — and how long the new sound runs isn't known until its metadata is.
+  // Where the playhead lands once a span is gone: where it was, if that was before the
+  // cut; that much earlier, if it was after; and at the seam if it was inside — which is
+  // where the waveform gesture leaves it, the press that began the drag having put it
+  // there, and where a deletion in the text leaves it if it cut what was playing.
+  function afterCut(at, span) {
+    if (at <= span.from) return at;
+    return at >= span.to ? at - (span.to - span.from) : span.from;
+  }
+
+  // Delete the stretch under the waveform selection. The words go with it here, since
+  // this gesture is aimed at the sound and hasn't touched them.
+  function deleteSelection() {
+    var span = selection;
+    setSelection(null);
+    if (span) cutSound(span, function () { cutWords(span); });
+  }
+
+  // Play the recording the cut left, landing the playhead where the cut left the moment it
+  // was at. A cut recording keeps its filename, so the cut answers with a URL of its own —
+  // handed a name it is already holding, a player plays what it has rather than what is
+  // there — and how long the new sound runs isn't known until its metadata is.
   function loadRecording(at) {
     audio.src = current.audioUrl;
     audio.addEventListener('loadedmetadata', function once() {
@@ -609,6 +659,22 @@
 
   nameEl.addEventListener('input', function () { scheduleSave(); syncMove(); });
   bodyEl.addEventListener('input', function () { scheduleSave(); scheduleAlign(); syncMove(); });
+  // Deleting words takes the sound they were spoken over with them, the way deleting a
+  // stretch of sound takes its words. The range about to go is read here, before the
+  // engine edits it — a moment later the marks point at text that no longer exists — and
+  // the cut is asked for while the engine takes the text. Deletions only: typing over a
+  // selection replaces it, and a correction must not cost the recording.
+  bodyEl.addEventListener('beforeinput', function (event) {
+    if (event.inputType.indexOf('delete') !== 0) return;
+    var target = event.getTargetRanges()[0];
+    if (!target) return;
+    align();  // against the text as it stands, not as it read at the last match
+    var range = document.createRange();
+    range.setStart(target.startContainer, target.startOffset);
+    range.setEnd(target.endContainer, target.endOffset);
+    var span = spokenOver(range);
+    if (span) cutSound(span);
+  });
   moveBtn.addEventListener('click', moveText);
   dialog.querySelectorAll('.editor-clip').forEach(function (btn) {
     btn.addEventListener('click', function () { copyField(btn); });

@@ -105,9 +105,12 @@ recording, or a subtask on an Asana task.
    (highlighted, never selected, so your caret stays where you left it). Click the waveform
    to move the playhead, press Space to play or pause, or drag across a stretch to select
    it — Delete then cuts that stretch out of the recording itself and the words spoken
-   there out of the transcript, so what plays and what it says stay the same note. The
-   title has room to be read whole, and the body takes bulleted and numbered lists: each
-   button turns its list on over what you've selected, and off again when you press it
+   there out of the transcript. It reads the other way round too: delete words from the
+   text and the sound they were spoken over goes with them. Either way what plays and what
+   it says stay the same note. (Only whole words deleted, and only deleted — a letter taken
+   out of a word, or a word typed over, is a correction and costs the recording nothing.)
+   The title has room to be read whole, and the body takes bulleted and numbered lists:
+   each button turns its list on over what you've selected, and off again when you press it
    over that same list. Edits auto-save, and the words re-match to the text as you change
    it.
 7. **Route on submit**
