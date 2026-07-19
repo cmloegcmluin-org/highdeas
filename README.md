@@ -146,7 +146,11 @@ recording, or a subtask on an Asana task.
      the way Notesnook names untitled notes (`Note <date> <time>`).
    - **Google Drive (music)** — the audio is copied into a dated
      `_YYYY_MM_DD_NOT_YET_PROCESSED_MUSIC` folder under your Drive base, renamed from the
-     memo's name, with a `.docx` of the transcript alongside if there is one.
+     memo's name. Its transcript, if there is one, is filed as a real, native Google
+     Doc through the actual Drive API — not a file that merely opens like one — once
+     `HIGHDEAS_GOOGLE_DOCS_TOKEN_FILE` is set up (see "Google Drive native Doc filing"
+     below); until then, or if a submit can't reach Drive, a `.docx` alongside the
+     audio is the fallback, exactly as before.
    - **Asana** — the transcript becomes a subtask of the parent task picked in the
      row's dropdown (the small set you configure via `ASANA_PARENT_TASKS`). A named
      memo carries its name as the task and its transcript as the notes; an unnamed one
@@ -299,6 +303,65 @@ Repeat steps 4-5 (a new key file, same service account) on any other machine tha
 should get per-memo links too; the sharing in step 6 only needs doing once, since
 it's the Drive folder — not the machine — that's granted access.
 
+### Google Drive native Doc filing (optional)
+
+Without this, a music memo's transcript is written as a local `.docx` alongside its
+audio — a Word file dropped into the Drive-synced folder, clunky to open. With it, the
+transcript is instead created as a real, native Google Doc through the actual Drive
+API — it opens straight in Google Docs, no download, no "convert to Google Docs?"
+prompt first.
+
+This needs a different kind of credential than every other integration on this page:
+not a service account (a service account has no Drive storage quota of its own, and
+Google refuses to let it own a newly created file inside a personal Drive — see
+`src/highdeas/drive_write.py`'s module docstring for the confirmed error), but
+Douglas's own Google account, via a one-time browser sign-in that leaves a refresh
+token behind for every run after.
+
+That token is deliberately scoped to `drive.file`, the narrowest Drive scope Google
+offers — but the trade for that narrowness is that a client holding it can never see
+or write into a folder it did not itself create. So a native Doc can never land inside
+`HIGHDEAS_DRIVE_BASE` beside its audio; it always goes into its own container folder
+at Drive's top level instead (`HIGHDEAS_DRIVE_DOCS_FOLDER_NAME`, default "Highdeas
+Voice Memo Docs"), in a dated subfolder per day, the same shape as the audio's own but
+entirely separate from it.
+
+1. At <https://console.cloud.google.com>, use the same project as "Google Drive
+   per-memo folder links" above (or create one, and enable the **Google Drive API**
+   for it, if this is the first Drive feature you're setting up).
+2. **APIs & Services → OAuth consent screen** (skip this if this project already has
+   one configured). **User type: External** → an app name (anything, e.g.
+   "Highdeas") and your own email as support and developer contact → **Save and
+   Continue** through Scopes without adding any → on **Test users**, **+ Add users**
+   and add your own Google account's email → **Save**. (This keeps the app in
+   "Testing" mode, which needs no Google review for a scope as narrow as `drive.file`
+   — only publishing it, or adding more than a handful of test users, would.)
+3. **APIs & Services → Credentials → + Create Credentials → OAuth client ID.**
+   Application type: **Desktop app**. Any name (e.g. "Highdeas Docs") → **Create** →
+   **Download JSON** on the dialog that follows.
+4. Save that file somewhere on this PC *outside* the `highdeas` folder — it's a
+   credential, and must never be committed to git. The same secrets folder as a
+   service account key from the section above works well.
+5. Run the one-time authorization (from a terminal, in this folder):
+
+       .venv\Scripts\python.exe scripts\authorize_google_docs.py "<the file saved in step 4>" "<where to save the token>"
+
+   A browser opens to Google's own sign-in and consent screen — sign in as the
+   account you want Highdeas creating Docs as, and **Allow**. The script prints where
+   it saved the token file once you do.
+6. Set `HIGHDEAS_GOOGLE_DOCS_TOKEN_FILE` in `.env` to the token path from step 5.
+7. Restart Highdeas.
+
+Repeat steps 3-6 (a new OAuth client and a new token, same project) on any other
+machine that should file native Docs too — or copy the token file from step 5 there
+instead and point that machine's own `.env` at the copy, since the token speaks for
+Douglas's account, not for the machine that ran the authorization.
+
+If the saved token is ever lost, revoked, or starts failing, just rerun step 5 — it's
+safe to run again any time, and a fresh **Allow** always leaves a fresh, working token
+behind (Douglas: this is also step 5 verbatim if the agent inbox ever points back at
+this section).
+
 ## Phone uploads (iOS app)
 
 The iOS capture app (in `ios/`) pushes each recording straight to this PC over the
@@ -378,6 +441,8 @@ Everything but the keys for the destinations you use is optional. Set these in `
 | `HIGHDEAS_DRIVE_BASE` | `G:\My Drive\voice memos (top level)` | Where music-routed audio is filed. |
 | `HIGHDEAS_DRIVE_FOLDER_URL` | — | That folder's own Drive link (Share -> Copy link), for the bin's Drive icon to open. Empty = the icon does nothing. Also the folder `HIGHDEAS_GOOGLE_SERVICE_ACCOUNT_FILE` below searches inside — required for per-memo links too, not just the fallback. |
 | `HIGHDEAS_GOOGLE_SERVICE_ACCOUNT_FILE` | — | Path to a Google Cloud service account key file, so the bin's Drive icon opens the memo's own dated subfolder instead of always the top-level folder. Empty = the icon always opens the top-level folder. See "Google Drive per-memo folder links" below. |
+| `HIGHDEAS_GOOGLE_DOCS_TOKEN_FILE` | — | Path to the token file `scripts/authorize_google_docs.py` writes, so a music memo's transcript files as a real, native Google Doc instead of a local `.docx`. Empty = always the `.docx`. See "Google Drive native Doc filing" below. |
+| `HIGHDEAS_DRIVE_DOCS_FOLDER_NAME` | `Highdeas Voice Memo Docs` | Top-level Drive folder native Google Docs are filed into (in a dated subfolder per day). Only read when `HIGHDEAS_GOOGLE_DOCS_TOKEN_FILE` above is set. |
 | `HIGHDEAS_BIN_DIR` | `Highdeas Bin` beside the inbox | Where retired recordings wait (recoverable for 90 days). |
 | `HIGHDEAS_LEXICON` | `lexicon.md` beside the state dir, else in this folder | Your own names and terms, one per line, that each transcript is corrected toward. |
 | `HIGHDEAS_GOOGLE_KEY` | `google-key.json` beside the lexicon | Service-account key the listed sheets are shared with. |
