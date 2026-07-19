@@ -634,6 +634,21 @@ def test_the_notice_can_be_dismissed_by_the_reader_who_has_read_it(tmp_path):
     assert "clearNotice" in js.split("getElementById('notice-close')")[1][:120]
 
 
+def test_a_notice_is_text_the_reader_can_select(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    css = asset(client, "app.css")
+
+    # The desktop window is pywebview, which injects `body { user-select: none; cursor:
+    # default }` into every page it loads. That left the one banner carrying an error
+    # worth quoting — the HTTP status a destination refused a note with — impossible to
+    # select, so it had to be retyped from memory. Every notice takes selection back for
+    # itself, and wears an I-beam to say the words can be picked up.
+    rule = css.split(".notice {")[1].split("}")[0]
+    assert "user-select: text" in rule
+    assert "cursor: text" in rule
+
+
 def test_a_failing_route_answers_with_a_sentence_and_never_a_page_of_html(tmp_path):
     # The page prints whatever the server says into its notice bar, so Flask's default
     # 500 — a whole HTML document — arrived there as a paragraph of markup, out of which

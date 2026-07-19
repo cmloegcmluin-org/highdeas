@@ -87,10 +87,18 @@ body:has(#empty-bin:not(:disabled):hover) .row .purge:not(:disabled) { border-co
 .topbtn.flash { animation: press .2s ease-out; }
 @keyframes press { 40% { border-color: #3b82f6; color: #3b82f6; background: rgba(59,130,246,.2); } }
 /* Shown only when a submit/trash fails, so a note that didn't actually send stays
-   visible and explained instead of silently vanishing from the list. */
+   visible and explained instead of silently vanishing from the list.
+
+   Alone in the app it is text to be taken away, not read and dismissed: what it holds
+   is a destination's own refusal, the HTTP status and sentence worth quoting into a bug
+   report or a support thread. So it takes selection back — the desktop window is
+   pywebview, which injects `body { user-select: none; cursor: default }` into every page
+   it loads, and left this banner impossible to select and retyped from memory. The
+   I-beam comes with it: an arrow over a wall of red says the words can't be picked up. */
 .notice { margin: 12px 0 0; padding: 10px 12px; border-radius: 8px; font-size: .9rem;
           color: #e5484d; background: rgba(229,72,77,.12); border: 1px solid rgba(229,72,77,.4);
-          display: flex; align-items: flex-start; gap: 12px; }
+          display: flex; align-items: flex-start; gap: 12px;
+          user-select: text; cursor: text; }
 .notice[hidden] { display: none; }
 #notice-text { flex: 1; min-width: 0; }
 /* Its own way out, at the end of what it says: the notice reports what has already
