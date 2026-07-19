@@ -20,10 +20,16 @@
 {#- The notice is shown only when something fails, so a note that didn't actually send
     stays visible and explained instead of silently vanishing from the list. It reports
     what has already happened, and nothing done next need clear it, so it carries its
-    own way out rather than sitting there until the page is reloaded. -#}
+    own way out rather than sitting there until the page is reloaded.
+
+    What it holds is the only copy anywhere of a destination's own refusal — the HTTP
+    status Asana or Notesnook turned a note away with — so it carries the way to take
+    that with you too, between the words and the way out. -#}
 {% block banners %}
+  {% from "icons.html" import clip %}
   <div id="notice" class="notice" role="alert" hidden>
     <span id="notice-text"></span>
+    {{ clip('message') }}
     <button type="button" id="notice-close" class="notice-close" title="Dismiss" aria-label="Dismiss">&times;</button>
   </div>
 {% endblock %}

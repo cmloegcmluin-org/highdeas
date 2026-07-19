@@ -31,10 +31,45 @@
   function clearNotice() { if (notice) { noticeText.textContent = ''; notice.hidden = true; } }
   function describe(err) { return err && err.message ? ' (' + err.message + ')' : ''; }
 
+  // Put text on the clipboard and hold a check on the button that asked for it for a
+  // beat — the clipboard gives no sign of its own that the copy landed. The notice just
+  // below and the row cells further down both press it, and a refused clipboard means
+  // something different to each, so the failure is left to whoever called.
+  var COPIED_MS = 1200;
+
+  function writeClipboard(text) {
+    try {
+      return navigator.clipboard.writeText(text);
+    } catch (err) {
+      return Promise.reject(err);  // no Clipboard API at all (insecure origin, old webview)
+    }
+  }
+
+  function copyWith(btn, text) {
+    return writeClipboard(text).then(function () {
+      btn.classList.add('copied');
+      clearTimeout(btn._copied);
+      btn._copied = setTimeout(function () { btn.classList.remove('copied'); }, COPIED_MS);
+    });
+  }
+
   // It reports what has already happened, so nothing done next need clear it. The reader
   // who has read it says so.
   var noticeClose = document.getElementById('notice-close');
   if (noticeClose) noticeClose.addEventListener('click', clearNotice);
+
+  // The sentence is someone else's — the status a destination refused the note with — and
+  // the notice holds the only copy of it, so it can be taken whole as well as selected by
+  // hand. Alone among the app's copy buttons this one says nothing when it fails: clearing
+  // the notice first, the way a row's does to make room for its own complaint, or reporting
+  // a refused clipboard into it, would wipe the very words the press was reaching for. A
+  // copy that doesn't land leaves them sitting there to be selected instead.
+  var noticeCopy = notice && notice.querySelector('[data-copy="message"]');
+  if (noticeCopy) {
+    noticeCopy.addEventListener('click', function () {
+      copyWith(noticeCopy, noticeText.textContent).catch(function () {});
+    });
+  }
 
   function rows() { return Array.prototype.slice.call(content.querySelectorAll('.memo')); }
 
@@ -651,26 +686,14 @@
     });
   }
 
-  // Copy a cell's text to the clipboard and hold a check on its button for a beat —
-  // the clipboard gives no sign of its own that the copy landed.
-  var COPIED_MS = 1200;
+  // Which of a row's two fields its copy button lifts, by the name the button carries.
+  // A row has the notice to complain into, so a clipboard that won't take the text says
+  // so there — and clears whatever the notice held first, since that is now stale.
   var COPY_SOURCES = { transcript: transcriptOf, name: nameOf };
-
-  function writeClipboard(text) {
-    try {
-      return navigator.clipboard.writeText(text);
-    } catch (err) {
-      return Promise.reject(err);  // no Clipboard API at all (insecure origin, old webview)
-    }
-  }
 
   function copyCell(btn, memo) {
     clearNotice();
-    writeClipboard(COPY_SOURCES[btn.dataset.copy](memo)).then(function () {
-      btn.classList.add('copied');
-      clearTimeout(btn._copied);
-      btn._copied = setTimeout(function () { btn.classList.remove('copied'); }, COPIED_MS);
-    }).catch(function (err) {
+    copyWith(btn, COPY_SOURCES[btn.dataset.copy](memo)).catch(function (err) {
       notify("Couldn't copy that to the clipboard." + describe(err));
     });
   }

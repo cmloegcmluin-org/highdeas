@@ -649,6 +649,25 @@ def test_a_notice_is_text_the_reader_can_select(tmp_path):
     assert "cursor: text" in rule
 
 
+def test_the_notice_hands_its_whole_sentence_to_the_clipboard(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    banner = client.get("/").data.decode().split('id="notice"')[1].split("</div>")[0]
+    js = asset(client, "inbox.js")
+
+    # Dragging across the sentence is one way to take it; the same copy button every
+    # other quotable field in the app wears is the other, and it takes all of it.
+    assert 'data-copy="message"' in banner
+    handler = js.split("noticeCopy.addEventListener")[1].split("});")[0]
+    assert "noticeText.textContent" in handler
+    # It is the one copy button in the app that says nothing when it fails. Clearing the
+    # notice first — as a row's does, to make way for its own complaint — or reporting a
+    # refused clipboard into it would wipe the very sentence the press was reaching for,
+    # which is the only copy of it anywhere. A failed copy leaves the words to be selected.
+    assert "clearNotice" not in handler
+    assert "notify(" not in handler
+
+
 def test_a_failing_route_answers_with_a_sentence_and_never_a_page_of_html(tmp_path):
     # The page prints whatever the server says into its notice bar, so Flask's default
     # 500 — a whole HTML document — arrived there as a paragraph of markup, out of which

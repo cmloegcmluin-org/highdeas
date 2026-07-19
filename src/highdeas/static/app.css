@@ -101,6 +101,8 @@ body:has(#empty-bin:not(:disabled):hover) .row .purge:not(:disabled) { border-co
           user-select: text; cursor: text; }
 .notice[hidden] { display: none; }
 #notice-text { flex: 1; min-width: 0; }
+/* The sentence takes the width; the two controls at the end of it keep their own. */
+.notice .clip { flex: none; }
 /* Its own way out, at the end of what it says: the notice reports what has already
    happened, and nothing done next need clear it. Borderless, and the red it sits in. */
 .notice-close { flex: none; font: inherit; font-size: 1.3rem; line-height: 1; padding: 0 2px;
