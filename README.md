@@ -102,13 +102,16 @@ recording, or a subtask on an Asana task.
 6. **Edit** — clicking a transcript opens the note in a near-fullscreen editor, so a rough
    transcription gets fixed here rather than shipped out half-finished. The recording sits
    up top as a waveform and starts playing; each word lights up in the text as it's spoken
-   (highlighted, never selected, so your caret stays where you left it). Click the waveform
-   to move the playhead, press Space to play or pause, or drag across a stretch to select
-   it — Delete then cuts that stretch out of the recording itself and the words spoken
-   there out of the transcript. It reads the other way round too: delete words from the
-   text and the sound they were spoken over goes with them. Either way what plays and what
-   it says stay the same note. (Only whole words deleted, and only deleted — a letter taken
-   out of a word, or a word typed over, is a correction and costs the recording nothing.)
+   (highlighted, never selected, so your caret stays where you left it). The waveform is
+   divided into the words it spoke: a hairline where each one starts and the word itself
+   printed underneath. Click a word to take its whole chunk of sound — the playhead lands
+   at the top of it, so clicking plays from there — and shift-click another to reach it,
+   taking the run between. Space plays or pauses. Delete then cuts what you've taken out of
+   the recording itself and out of the transcript. It reads the other way round too: delete
+   words from the text and the sound they were spoken over goes with them. Either way what
+   plays and what it says stay the same note. (Only whole words deleted, and only deleted —
+   a letter taken out of a word, or a word typed over, is a correction and costs the
+   recording nothing.)
    The title has room to be read whole, and the body takes bulleted and numbered lists:
    each button turns its list on over what you've selected, and off again when you press it
    over that same list. Edits auto-save, and the words re-match to the text as you change

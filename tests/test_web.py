@@ -1245,6 +1245,20 @@ def test_opening_the_editor_hushes_the_players_left_running_behind_it(tmp_path):
     assert opening.index("hushPage();") < opening.index("audio.play()")
 
 
+def test_the_waveform_is_divided_into_the_words_it_spoke_and_chosen_by_them(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    script = asset(client, "editor.js")
+    # Sound is picked by the word, never by the pixel: a click takes the whole stretch one
+    # word was spoken over, and shift reaches from the chunk last clicked to this one.
+    assert "function chunks" in script
+    assert "event.shiftKey" in script
+    # So the free-hand drag is gone, and with it the capture it needed to follow a pointer.
+    assert "setPointerCapture" not in script
+    # Each chunk is drawn as its own: a divider where it starts, its word underneath.
+    assert "function drawChunks" in script
+
+
 def test_deleting_words_in_the_transcript_cuts_the_sound_they_were_spoken_over(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 

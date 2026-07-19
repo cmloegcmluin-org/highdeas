@@ -47,7 +47,7 @@
   var peaks = null;      // normalized amplitudes, or null when the audio won't decode
   var following = true;  // scroll the spoken word into view until the user takes over
   var selection = null;  // {from, to} seconds selected across the waveform, or null
-  var press = null;      // {x, at} while a pointer is held down on the waveform
+  var anchor = null;     // the chunk a shift-click reaches from, or null
   var saveTimer = null;
   var alignTimer = null;
   var frame = null;
@@ -324,6 +324,44 @@
       .catch(function () { waveNote.hidden = false; });
   }
 
+  // The recording cut into one chunk per word: each runs from where its word was spoken
+  // until the next word begins, and the first reaches back to the start — so every second
+  // of sound belongs to exactly one word, and none of it is out of reach. A spoken word
+  // the text no longer holds has no mark, so its sound belongs to the chunk before it.
+  function chunks() {
+    if (!audio.duration) return [];
+    return marks.map(function (mark, i) {
+      return {
+        from: i ? mark.at : 0,
+        to: i + 1 < marks.length ? marks[i + 1].at : audio.duration,
+        word: wordOf(mark),
+      };
+    });
+  }
+
+  // A mark's word as the transcript now reads it, which is what its chunk stands for.
+  function wordOf(mark) {
+    var node = mark.token.node;
+    return node.isConnected ? node.nodeValue.slice(mark.token.from, mark.token.to) : '';
+  }
+
+  // The chunk a moment falls in, or null when the recording has no chunks at all. The
+  // very end of the recording is past every chunk's end, so it belongs to the last.
+  function chunkAt(list, seconds) {
+    for (var i = 0; i < list.length; i++) {
+      if (seconds < list[i].to) return i;
+    }
+    return list.length ? list.length - 1 : null;
+  }
+
+  // Room kept at the foot of the waveform for the words, clear either side of each one so
+  // a chunk's word can't run into its neighbour's, and swept clear either side of a
+  // divider so it reads as one: a grey hairline among grey bars is just one more bar,
+  // however dark it is drawn, and only the gap around it says otherwise.
+  var WORD_ROW = 15;
+  var WORD_PAD = 4;
+  var DIVIDER_GAP = 3;
+
   function drawWave() {
     var ratio = window.devicePixelRatio || 1;
     var width = Math.round(canvas.clientWidth * ratio);
@@ -335,24 +373,55 @@
     }
     var pen = canvas.getContext('2d');
     pen.clearRect(0, 0, width, height);
+    var row = Math.round(WORD_ROW * ratio);
+    var wave = height - row;  // the bars keep the top; the words have the foot to themselves
     var barWidth = Math.max(1, Math.round(2 * ratio));
     var gap = Math.max(1, Math.round(ratio));
     var bars = Math.max(1, Math.floor(width / (barWidth + gap)));
     var played = audio.duration ? audio.currentTime / audio.duration : 0;
-    var middle = height / 2;
+    var middle = wave / 2;
     for (var bar = 0; bar < bars; bar++) {
       // A flat placeholder line when the audio wouldn't decode: still scrubbable.
       var level = peaks ? peaks[Math.floor(bar * peaks.length / bars)] : 0.1;
-      var tall = Math.max(2 * ratio, level * (height - 6 * ratio));
+      var tall = Math.max(2 * ratio, level * (wave - 6 * ratio));
       pen.fillStyle = bar / bars < played ? SPOKEN : 'rgba(128,128,128,.45)';
       pen.fillRect(bar * (barWidth + gap), middle - tall / 2, barWidth, tall);
     }
+    drawChunks(pen, width, height, row, ratio);
     if (selection && audio.duration) {
       var from = selection.from / audio.duration * width;
       var to = selection.to / audio.duration * width;
       pen.fillStyle = 'rgba(59,130,246,.28)';  // the focus blue, translucent over the bars
+      // The full height, words and all: a word is taken along with its sound, so it is lit
+      // along with it.
       pen.fillRect(from, 0, Math.max(1, to - from), height);
     }
+  }
+
+  // Each word's own stretch of the recording, marked off and named: a hairline where it
+  // begins, and the word itself under the middle of it. A word with no room in its chunk
+  // is left off rather than drawn over its neighbours — the divider still says it is there.
+  function drawChunks(pen, width, height, row, ratio) {
+    var list = chunks();
+    if (!list.length) return;
+    pen.font = Math.round(10 * ratio) + 'px ' + getComputedStyle(canvas).fontFamily;
+    pen.textAlign = 'center';
+    pen.textBaseline = 'middle';
+    // One ink for the dividers and the words: both are the frame the sound is read in.
+    pen.fillStyle = 'rgba(128,128,128,.9)';
+    list.forEach(function (chunk, i) {
+      var from = chunk.from / audio.duration * width;
+      var to = chunk.to / audio.duration * width;
+      if (i) {
+        var rule = Math.max(1, Math.round(ratio));
+        var gap = Math.round(DIVIDER_GAP * ratio);
+        pen.clearRect(Math.round(from) - gap, 0, gap * 2 + rule, height);
+        pen.fillRect(Math.round(from), 0, rule, height);
+      }
+      if (!chunk.word) return;
+      if (pen.measureText(chunk.word).width > to - from - 2 * WORD_PAD * ratio) return;
+      pen.fillText(chunk.word, (from + to) / 2, height - row / 2);
+    });
   }
 
   function clock(seconds) {
@@ -590,7 +659,7 @@
     words = note.words || [];
     following = true;
     selection = null;
-    press = null;
+    anchor = null;
     nameEl.value = note.name || '';
     bodyEl.replaceChildren(renderNote(note.transcript || ''));
     audio.src = note.audioUrl;
@@ -627,7 +696,7 @@
     marks = [];
     painted = null;
     selection = null;
-    press = null;
+    anchor = null;
   }
 
   function closeEditor() {
@@ -700,24 +769,23 @@
   audio.addEventListener('pause', function () { playBtn.textContent = 'Play'; tick(); });
   audio.addEventListener('loadedmetadata', tick);
 
-  // A click lands the playhead; dragging past a small wobble paints a selection over
-  // that stretch of sound instead. Focusing the canvas moves focus off the text body,
-  // so the Space and Delete keys below act on the audio rather than the transcript.
-  var DRAG_PX = 4;
+  // A click takes the whole chunk of sound one word was spoken over — never a stretch
+  // aimed by hand — and lands the playhead at the top of it, so clicking a word plays
+  // from that word. Shift reaches from the chunk last clicked to this one and takes the
+  // run between them. A recording with no word timings has no chunks, so a click there
+  // only moves the playhead. Focusing the canvas moves focus off the text body, so the
+  // Space and Delete keys below act on the audio rather than the transcript.
   canvas.addEventListener('pointerdown', function (event) {
-    canvas.setPointerCapture(event.pointerId);
     canvas.focus();
-    press = { x: event.clientX, at: timeAt(event) };
-    setSelection(null);
-    seek(event);
+    align();  // the words move as the text is edited, and their chunks with them
+    var list = chunks();
+    var i = chunkAt(list, timeAt(event));
+    if (i === null) { anchor = null; setSelection(null); seek(event); return; }
+    if (!event.shiftKey || anchor === null || anchor >= list.length) anchor = i;
+    setSelection({ from: list[Math.min(anchor, i)].from, to: list[Math.max(anchor, i)].to });
+    if (!event.shiftKey) audio.currentTime = list[i].from;
+    tick();
   });
-  canvas.addEventListener('pointermove', function (event) {
-    if (!press || !canvas.hasPointerCapture(event.pointerId) || !audio.duration) return;
-    if (Math.abs(event.clientX - press.x) < DRAG_PX) return;
-    var here = timeAt(event);
-    setSelection({ from: Math.min(press.at, here), to: Math.max(press.at, here) });
-  });
-  canvas.addEventListener('lostpointercapture', function () { press = null; });
 
   // Space plays or pauses, and Delete (Backspace, on a Mac) cuts the words under a
   // selection — but only when focus isn't in a text field, where those keys still type
