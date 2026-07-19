@@ -475,7 +475,12 @@ def test_the_waveform_already_played_is_the_colour_of_the_word_being_spoken(tmp_
     # same sound, so they are the same yellow — and the same declaration, read out of the
     # stylesheet, so the two can never drift apart.
     assert "--spoken: #facc15" in css.split(":root {")[1].split("}")[0]
-    assert "var(--spoken)" in css.split("::highlight(spoken) {")[1].split("}")[0]
+    # The word turns the colour, rather than wearing it behind: the waveform's played
+    # stretch is yellow sound on the page, so the word being spoken is yellow letters on
+    # it. Two washes over one word — this one and the blue of a selection — would have
+    # mixed into a third colour that means neither.
+    spoken = css.split("::highlight(spoken) {")[1].split("}")[0]
+    assert "color: var(--spoken)" in spoken and "background" not in spoken
     assert "style('--spoken')" in js
     assert "#facc15" not in js and "#3b82f6" not in js
 
@@ -1281,6 +1286,9 @@ def test_a_choice_reads_as_one_blue_over_its_sound_and_over_its_words(tmp_path):
     wash = css.split(".editor-body::selection")[1].split("}")[0]
     assert "--picked:" in css
     assert "var(--picked)" in wash and "var(--picked-wash)" in wash
+    # And it goes behind, the way a text selection sits behind its words rather than over
+    # them: the sound keeps its own colour and the words stay read.
+    assert "destination-over" in asset(client, "editor.js")
     # Strength as well as hue: the canvas lays the blue on by hand, so it reads how
     # strongly from the same place rather than carrying its own idea of "a wash".
     js = asset(client, "editor.js")

@@ -405,13 +405,17 @@
       var from = selection.from / audio.duration * width;
       var to = selection.to / audio.duration * width;
       // The same blue at the same strength as the words picked in the transcript
-      // (.editor-body ::selection): one choice, laid over its sound and over its text.
+      // (.editor-body ::selection), and laid the same way: behind. destination-over puts
+      // it under everything already drawn, so it fills the gaps between the bars and
+      // leaves the bars and the words their own colour — a selection sitting behind what
+      // it holds, not washing over it. The full height, words and all: a word is taken
+      // along with its sound, so it is lit along with it.
+      pen.globalCompositeOperation = 'destination-over';
       pen.globalAlpha = PICKED_WASH;
       pen.fillStyle = PICKED;
-      // The full height, words and all: a word is taken along with its sound, so it is lit
-      // along with it.
       pen.fillRect(from, 0, Math.max(1, to - from), height);
       pen.globalAlpha = 1;
+      pen.globalCompositeOperation = 'source-over';
     }
   }
 
