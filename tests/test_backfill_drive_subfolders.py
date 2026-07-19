@@ -54,6 +54,15 @@ def test_compute_subfolder_is_none_when_processed_at_is_unparseable():
     assert compute_subfolder(memo) is None
 
 
+def test_compute_subfolder_is_none_when_processed_at_is_not_a_string():
+    # A hand-edited or externally-written state file could hold a JSON number here
+    # instead of a string. datetime.fromisoformat() raises TypeError (not ValueError)
+    # for a non-str argument -- must be reported as unresolved, not crash the run.
+    memo = _drive_memo("a.m4a", processed_at=12345)
+
+    assert compute_subfolder(memo) is None
+
+
 def test_computed_subfolder_matches_what_the_router_would_have_produced(tmp_path):
     # Same date, two different paths — DriveMusicRouter.route() live, compute_subfolder
     # from a stored processed_at — must land on the exact same subfolder name, since
@@ -153,6 +162,47 @@ def test_real_run_skips_and_reports_an_eligible_memo_with_no_usable_timestamp(tm
     assert unresolved == ["mystery.m4a"]
     assert any("mystery.m4a" in line for line in errors)
     assert FolderStore(state).get("mystery.m4a").drive_subfolder == ""
+
+
+def test_a_memo_with_a_non_string_processed_at_is_reported_not_crashed(tmp_path):
+    # One bad record (e.g. a hand-edited state file) must not take the whole run down --
+    # every other memo still has to get processed, backed up, and written normally.
+    state = tmp_path / "state"
+    store = FolderStore(state)
+    store.upsert(_drive_memo("weird.m4a", processed_at=12345))
+    store.upsert(_drive_memo("a.m4a", processed_at="2026-07-07T13:37:04"))
+    errors = []
+
+    changes, unresolved = run_backfill(state, dry_run=False, out=lambda s: None, err=errors.append)
+
+    assert unresolved == ["weird.m4a"]
+    assert [memo.audio_filename for memo, _ in changes] == ["a.m4a"]
+    assert FolderStore(state).get("a.m4a").drive_subfolder == "_2026_07_07_NOT_YET_PROCESSED_MUSIC"
+    assert FolderStore(state).get("weird.m4a").drive_subfolder == ""
+
+
+def test_real_run_warns_rather_than_overclaims_when_a_memo_vanishes_mid_write(tmp_path, monkeypatch):
+    # Narrow race: something else (a concurrent Syncthing sync, a human) deletes a
+    # memo's state file in the moment between planning the change and writing it.
+    # FolderStore.update() on a since-vanished file is a silent no-op, so the script
+    # must notice and say so instead of reporting a change that didn't actually land.
+    state = tmp_path / "state"
+    store = FolderStore(state)
+    store.upsert(_drive_memo("a.m4a", processed_at="2026-07-07T13:37:04"))
+    real_update = FolderStore.update
+
+    def vanish_then_update(self, audio_filename, **changes):
+        (Path(state) / f"{audio_filename}.json").unlink()
+        return real_update(self, audio_filename, **changes)
+
+    monkeypatch.setattr(FolderStore, "update", vanish_then_update)
+    errors = []
+
+    changes, unresolved = run_backfill(state, dry_run=False, out=lambda s: None, err=errors.append)
+
+    assert changes == []  # not counted as applied -- it wasn't
+    assert any("a.m4a" in line and "vanish" in line.lower() for line in errors)
+    assert FolderStore(state).get("a.m4a") is None  # genuinely gone; script didn't resurrect it
 
 
 def test_running_twice_is_idempotent(tmp_path):

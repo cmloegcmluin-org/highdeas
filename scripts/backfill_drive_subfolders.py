@@ -59,13 +59,16 @@ def eligible_memos(store):
 
 def compute_subfolder(memo):
     """The subfolder DriveMusicRouter.route() produced for this memo, recovered from
-    its own processed_at — or None when that timestamp is missing or unparseable, so
-    the caller can report it instead of guessing."""
+    its own processed_at — or None when that timestamp is missing, unparseable, or not
+    even a string (a hand-edited or externally-written state file could hold a JSON
+    number there; fromisoformat raises TypeError, not ValueError, for that), so the
+    caller can report it instead of guessing — or crashing the whole run over one
+    malformed record."""
     if not memo.processed_at:
         return None
     try:
         routed_when = datetime.fromisoformat(memo.processed_at)
-    except ValueError:
+    except (ValueError, TypeError):
         return None
     return drive_subfolder_name(routed_when.strftime(DATE_FORMAT))
 
@@ -117,20 +120,36 @@ def run_backfill(state_dir, *, dry_run=False, now=datetime.now, out=print, err=_
     store = FolderStore(state_dir)
     changes, unresolved = plan_backfill(store)
 
-    for memo, subfolder in changes:
-        out(f"{memo.audio_filename} -> {subfolder}")
     for audio_filename in unresolved:
         err(f"SKIPPED {audio_filename}: route is drive, drive_subfolder is blank, but "
             f"processed_at isn't a usable timestamp to compute one from")
 
-    if dry_run or not changes:
+    if dry_run:
+        for memo, subfolder in changes:
+            out(f"{memo.audio_filename} -> {subfolder}")
+        return changes, unresolved
+
+    if not changes:
         return changes, unresolved
 
     backup_dir = _backup(state_dir, [memo.audio_filename for memo, _ in changes], now())
     err(f"Backed up {len(changes)} state file(s) to {backup_dir} before writing")
+
+    applied = []
     for memo, subfolder in changes:
         store.update(memo.audio_filename, drive_subfolder=subfolder)
-    return changes, unresolved
+        # FolderStore.update() silently no-ops if the file is gone by the time it runs
+        # (e.g. a concurrent Syncthing sync deleted it between planning and writing) --
+        # verify rather than assume, so the report never claims a change that didn't
+        # actually land.
+        written = store.get(memo.audio_filename)
+        if written is None or written.drive_subfolder != subfolder:
+            err(f"WARNING {memo.audio_filename}: vanished before its backfilled subfolder "
+                f"could be written; rerun this script to pick it up if it reappears")
+            continue
+        out(f"{memo.audio_filename} -> {subfolder}")
+        applied.append((memo, subfolder))
+    return applied, unresolved
 
 
 def main(argv=None):
