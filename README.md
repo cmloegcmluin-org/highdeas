@@ -105,8 +105,9 @@ recording, or a subtask on an Asana task.
    (highlighted, never selected, so your caret stays where you left it). Click the waveform
    to move the playhead, press Space to play or pause, or drag across a stretch to select
    it — Delete then cuts the words spoken there out of the transcript. The title has room
-   to be read whole, and the body takes bulleted and numbered lists. Edits auto-save, and
-   the words re-match to the text as you change it.
+   to be read whole, and the body takes bulleted and numbered lists: each button turns its
+   list on over what you've selected, and off again when you press it over that same list.
+   Edits auto-save, and the words re-match to the text as you change it.
 7. **Route on submit**
    - **Notesnook** — the transcript becomes a note via the Notesnook Inbox API, lists and
      all — so a group's bullets arrive as a real bulleted list. An unnamed memo is titled

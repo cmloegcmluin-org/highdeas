@@ -944,8 +944,8 @@ def test_index_renders_the_editor_dialog_once_for_every_row(tmp_path):
     assert 'id="editor-wave"' in body       # the scrubbable waveform
     assert 'id="editor-body"' in body       # the big rich-text body
     assert 'contenteditable="true"' in body
-    assert 'data-cmd="insertUnorderedList"' in body
-    assert 'data-cmd="insertOrderedList"' in body
+    assert 'data-list="ul"' in body          # the two list buttons over it
+    assert 'data-list="ol"' in body
 
 
 def test_editor_offers_copy_buttons_for_both_fields_and_the_move_chevron(tmp_path):
@@ -2311,3 +2311,23 @@ def test_the_preview_draws_a_list_inside_its_three_line_box(tmp_path):
     # for pre-wrap to preserve.
     assert "pre-wrap" not in preview
 
+
+def test_the_list_buttons_turn_a_list_off_as_well_as_on(tmp_path):
+    # The engine's own insertUnorderedList could not be trusted with this note format.
+    # Turning a list OFF, it replaced the item with a bare styled <span> and a <br> — no
+    # block at all — which read back as the line plus a blank one. Turning one ON over a
+    # whole body, it nested the <ul> inside a <p>, and a <p> is read as one line, so
+    # three bullets saved as "milkeggsbread". The dialog rebuilds the blocks itself, so a
+    # button names the list it makes rather than an engine command.
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data.decode()
+    js = asset(client, "editor.js")
+
+    assert 'data-list="ul"' in body and 'data-list="ol"' in body
+    assert "data-cmd" not in body
+    # The only execCommand left asks for the paragraph separator, once, at startup.
+    assert js.count("execCommand") == 1 and "defaultParagraphSeparator" in js
+    # Pressing a list's own button over that list turns it off; pressing it over anything
+    # else makes the whole selection that list.
+    assert "toggleList" in js

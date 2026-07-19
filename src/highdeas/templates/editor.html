@@ -36,8 +36,11 @@
   </div>
 
   <div class="toolbar">
-    <button type="button" class="btn tool" data-cmd="insertUnorderedList" title="Bulleted list">&bull;&nbsp;List</button>
-    <button type="button" class="btn tool" data-cmd="insertOrderedList" title="Numbered list">1.&nbsp;List</button>
+    {#- Each button names the list it makes, not an engine command: editor.js rebuilds the
+        blocks itself. Pressing a list's own button over that list turns it back into
+        prose, so the pair is a toggle rather than two one-way conversions. -#}
+    <button type="button" class="btn tool" data-list="ul" title="Bulleted list">&bull;&nbsp;List</button>
+    <button type="button" class="btn tool" data-list="ol" title="Numbered list">1.&nbsp;List</button>
   </div>
 
   <div class="editor-move-row">

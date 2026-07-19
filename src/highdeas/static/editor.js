@@ -69,6 +69,142 @@
   var renderNote = window.HighdeasNote.render;
   var readNote = window.HighdeasNote.read;
 
+  /* ---- The list buttons --------------------------------------------------- */
+
+  // The engine's own insertUnorderedList/insertOrderedList cannot be trusted with this
+  // note format, on either desk (Chromium here, WebKit on the Mac). Turning a list OFF,
+  // Chromium replaces the item with a bare styled <span> and a <br> — no block at all —
+  // which reads back as the line plus a blank one. Turning one ON over a whole body it
+  // nests the <ul> inside a <p>, and a <p> is read as a single line, so three bullets
+  // saved as "milkeggsbread". So the dialog rebuilds the blocks itself. The cost is that
+  // Ctrl+Z no longer walks a list button back — the engine only records its own edits.
+
+  // A note's body is a flat run of blocks, so every line of it is either a <p> of prose
+  // or an <li> in a list. This is that run, in order, each line carrying the list it is
+  // in — which is the only thing a toggle changes.
+  function linesOf() {
+    var lines = [];
+    Array.prototype.forEach.call(bodyEl.childNodes, function (node) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        if (node.nodeValue.trim()) lines.push({ node: node, tag: null });
+      } else if (node.nodeType !== Node.ELEMENT_NODE) {
+        return;
+      } else if (node.tagName === 'UL' || node.tagName === 'OL') {
+        Array.prototype.forEach.call(node.children, function (item) {
+          if (item.tagName === 'LI') lines.push({ node: item, tag: node.tagName });
+        });
+      } else {
+        lines.push({ node: node, tag: null });
+      }
+    });
+    return lines;
+  }
+
+  // How far into a line, in characters, a selection boundary sits.
+  function offsetIn(line, container, offset) {
+    var range = document.createRange();
+    range.selectNodeContents(line);
+    try { range.setEnd(container, offset); } catch (err) { return 0; }
+    return range.toString().length;
+  }
+
+  // Where the selection sits, as a line and a character offset at each end. Rebuilding
+  // the blocks throws the live selection away, so it is measured against the text — which
+  // the rebuild doesn't touch — and put back afterwards.
+  function markSelection(lines) {
+    var selected = getSelection();
+    if (!selected.rangeCount) return null;
+    var range = selected.getRangeAt(0);
+    function spot(container, offset) {
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].node;
+        if (line === container || line.contains(container)) {
+          return { line: i, at: offsetIn(line, container, offset) };
+        }
+      }
+      return null;
+    }
+    var from = spot(range.startContainer, range.startOffset);
+    var to = spot(range.endContainer, range.endOffset);
+    return from && to ? { from: from, to: to } : null;
+  }
+
+  // The text node and offset a character count lands on, for putting the caret back.
+  function pointIn(block, at) {
+    var walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+    var seen = 0;
+    var node;
+    while ((node = walker.nextNode())) {
+      if (seen + node.nodeValue.length >= at) return { node: node, offset: at - seen };
+      seen += node.nodeValue.length;
+    }
+    return { node: block, offset: block.childNodes.length };
+  }
+
+  function restoreSelection(lines, mark) {
+    if (!mark) return;
+    var from = pointIn(lines[mark.from.line].block, mark.from.at);
+    var to = pointIn(lines[mark.to.line].block, mark.to.at);
+    var range = document.createRange();
+    try {
+      range.setStart(from.node, from.offset);
+      range.setEnd(to.node, to.offset);
+    } catch (err) { return; }  // the text moved under us; leave the caret where it fell
+    var selected = getSelection();
+    selected.removeAllRanges();
+    selected.addRange(range);
+  }
+
+  // The block a line wants now: its own element when it is already the right kind, so an
+  // untouched line keeps its identity, or a new one holding the same contents.
+  function blockFor(line) {
+    var wanted = line.tag ? 'LI' : 'P';
+    var node = line.node;
+    if (node.nodeType === Node.ELEMENT_NODE && node.tagName === wanted) return node;
+    var block = document.createElement(wanted);
+    if (node.nodeType === Node.TEXT_NODE) block.appendChild(node);
+    else while (node.firstChild) block.appendChild(node.firstChild);
+    return block;
+  }
+
+  // Lay the lines back out, gathering each run of same-tagged lines into one list — the
+  // same shape notes.js renders from text, so what is rebuilt here reads back unchanged.
+  function rebuild(lines) {
+    var frag = document.createDocumentFragment();
+    var list = null;
+    var listTag = null;
+    lines.forEach(function (line) {
+      if (line.tag !== listTag) {
+        list = line.tag ? frag.appendChild(document.createElement(line.tag)) : null;
+        listTag = line.tag;
+      }
+      line.block = blockFor(line);
+      (list || frag).appendChild(line.block);
+    });
+    if (!frag.childNodes.length) frag.appendChild(document.createElement('p'));
+    bodyEl.replaceChildren(frag);
+  }
+
+  // Pressing a list's own button over that list turns it back into prose; pressing it
+  // over anything else makes the whole selection that list. So a selection of mixed
+  // lines becomes one list on the first press and prose on the second, and a list is
+  // never left half-converted.
+  function toggleList(tag) {
+    var lines = linesOf();
+    var picked = lines.filter(function (line) { return inSelection(line.node); });
+    if (!picked.length) return;
+    var off = picked.every(function (line) { return line.tag === tag; });
+    var mark = markSelection(lines);
+    picked.forEach(function (line) { line.tag = off ? null : tag; });
+    rebuild(lines);
+    restoreSelection(lines, mark);
+  }
+
+  function inSelection(node) {
+    var selected = getSelection();
+    return selected.rangeCount > 0 && selected.getRangeAt(0).intersectsNode(node);
+  }
+
   /* ---- Matching the spoken words onto the (possibly edited) text ----------- */
 
   function normalize(word) { return word.toLowerCase().replace(/[^a-z0-9']/g, ''); }
@@ -462,9 +598,7 @@
     button.addEventListener('mousedown', function (event) { event.preventDefault(); });  // keep the caret
     button.addEventListener('click', function () {
       bodyEl.focus();
-      // execCommand is deprecated but remains the only way to ask the engine for a
-      // real list — and to undo one — without reimplementing block editing.
-      document.execCommand(button.dataset.cmd);
+      toggleList(button.dataset.list.toUpperCase());
       align();
       syncMove();
       scheduleSave();
