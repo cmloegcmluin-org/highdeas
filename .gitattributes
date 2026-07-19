@@ -1,0 +1,9 @@
+# One line ending everywhere. Git's Windows default rewrites text to CRLF on checkout,
+# so a served asset arrived with \r\n on the Windows CI runner and every test that
+# matches a multi-line string in one failed — on a difference nobody wrote. Pinning the
+# working tree to LF makes both desks, both runners, and the repo agree.
+* text=auto eol=lf
+
+# cmd.exe and PowerShell are the readers that want CRLF.
+*.bat text eol=crlf
+*.ps1 text eol=crlf
