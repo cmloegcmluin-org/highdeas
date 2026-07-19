@@ -29,6 +29,12 @@ property by hand — you rebase, the gate re-runs on that, and it lands. If high
 moves under an org, add the `merge_queue` rule to the ruleset and put `merge_group:`
 back in the workflow's triggers.)*
 
+**This replaces the global end-of-task sequence's merge step, and the lock that
+serializes it.** The global file says to ff-merge your branch at the primary checkout
+and hold `.git/agent-merge.lock` while you do; here there is no local merge to
+serialize, so there is no lock to take. Everything before it still stands — commit,
+rebase, full green suite — and then you push and open a PR instead of merging.
+
 Work on a branch in a worktree (`git worktree add .claude/worktrees/<name> -b
 claude/<name>`), never in the primary checkout. Sync by rebasing onto `origin/main`
 on a clean tree; never `reset` to tidy or to sync.
