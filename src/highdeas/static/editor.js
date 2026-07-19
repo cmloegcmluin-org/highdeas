@@ -518,25 +518,10 @@
     flush();  // a move is a whole edit, not a keystroke: report it now, not on the timer
   }
 
-  // Copy a field to the clipboard and hold a check on its button for a beat — the
-  // clipboard gives no sign of its own that the copy landed.
-  var COPIED_MS = 1200;
-
-  function writeClipboard(text) {
-    try {
-      return navigator.clipboard.writeText(text);
-    } catch (err) {
-      return Promise.reject(err);  // no Clipboard API at all (insecure origin, old webview)
-    }
-  }
-
   function copyField(btn) {
     var text = btn.dataset.copy === 'name' ? nameEl.value : transcriptText();
-    writeClipboard(text).then(function () {
-      btn.classList.add('copied');
-      clearTimeout(btn._copied);
-      btn._copied = setTimeout(function () { btn.classList.remove('copied'); }, COPIED_MS);
-    }).catch(function () { /* the clipboard wouldn't take it; the editor has no bar to say so */ });
+    window.HighdeasClip.copy(btn, text)
+      .catch(function () { /* the clipboard wouldn't take it; the editor has no bar to say so */ });
   }
 
   // showModal makes the page behind the dialog inert to clicks and keys, but not to

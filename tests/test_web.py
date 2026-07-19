@@ -307,7 +307,7 @@ def test_inbox_transcript_has_a_copy_to_clipboard_button(tmp_path):
     # A button pinned inside the transcript preview puts its text on the clipboard,
     # for pasting the note somewhere the app doesn't route to.
     assert 'data-copy="transcript"' in body
-    assert "clipboard.writeText" in asset(client, "inbox.js")
+    assert "clipboard.copy(btn" in asset(client, "inbox.js")
 
 
 def test_inbox_name_has_a_copy_to_clipboard_button(tmp_path):
@@ -327,9 +327,31 @@ def test_copy_button_confirms_a_copy_and_reports_a_failed_one(tmp_path):
 
     # A copy leaves no trace of its own, so the button holds a check for a beat…
     assert ".clip.copied" in asset(client, "app.css")
-    assert "classList.add('copied')" in js
+    assert "classList.add('copied')" in asset(client, "clip.js")
     # …and a clipboard the browser won't hand over says so, rather than looking copied.
     assert "Couldn't copy" in js
+
+
+def test_every_copy_button_in_the_app_presses_the_same_helper(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    index = client.get("/").data.decode()
+    shared = asset(client, "clip.js")
+
+    # Five buttons copy — a row's two fields, the editor's two, the notice's sentence —
+    # and the move is the same for every one: write, then hold a check for a beat, since
+    # the clipboard gives no sign of its own that anything landed. It is written once and
+    # loaded ahead of both surfaces that press it. What a refused clipboard means is the
+    # caller's own business, so that much is left out here.
+    assert index.index("clip.js") < index.index("editor.js") < index.index("inbox.js")
+    assert "navigator.clipboard.writeText" in shared
+    assert "classList.add('copied')" in shared
+    assert "window.HighdeasClip" in shared
+    for surface in ("inbox.js", "editor.js"):
+        js = asset(client, surface)
+        assert "navigator.clipboard" not in js, surface
+        assert "classList.add('copied')" not in js, surface
+        assert "HighdeasClip" in js, surface
 
 
 def test_grouping_by_drag_drops_the_checkbox_and_group_columns(tmp_path):
@@ -1028,8 +1050,7 @@ def test_editor_js_copies_a_field_and_flips_the_move_by_which_field_holds_text(t
 
     # Copy puts the field on the clipboard and holds a check for a beat; the move mirrors
     # the row's chevron — aimed by which field currently holds the text, not by memory.
-    assert "navigator.clipboard.writeText" in js
-    assert "classList.add('copied')" in js
+    assert "HighdeasClip.copy(btn" in js
     assert "movesBack" in js
     assert "'Move transcript into Name'" in js and "'Move name into Transcript'" in js
 
