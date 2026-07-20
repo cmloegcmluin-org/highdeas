@@ -19,18 +19,18 @@ to use outside of Google's own review -- a paid audit process built for
 companies, not a one-person tool.
 
 drive.file's real cost is narrower than it first looks, though -- confirmed
-against the live API against Douglas's own real Drive on 2026-07-19, not
-assumed from Google's docs alone (an earlier version of this module got that
-wrong, from having no live token to actually try it against yet). A
-drive.file-scoped client genuinely cannot *discover* a folder it did not
-itself create: a files.get on a foreign folder's own id 404s ("File not
-found"), and a files.list search for it by name comes back empty, even
-though the same folder is sitting right there in Douglas's own My Drive,
-fully owned by the very account that granted this token. But if that folder's
-id is already known -- learned some other way, e.g. drive_link.py's own
-service-account lookup -- a drive.file-scoped client *can* write into it: both
-creating a new file there directly (parents: [that id]), and moving a file
-this app already created into it afterward (files.update?addParents=that
+live, against Douglas's own real Drive, on 2026-07-19, not assumed from
+Google's docs alone (an earlier version of this module got that wrong, from
+having no live token to actually try it against yet). A drive.file-scoped
+client genuinely cannot *discover* a folder it did not itself create: a
+files.get on a foreign folder's own id 404s ("File not found"), and a
+files.list search for it by name comes back empty, even though the same
+folder is sitting right there in Douglas's own My Drive, fully owned by the
+very account that granted this token. But if that folder's id is already
+known -- learned some other way, e.g. drive_link.py's own service-account
+lookup -- a drive.file-scoped client *can* write into it: both creating a new
+file there directly (parents: [that id]), and moving a file this app already
+created into it afterward (files.update?addParents=that
 id&removeParents=<wherever it was>). Both calls came back 200, and the second
 was independently confirmed by asking the read-only service account (a
 completely different credential) to list that folder's own contents and
