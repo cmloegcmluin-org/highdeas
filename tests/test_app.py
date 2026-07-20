@@ -271,6 +271,51 @@ def test_drive_doc_filer_uses_a_configured_container_name(monkeypatch, tmp_path)
     assert filer.__self__._container_name == "Voice Memo Transcripts"
 
 
+def test_drive_doc_filer_has_no_folder_resolver_without_a_service_account_configured(
+        monkeypatch, tmp_path):
+    # Without it, DriveDocFiler simply never attempts the move -- the doc stays in
+    # its own container, exactly as it did before moving beside the audio was possible.
+    import highdeas.app as app_mod
+    monkeypatch.setenv("HIGHDEAS_GOOGLE_DOCS_TOKEN_FILE", str(tmp_path / "token.json"))
+    monkeypatch.setenv("HIGHDEAS_DRIVE_FOLDER_URL", "https://drive.google.com/drive/folders/PARENT_ID")
+    monkeypatch.delenv("HIGHDEAS_GOOGLE_SERVICE_ACCOUNT_FILE", raising=False)
+
+    filer = app_mod._drive_doc_filer()
+
+    assert filer.__self__._find_folder_id is None
+
+
+def test_drive_doc_filer_has_no_folder_resolver_without_a_resolvable_drive_folder_url(
+        monkeypatch, tmp_path):
+    import highdeas.app as app_mod
+    monkeypatch.setenv("HIGHDEAS_GOOGLE_DOCS_TOKEN_FILE", str(tmp_path / "token.json"))
+    monkeypatch.setenv("HIGHDEAS_GOOGLE_SERVICE_ACCOUNT_FILE", str(tmp_path / "key.json"))
+    monkeypatch.delenv("HIGHDEAS_DRIVE_FOLDER_URL", raising=False)
+
+    filer = app_mod._drive_doc_filer()
+
+    assert filer.__self__._find_folder_id is None
+
+
+def test_drive_doc_filer_wires_the_folder_resolver_when_both_are_configured(monkeypatch, tmp_path):
+    # Same service account and parent id _drive_link_resolver uses for the bin's Drive
+    # icon (test_drive_link_resolver_wires_the_service_account_file_and_parent_id_into_the_linker)
+    # -- one Google Cloud setup step covers both features, not a second one for this.
+    import highdeas.app as app_mod
+    key_file = tmp_path / "service-account.json"
+    monkeypatch.setenv("HIGHDEAS_GOOGLE_DOCS_TOKEN_FILE", str(tmp_path / "token.json"))
+    monkeypatch.setenv("HIGHDEAS_GOOGLE_SERVICE_ACCOUNT_FILE", str(key_file))
+    monkeypatch.setenv("HIGHDEAS_DRIVE_FOLDER_URL", "https://drive.google.com/drive/folders/PARENT_ID")
+
+    filer = app_mod._drive_doc_filer()
+
+    find_folder_id = filer.__self__._find_folder_id
+    assert callable(find_folder_id)
+    linker = find_folder_id.__self__
+    assert linker._service_account_file == str(key_file)
+    assert linker._parent_id == "PARENT_ID"
+
+
 def test_default_bin_dir_sits_beside_the_inbox(tmp_path):
     # The bin must live in the same parent folder as the inbox, so retiring a
     # recording (inbox -> bin) moves it *within* the same iCloud tree. Moving a
