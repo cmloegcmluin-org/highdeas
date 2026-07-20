@@ -282,11 +282,12 @@ class DriveMusicRouter:
     Google Doc created through the actual Drive API — no more Word-into-a-synced-
     folder trick. Only when that isn't configured, or the call comes back empty (not
     authorized yet, offline, any Drive hiccup), does the old local .docx write run —
-    the transcript must reach *some* filed doc rather than none. Because of a
-    drive.file scope restriction (see drive_write.py's module docstring), a native Doc
-    can never land beside the audio inside the Drive base folder tree; it goes to its
-    own container folder instead, and `drive_doc_link` on the returned outcome is the
-    only way back to it."""
+    the transcript must reach *some* filed doc rather than none. A native Doc always
+    files into its own container folder first (see drive_write.py's module docstring
+    for why), then moves beside the audio itself when `file_doc` can resolve it —
+    immediately, most of the time, or later via DriveDocReconciler when it can't yet.
+    `drive_doc_link` on the returned outcome is the way back to the doc either way;
+    `drive_doc_needs_move` says whether that move is still pending."""
 
     def __init__(self, inbox_dir, drive_base, *, today=_today, write_doc=write_docx,
                  file_doc=None, copy=shutil.copy2):
@@ -304,15 +305,16 @@ class DriveMusicRouter:
         source = self._inbox / memo.audio_filename
         base = _sanitize_filename(memo.name or Path(memo.audio_filename).stem)
         self._copy(str(source), str(folder / (base + source.suffix)))
-        doc_link = ""
+        doc_link, needs_move = "", False
         if memo.transcript.strip():
             if self._file_doc is not None:
                 title = memo.name or _default_title(memo)
-                doc_link = self._file_doc(subfolder_name, title, _text_to_html(memo.transcript)) or ""
+                doc_link, needs_move = self._file_doc(subfolder_name, title, _text_to_html(memo.transcript))
             if not doc_link:
                 self._write_doc(folder / (base + ".docx"), memo.transcript)
         # Nothing here yet knows this subfolder's own Drive ID — Drive for Desktop
         # uploads it to the cloud on its own schedule — so only its name is reported;
         # the bin's Drive icon looks up the ID from this name later, via the real
         # Drive API, when it's asked to open this memo.
-        return {"drive_subfolder": subfolder_name, "drive_doc_link": doc_link}
+        return {"drive_subfolder": subfolder_name, "drive_doc_link": doc_link,
+                "drive_doc_needs_move": needs_move}
