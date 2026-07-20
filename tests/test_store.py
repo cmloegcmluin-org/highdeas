@@ -36,6 +36,25 @@ def test_recorded_at_roundtrips(store):
     assert store.get("a.m4a").recorded_at == "2026-07-07T13:37:04"
 
 
+def test_drive_doc_needs_move_defaults_to_false(store):
+    # Not "is False": SQLite has no native boolean, so an INTEGER column reads a
+    # stored False back as the int 0 rather than the bool itself -- falsy either
+    # way, which is all any real caller (`if memo.drive_doc_needs_move:`) checks.
+    store.upsert(Memo(audio_filename="a.m4a"))
+
+    assert not store.get("a.m4a").drive_doc_needs_move
+
+
+def test_drive_doc_needs_move_roundtrips(store):
+    store.upsert(Memo(audio_filename="a.m4a", route="drive", drive_doc_needs_move=True))
+
+    assert store.get("a.m4a").drive_doc_needs_move
+
+    store.update("a.m4a", drive_doc_needs_move=False)
+
+    assert not store.get("a.m4a").drive_doc_needs_move
+
+
 def test_get_unknown_returns_none(store):
     assert store.get("nope.m4a") is None
 
@@ -61,6 +80,10 @@ def test_store_migrates_a_db_created_before_the_newer_columns_existed(tmp_path):
 
     assert store.get("0.m4a").recorded_at == "2026-07-07T13:37:04"
     assert [m.audio_filename for m in store.list_pending()] == names
+    # A column this legacy table never had at all -- not just one it had before
+    # the type was tightened -- must migrate in too, and read back falsy rather
+    # than the empty string a bare TEXT column would default an old row to.
+    assert not store.get("0.m4a").drive_doc_needs_move
 
 
 def test_known_filenames_returns_stored_filenames(store):
