@@ -306,12 +306,23 @@ def _drive_doc_filer():
     writes). DriveMusicRouter falls back to its own local .docx write whenever this is
     None or the call resolves to nothing, so native-Doc filing stays opt-in, not
     required -- a machine that hasn't run the one-time authorization yet still files
-    memos exactly as it always has."""
+    memos exactly as it always has.
+
+    When the same service account _drive_link_resolver uses is configured too, the
+    filer also gets a way to resolve the audio's own dated HIGHDEAS_DRIVE_BASE
+    subfolder to its Drive id (DriveFolderLinker.id_for) -- so the Doc it files can
+    then be moved beside that audio, rather than left in its own container for
+    good. Without it, filing still works exactly as it did before that move was
+    possible; only the move step is skipped."""
     token_file = os.environ.get("HIGHDEAS_GOOGLE_DOCS_TOKEN_FILE", "")
     if not token_file:
         return None
     container_name = os.environ.get("HIGHDEAS_DRIVE_DOCS_FOLDER_NAME") or _DEFAULT_DRIVE_DOCS_FOLDER_NAME
-    return DriveDocFiler(token_file, container_name).file_doc
+    service_account_file = os.environ.get("HIGHDEAS_GOOGLE_SERVICE_ACCOUNT_FILE", "")
+    parent_id = parent_id_from_folder_url(os.environ.get("HIGHDEAS_DRIVE_FOLDER_URL", ""))
+    find_folder_id = (DriveFolderLinker(service_account_file, parent_id).id_for
+                      if service_account_file and parent_id else None)
+    return DriveDocFiler(token_file, container_name, find_folder_id=find_folder_id).file_doc
 
 
 def _drive_link_resolver(folder_url):
