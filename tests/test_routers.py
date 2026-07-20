@@ -432,7 +432,7 @@ def test_drive_router_files_a_native_google_doc_instead_of_docx_when_configured(
 
     def file_doc(subfolder_name, title, html):
         doc_calls.append((subfolder_name, title, html))
-        return "https://docs.google.com/document/d/DOC_ID/edit"
+        return "https://docs.google.com/document/d/DOC_ID/edit", False
 
     router = DriveMusicRouter(
         inbox, drive,
@@ -446,7 +446,33 @@ def test_drive_router_files_a_native_google_doc_instead_of_docx_when_configured(
     assert docs == []  # no local .docx once a native Doc was actually filed
     assert doc_calls == [("_2026_07_07_NOT_YET_PROCESSED_MUSIC", "Korok Dance", "<p>la la la</p>")]
     assert outcome == {"drive_subfolder": "_2026_07_07_NOT_YET_PROCESSED_MUSIC",
-                       "drive_doc_link": "https://docs.google.com/document/d/DOC_ID/edit"}
+                       "drive_doc_link": "https://docs.google.com/document/d/DOC_ID/edit",
+                       "drive_doc_needs_move": False}
+
+
+def test_drive_router_reports_when_a_filed_docs_move_still_needs_retrying(tmp_path):
+    # The first music memo of a new day, filed before Drive for Desktop has synced
+    # that day's folder up to the cloud yet (drive_write.py's module docstring) --
+    # file_doc reports needs_move=True, and that has to reach the memo's own stored
+    # record (Memo.drive_doc_needs_move) so DriveDocReconciler knows to retry it.
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    drive = tmp_path / "drive"
+    drive.mkdir()
+    (inbox / "voice-3.m4a").write_bytes(b"AUDIO")
+
+    router = DriveMusicRouter(
+        inbox, drive,
+        today=lambda: "2026_07_07",
+        file_doc=lambda subfolder_name, title, html: (
+            "https://docs.google.com/document/d/DOC_ID/edit", True),
+    )
+
+    outcome = router.route(Memo(audio_filename="voice-3.m4a", name="Korok Dance", transcript="la la la"))
+
+    assert outcome == {"drive_subfolder": "_2026_07_07_NOT_YET_PROCESSED_MUSIC",
+                       "drive_doc_link": "https://docs.google.com/document/d/DOC_ID/edit",
+                       "drive_doc_needs_move": True}
 
 
 def test_drive_router_titles_an_unnamed_memos_doc_the_way_notesnook_titles_untitled_notes(tmp_path):
@@ -461,7 +487,7 @@ def test_drive_router_titles_an_unnamed_memos_doc_the_way_notesnook_titles_untit
 
     def file_doc(subfolder_name, title, html):
         doc_calls.append(title)
-        return "https://docs.google.com/document/d/DOC_ID/edit"
+        return "https://docs.google.com/document/d/DOC_ID/edit", False
 
     router = DriveMusicRouter(inbox, drive, today=lambda: "2026_07_07", file_doc=file_doc)
 
@@ -486,7 +512,7 @@ def test_drive_router_falls_back_to_docx_when_doc_filing_returns_blank(tmp_path)
         inbox, drive,
         today=lambda: "2026_07_07",
         write_doc=lambda path, text: docs.append((Path(path), text)),
-        file_doc=lambda subfolder_name, title, html: "",
+        file_doc=lambda subfolder_name, title, html: ("", False),
     )
 
     outcome = router.route(Memo(audio_filename="voice-4.m4a", name="Song", transcript="la la"))
@@ -550,7 +576,8 @@ def test_drive_router_reports_which_subfolder_it_filed_the_memo_into(tmp_path):
 
     outcome = router.route(Memo(audio_filename="v.m4a", name="Song", transcript=""))
 
-    assert outcome == {"drive_subfolder": "_2026_07_07_NOT_YET_PROCESSED_MUSIC", "drive_doc_link": ""}
+    assert outcome == {"drive_subfolder": "_2026_07_07_NOT_YET_PROCESSED_MUSIC", "drive_doc_link": "",
+                       "drive_doc_needs_move": False}
 
 
 def test_drive_router_sanitizes_illegal_filename_characters(tmp_path):
