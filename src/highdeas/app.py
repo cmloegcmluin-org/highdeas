@@ -12,7 +12,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from highdeas.drive_link import DriveFolderLinker, parent_id_from_folder_url
-from highdeas.drive_write import DriveDocFiler
+from highdeas.drive_write import DriveDocFiler, DriveDocReconciler
 from highdeas.routers import (
     AsanaRouter, ClaudeRouter, DriveMusicRouter, NotesnookRouter, Router, parse_choices,
     read_asana_tokens,
@@ -299,6 +299,23 @@ def _deep_link_launcher():
 _DEFAULT_DRIVE_DOCS_FOLDER_NAME = "Highdeas Voice Memo Docs"
 
 
+def _build_drive_doc_filer():
+    """The configured DriveDocFiler instance, or None when native-Doc filing isn't
+    set up (see _drive_doc_filer). Split out so both _drive_doc_filer (the
+    file_doc callable DriveMusicRouter files through) and _drive_doc_reconciler
+    (the background move-retry loop) build from exactly one reading of the same
+    env vars, rather than two copies that could drift apart."""
+    token_file = os.environ.get("HIGHDEAS_GOOGLE_DOCS_TOKEN_FILE", "")
+    if not token_file:
+        return None
+    container_name = os.environ.get("HIGHDEAS_DRIVE_DOCS_FOLDER_NAME") or _DEFAULT_DRIVE_DOCS_FOLDER_NAME
+    service_account_file = os.environ.get("HIGHDEAS_GOOGLE_SERVICE_ACCOUNT_FILE", "")
+    parent_id = parent_id_from_folder_url(os.environ.get("HIGHDEAS_DRIVE_FOLDER_URL", ""))
+    find_folder_id = (DriveFolderLinker(service_account_file, parent_id).id_for
+                      if service_account_file and parent_id else None)
+    return DriveDocFiler(token_file, container_name, find_folder_id=find_folder_id)
+
+
 def _drive_doc_filer():
     """A callable that files a memo's transcript as a real, native Google Doc via the
     real Drive API, authenticated as Douglas's own account -- or None when that isn't
@@ -314,15 +331,18 @@ def _drive_doc_filer():
     then be moved beside that audio, rather than left in its own container for
     good. Without it, filing still works exactly as it did before that move was
     possible; only the move step is skipped."""
-    token_file = os.environ.get("HIGHDEAS_GOOGLE_DOCS_TOKEN_FILE", "")
-    if not token_file:
-        return None
-    container_name = os.environ.get("HIGHDEAS_DRIVE_DOCS_FOLDER_NAME") or _DEFAULT_DRIVE_DOCS_FOLDER_NAME
-    service_account_file = os.environ.get("HIGHDEAS_GOOGLE_SERVICE_ACCOUNT_FILE", "")
-    parent_id = parent_id_from_folder_url(os.environ.get("HIGHDEAS_DRIVE_FOLDER_URL", ""))
-    find_folder_id = (DriveFolderLinker(service_account_file, parent_id).id_for
-                      if service_account_file and parent_id else None)
-    return DriveDocFiler(token_file, container_name, find_folder_id=find_folder_id).file_doc
+    filer = _build_drive_doc_filer()
+    return filer.file_doc if filer is not None else None
+
+
+def _drive_doc_reconciler(store):
+    """A DriveDocReconciler wired to the same Drive Doc configuration
+    _drive_doc_filer reads (see _build_drive_doc_filer) -- or None under the same
+    circumstances _drive_doc_filer returns None, since nothing could ever have set
+    a memo's drive_doc_needs_move flag without one. main() hands the result to
+    _reconcile_drive_docs_continuously."""
+    filer = _build_drive_doc_filer()
+    return DriveDocReconciler(store, filer) if filer is not None else None
 
 
 def _drive_link_resolver(folder_url):
@@ -359,6 +379,7 @@ def main():
     _set_windows_app_id()
     app, service = build_app()
     _ingest_continuously(service)
+    _reconcile_drive_docs_continuously(_drive_doc_reconciler(service.store))
 
     def uploads_off(reason):
         """Put the dead listener on the page (and take it back off). print
@@ -459,6 +480,44 @@ def _ingest_continuously(service, *, interval=INGEST_INTERVAL, stop=None):
                 return
 
     threading.Thread(target=run, daemon=True, name="highdeas-ingest").start()
+
+
+# How long a reconciliation pass waits before looking again. Coarser than
+# INGEST_INTERVAL on purpose: what it's waiting on is Drive for Desktop syncing a
+# brand-new dated folder up to the cloud, which runs on its own schedule of
+# minutes, not seconds — and unlike ingest, every pass is a round trip to the
+# real Drive API, not just a local directory listing.
+RECONCILE_INTERVAL = 300.0
+
+
+def _reconcile_drive_docs_continuously(reconciler, *, interval=RECONCILE_INTERVAL, stop=None):
+    """Retry, over and over off the UI thread, every retired memo still flagged
+    Memo.drive_doc_needs_move — so a Doc stranded because its audio's dated folder
+    hadn't synced up to Drive's cloud yet (see drive_write.py's module docstring)
+    still ends up beside its audio eventually, not just every memo after a day's
+    first. Also sweeps each settled subfolder's now-empty container folder behind
+    it (DriveDocReconciler.run_once), so that doesn't accumulate forever either.
+
+    A no-op when `reconciler` is None: native Doc filing isn't configured at all
+    (see _drive_doc_reconciler), so nothing could ever have set that flag in the
+    first place — nothing here would ever find anything to do.
+
+    A bad pass must never crash startup or end the loop, so swallow errors, the
+    same posture _ingest_continuously takes toward a bad recording."""
+    if reconciler is None:
+        return
+    stop = stop or threading.Event()
+
+    def run():
+        while True:
+            try:
+                reconciler.run_once()
+            except Exception as exc:  # noqa: BLE001 — one bad pass must not end reconciliation
+                print(f"Drive doc reconciliation failed ({exc}).")
+            if stop.wait(interval):
+                return
+
+    threading.Thread(target=run, daemon=True, name="highdeas-drive-reconcile").start()
 
 
 def _run_desktop(app):

@@ -12,6 +12,7 @@ from highdeas.app import (
     _ingest_continuously,
     _open_when_ready,
     _open_window,
+    _reconcile_drive_docs_continuously,
     _run_browser,
     _start_upload_listener,
     _turn_on_context_menus,
@@ -22,6 +23,7 @@ from highdeas.app import (
     build_upload_app,
     default_bin_dir,
 )
+from highdeas.drive_write import DriveDocReconciler
 from highdeas.routers import parse_choices
 from highdeas.store import Memo, MemoStore
 from highdeas.window_state import WindowGeometry, load_geometry, save_geometry
@@ -162,6 +164,50 @@ def test_ingest_continuously_keeps_scanning_after_a_failing_refresh():
     _ingest_continuously(BadService(), interval=0, stop=stop)
 
     assert done.wait(timeout=2)
+
+
+def test_reconcile_drive_docs_continuously_keeps_retrying_off_the_calling_thread():
+    stop, done, threads = threading.Event(), threading.Event(), []
+
+    class FakeReconciler:
+        def run_once(self):
+            threads.append(threading.get_ident())
+            if len(threads) == 2:
+                stop.set()
+                done.set()
+
+    _reconcile_drive_docs_continuously(FakeReconciler(), interval=0, stop=stop)
+
+    assert done.wait(timeout=2)
+    assert threads[0] != threading.get_ident()  # off the UI thread, same as ingest
+    # It retries on and on, so a doc stranded because its audio's folder hadn't
+    # synced up to Drive's cloud yet still lands eventually, not just on the
+    # one attempt file_doc itself got to make.
+    assert len(threads) == 2
+
+
+def test_reconcile_drive_docs_continuously_keeps_going_after_a_failing_pass():
+    stop, done, calls = threading.Event(), threading.Event(), []
+
+    class BadReconciler:
+        def run_once(self):
+            calls.append(1)
+            if len(calls) == 2:
+                stop.set()
+                done.set()
+            raise RuntimeError("boom")
+
+    # A bad pass must never crash startup, nor end the reconciliation that follows it.
+    _reconcile_drive_docs_continuously(BadReconciler(), interval=0, stop=stop)
+
+    assert done.wait(timeout=2)
+
+
+def test_reconcile_drive_docs_continuously_does_nothing_without_a_reconciler_configured():
+    # Native Doc filing isn't configured at all (_drive_doc_reconciler returned
+    # None) -- nothing could ever have set drive_doc_needs_move on any memo, so
+    # there's nothing to start a thread over.
+    _reconcile_drive_docs_continuously(None)  # must not raise
 
 
 def test_chrome_launcher_opens_the_url_in_the_configured_profile(monkeypatch):
@@ -314,6 +360,55 @@ def test_drive_doc_filer_wires_the_folder_resolver_when_both_are_configured(monk
     linker = find_folder_id.__self__
     assert linker._service_account_file == str(key_file)
     assert linker._parent_id == "PARENT_ID"
+
+
+def test_drive_doc_reconciler_is_none_without_a_token_file_configured(monkeypatch):
+    # The same circumstance _drive_doc_filer returns None under: nothing could
+    # ever have set a memo's drive_doc_needs_move flag without one configured.
+    import highdeas.app as app_mod
+    monkeypatch.delenv("HIGHDEAS_GOOGLE_DOCS_TOKEN_FILE", raising=False)
+
+    assert app_mod._drive_doc_reconciler("STORE") is None
+
+
+def test_drive_doc_reconciler_wires_up_when_a_token_file_is_configured(monkeypatch, tmp_path):
+    import highdeas.app as app_mod
+    monkeypatch.setenv("HIGHDEAS_GOOGLE_DOCS_TOKEN_FILE", str(tmp_path / "token.json"))
+
+    reconciler = app_mod._drive_doc_reconciler("STORE")
+
+    assert isinstance(reconciler, DriveDocReconciler)
+    assert reconciler._store == "STORE"
+
+
+def test_drive_doc_reconciler_shares_the_filers_own_drive_configuration(monkeypatch, tmp_path):
+    # One Google Cloud setup step covers both file_doc's own first-try move and
+    # this reconciler's later retries -- not a second, separately-configured
+    # filer that could quietly drift out of sync with it.
+    import highdeas.app as app_mod
+    key_file = tmp_path / "service-account.json"
+    token_file = tmp_path / "token.json"
+    monkeypatch.setenv("HIGHDEAS_GOOGLE_DOCS_TOKEN_FILE", str(token_file))
+    monkeypatch.setenv("HIGHDEAS_GOOGLE_SERVICE_ACCOUNT_FILE", str(key_file))
+    monkeypatch.setenv("HIGHDEAS_DRIVE_FOLDER_URL", "https://drive.google.com/drive/folders/PARENT_ID")
+    monkeypatch.setenv("HIGHDEAS_DRIVE_DOCS_FOLDER_NAME", "Voice Memo Transcripts")
+
+    reconciler = app_mod._drive_doc_reconciler("STORE")
+
+    assert reconciler._filer._token_file == str(token_file)
+    assert reconciler._filer._container_name == "Voice Memo Transcripts"
+    assert callable(reconciler._filer._find_folder_id)
+
+
+def test_drive_doc_reconciler_has_no_folder_resolver_without_a_service_account_configured(
+        monkeypatch, tmp_path):
+    import highdeas.app as app_mod
+    monkeypatch.setenv("HIGHDEAS_GOOGLE_DOCS_TOKEN_FILE", str(tmp_path / "token.json"))
+    monkeypatch.delenv("HIGHDEAS_GOOGLE_SERVICE_ACCOUNT_FILE", raising=False)
+
+    reconciler = app_mod._drive_doc_reconciler("STORE")
+
+    assert reconciler._filer._find_folder_id is None
 
 
 def test_default_bin_dir_sits_beside_the_inbox(tmp_path):
@@ -710,10 +805,13 @@ def test_a_failed_bind_reports_itself_instead_of_dying_silently(monkeypatch, cap
 def test_main_starts_the_upload_listener_before_the_blocking_ui(monkeypatch):
     import highdeas.app as app_mod
     order = []
+    service = SimpleNamespace(store="STORE")
     monkeypatch.setenv("HIGHDEAS_DESKTOP", "0")
     monkeypatch.setattr(app_mod, "_set_windows_app_id", lambda: None)
-    monkeypatch.setattr(app_mod, "build_app", lambda: ("APP", "SERVICE"))
+    monkeypatch.setattr(app_mod, "build_app", lambda: ("APP", service))
     monkeypatch.setattr(app_mod, "_ingest_continuously", lambda service: None)
+    monkeypatch.setattr(app_mod, "_drive_doc_reconciler", lambda store: None)
+    monkeypatch.setattr(app_mod, "_reconcile_drive_docs_continuously", lambda reconciler: None)
     monkeypatch.setattr(app_mod, "build_upload_app", lambda service: ("UPLOAD-FOR", service))
     monkeypatch.setattr(app_mod, "_start_upload_listener",
                         lambda app, uploads_off: order.append(("upload", app)))
@@ -723,7 +821,7 @@ def test_main_starts_the_upload_listener_before_the_blocking_ui(monkeypatch):
 
     # _run_browser (and the desktop path) block for the process lifetime, so
     # the listener must be up first — "after the UI" would mean never.
-    assert order == [("upload", ("UPLOAD-FOR", "SERVICE")), ("ui", "APP")]
+    assert order == [("upload", ("UPLOAD-FOR", service)), ("ui", "APP")]
 
 
 def test_main_routes_a_dead_listener_onto_the_page(monkeypatch):
@@ -736,8 +834,10 @@ def test_main_routes_a_dead_listener_onto_the_page(monkeypatch):
     web_app = FakeFlask()
     monkeypatch.setenv("HIGHDEAS_DESKTOP", "0")
     monkeypatch.setattr(app_mod, "_set_windows_app_id", lambda: None)
-    monkeypatch.setattr(app_mod, "build_app", lambda: (web_app, "SERVICE"))
+    monkeypatch.setattr(app_mod, "build_app", lambda: (web_app, SimpleNamespace(store="STORE")))
     monkeypatch.setattr(app_mod, "_ingest_continuously", lambda service: None)
+    monkeypatch.setattr(app_mod, "_drive_doc_reconciler", lambda store: None)
+    monkeypatch.setattr(app_mod, "_reconcile_drive_docs_continuously", lambda reconciler: None)
     monkeypatch.setattr(app_mod, "build_upload_app", lambda service: None)  # no token
     monkeypatch.setattr(app_mod, "_run_browser", lambda app: None)
 
@@ -746,6 +846,30 @@ def test_main_routes_a_dead_listener_onto_the_page(monkeypatch):
     # The page is the one place this machine gets to say it can't hear the
     # phone — pythonw has no console for the print to reach.
     assert "HIGHDEAS_UPLOAD_TOKEN" in web_app.config["PHONE_UPLOADS_OFF"]
+
+
+def test_main_reconciles_drive_docs_off_the_service_s_own_store(monkeypatch):
+    # _drive_doc_reconciler is built from service.store (not a second store of its
+    # own) and its result is handed straight to _reconcile_drive_docs_continuously
+    # -- the same "build, then start" shape build_upload_app/_start_upload_listener
+    # already use for the phone listener.
+    import highdeas.app as app_mod
+    calls = []
+    service = SimpleNamespace(store="STORE")
+    monkeypatch.setenv("HIGHDEAS_DESKTOP", "0")
+    monkeypatch.setattr(app_mod, "_set_windows_app_id", lambda: None)
+    monkeypatch.setattr(app_mod, "build_app", lambda: (SimpleNamespace(config={}), service))
+    monkeypatch.setattr(app_mod, "_ingest_continuously", lambda service: None)
+    monkeypatch.setattr(app_mod, "_drive_doc_reconciler",
+                        lambda store: calls.append(("built", store)) or "RECONCILER")
+    monkeypatch.setattr(app_mod, "_reconcile_drive_docs_continuously",
+                        lambda reconciler: calls.append(("started", reconciler)))
+    monkeypatch.setattr(app_mod, "build_upload_app", lambda service: None)
+    monkeypatch.setattr(app_mod, "_run_browser", lambda app: None)
+
+    app_mod.main()
+
+    assert calls == [("built", "STORE"), ("started", "RECONCILER")]
 
 
 def test_run_browser_serves_on_the_configured_port_without_opening_a_browser(monkeypatch):
@@ -772,8 +896,10 @@ def test_main_falls_back_to_the_browser_when_the_desktop_window_is_switched_off(
     monkeypatch.setenv("HIGHDEAS_DESKTOP", "0")
     monkeypatch.delenv("HIGHDEAS_UPLOAD_TOKEN", raising=False)
     monkeypatch.setattr(app_mod, "_set_windows_app_id", lambda: None)
-    monkeypatch.setattr(app_mod, "build_app", lambda: (web_app, "SERVICE"))
+    monkeypatch.setattr(app_mod, "build_app", lambda: (web_app, SimpleNamespace(store="STORE")))
     monkeypatch.setattr(app_mod, "_ingest_continuously", lambda service: None)
+    monkeypatch.setattr(app_mod, "_drive_doc_reconciler", lambda store: None)
+    monkeypatch.setattr(app_mod, "_reconcile_drive_docs_continuously", lambda reconciler: None)
     monkeypatch.setattr(app_mod, "_run_desktop", lambda app: opened.append(("desktop", app)) or True)
     monkeypatch.setattr(app_mod, "_run_browser", lambda app: opened.append(("browser", app)))
 
