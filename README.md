@@ -149,8 +149,9 @@ recording, or a subtask on an Asana task.
      memo's name. Its transcript, if there is one, is filed as a real, native Google
      Doc through the actual Drive API — not a file that merely opens like one — once
      `HIGHDEAS_GOOGLE_DOCS_TOKEN_FILE` is set up (see "Google Drive native Doc filing"
-     below); until then, or if a submit can't reach Drive, a `.docx` alongside the
-     audio is the fallback, exactly as before.
+     below), landing right beside that same audio when "Google Drive per-memo folder
+     links" is also set up; until the token file is configured, or if a submit can't
+     reach Drive, a `.docx` alongside the audio is the fallback, exactly as before.
    - **Asana** — the transcript becomes a subtask of the parent task picked in the
      row's dropdown (the small set you configure via `ASANA_PARENT_TASKS`). A named
      memo carries its name as the task and its transcript as the notes; an unnamed one
@@ -319,12 +320,25 @@ Douglas's own Google account, via a one-time browser sign-in that leaves a refre
 token behind for every run after.
 
 That token is deliberately scoped to `drive.file`, the narrowest Drive scope Google
-offers — but the trade for that narrowness is that a client holding it can never see
-or write into a folder it did not itself create. So a native Doc can never land inside
-`HIGHDEAS_DRIVE_BASE` beside its audio; it always goes into its own container folder
-at Drive's top level instead (`HIGHDEAS_DRIVE_DOCS_FOLDER_NAME`, default "Highdeas
-Voice Memo Docs"), in a dated subfolder per day, the same shape as the audio's own but
-entirely separate from it.
+offers. The trade for that narrowness turned out narrower than it first looked: a
+client holding only `drive.file` genuinely can't *discover* a folder it didn't create
+(confirmed against the live API — a lookup by that folder's own id 404s, a search by
+name comes back empty) — but it *can* write into one whose id it already has in hand,
+both creating a file there directly and moving a file it already created into it
+afterward. Both are confirmed working, live, against Douglas's own Drive.
+
+So the Doc is always created first in its own container folder at Drive's top level
+(`HIGHDEAS_DRIVE_DOCS_FOLDER_NAME`, default "Highdeas Voice Memo Docs", dated
+subfolder per day) — that part hasn't changed, since it's the one destination
+guaranteed to already exist the moment a memo is filed, before that day's own
+`HIGHDEAS_DRIVE_BASE` subfolder has necessarily synced up to Drive's cloud yet. But
+when "Google Drive per-memo folder links" above is *also* set up, filing then moves
+the Doc out of the container and into that same audio subfolder as a last step, via
+the same service account already resolving that folder's id there — so with both
+configured, the transcript ends up right beside its own audio after all. Without that
+service account (or on the rare memo whose audio folder hasn't synced up to Drive yet
+at the moment it's filed), the container stays the Doc's permanent home, exactly as
+it always was before this was possible.
 
 1. At <https://console.cloud.google.com>, use the same project as "Google Drive
    per-memo folder links" above (or create one, and enable the **Google Drive API**
@@ -440,9 +454,9 @@ Everything but the keys for the destinations you use is optional. Set these in `
 | `HIGHDEAS_INBOX_DIR` | iCloud `Shortcuts/Highdeas` | Folder the iOS Shortcut drops recordings into. |
 | `HIGHDEAS_DRIVE_BASE` | `G:\My Drive\voice memos (top level)` | Where music-routed audio is filed. |
 | `HIGHDEAS_DRIVE_FOLDER_URL` | — | That folder's own Drive link (Share -> Copy link), for the bin's Drive icon to open. Empty = the icon does nothing. Also the folder `HIGHDEAS_GOOGLE_SERVICE_ACCOUNT_FILE` below searches inside — required for per-memo links too, not just the fallback. |
-| `HIGHDEAS_GOOGLE_SERVICE_ACCOUNT_FILE` | — | Path to a Google Cloud service account key file, so the bin's Drive icon opens the memo's own dated subfolder instead of always the top-level folder. Empty = the icon always opens the top-level folder. See "Google Drive per-memo folder links" below. |
+| `HIGHDEAS_GOOGLE_SERVICE_ACCOUNT_FILE` | — | Path to a Google Cloud service account key file, so the bin's Drive icon opens the memo's own dated subfolder instead of always the top-level folder, and a native Google Doc (see below) can be moved beside its audio instead of staying in its own container. Empty = the icon always opens the top-level folder, and a Doc always stays in its container. See "Google Drive per-memo folder links" below. |
 | `HIGHDEAS_GOOGLE_DOCS_TOKEN_FILE` | — | Path to the token file `scripts/authorize_google_docs.py` writes, so a music memo's transcript files as a real, native Google Doc instead of a local `.docx`. Empty = always the `.docx`. See "Google Drive native Doc filing" below. |
-| `HIGHDEAS_DRIVE_DOCS_FOLDER_NAME` | `Highdeas Voice Memo Docs` | Top-level Drive folder native Google Docs are filed into (in a dated subfolder per day). Only read when `HIGHDEAS_GOOGLE_DOCS_TOKEN_FILE` above is set. |
+| `HIGHDEAS_DRIVE_DOCS_FOLDER_NAME` | `Highdeas Voice Memo Docs` | Top-level Drive folder native Google Docs are filed into first (in a dated subfolder per day) — moved beside the audio afterward when `HIGHDEAS_GOOGLE_SERVICE_ACCOUNT_FILE` + `HIGHDEAS_DRIVE_FOLDER_URL` are configured too, otherwise its permanent home. Only read when `HIGHDEAS_GOOGLE_DOCS_TOKEN_FILE` above is set. |
 | `HIGHDEAS_BIN_DIR` | `Highdeas Bin` beside the inbox | Where retired recordings wait (recoverable for 90 days). |
 | `HIGHDEAS_LEXICON` | `lexicon.md` beside the state dir, else in this folder | Your own names and terms, one per line, that each transcript is corrected toward. |
 | `HIGHDEAS_GOOGLE_KEY` | `google-key.json` beside the lexicon | Service-account key the listed sheets are shared with. |
