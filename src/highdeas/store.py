@@ -45,6 +45,14 @@ class Memo:
     # for other routes, for memos with no transcript, and for anything filed instead as
     # the older local .docx (not configured yet, or a Drive hiccup at submit time).
     drive_doc_link: str = ""
+    # Whether that Doc still needs to be moved beside its own audio. file_doc sets this
+    # when it filed the Doc into its own container but couldn't resolve the audio's
+    # dated folder yet -- normally only the first music memo of a new day, filed before
+    # that day's folder had synced up to Drive's cloud. A background reconciler (see
+    # drive_write.DriveDocReconciler) retries it later and clears the flag once the
+    # Doc has actually moved. False (and, for memos stored before this was tracked,
+    # None reading the same way) means there's nothing left to retry.
+    drive_doc_needs_move: bool = False
     status: str = "pending"
     created_at: str = ""
     recorded_at: str = ""
@@ -74,8 +82,10 @@ class Memo:
 
 _COLUMNS = [f.name for f in fields(Memo)]
 # Position must compare as a number: in a TEXT column SQLite would sort '10' before '2'.
-# The cut count is arithmetic, so it comes back as one rather than as "3".
-_COLUMN_TYPES = {"position": "INTEGER", "cuts": "INTEGER"}
+# The cut count is arithmetic, so it comes back as one rather than as "3". A TEXT
+# column stores True as the *string* "1" -- truthy either way, but so is "0", which
+# would make drive_doc_needs_move impossible to ever clear back to false again.
+_COLUMN_TYPES = {"position": "INTEGER", "cuts": "INTEGER", "drive_doc_needs_move": "INTEGER"}
 
 
 def _declaration(column):
