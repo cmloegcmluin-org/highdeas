@@ -65,6 +65,30 @@ def test_service_account_token_is_blank_without_a_key_file():
     assert _service_account_token("") == ""
 
 
+def test_id_for_resolves_the_subfolders_own_drive_id():
+    # The bare id link_for wraps into a clickable URL -- drive_write.DriveDocFiler
+    # uses this directly (not link_for) to move a doc it already created beside
+    # the audio inside this same folder, via a files.update addParents call that
+    # takes a bare id, not a URL.
+    get = FakeGet(body={"files": [{"id": "SUBFOLDER_ID_1"}]})
+    linker = DriveFolderLinker("key.json", "PARENT_ID", get=get, token=lambda key: "tok-123")
+
+    assert linker.id_for("_2026_07_17_NOT_YET_PROCESSED_MUSIC") == "SUBFOLDER_ID_1"
+    url, kwargs = get.calls[0]
+    assert url == "https://www.googleapis.com/drive/v3/files"
+    assert kwargs["headers"] == {"Authorization": "Bearer tok-123"}
+    assert "'PARENT_ID' in parents" in kwargs["params"]["q"]
+    assert "name = '_2026_07_17_NOT_YET_PROCESSED_MUSIC'" in kwargs["params"]["q"]
+    assert "mimeType = 'application/vnd.google-apps.folder'" in kwargs["params"]["q"]
+
+
+def test_id_for_blank_when_the_subfolder_hasnt_synced_up_yet():
+    get = FakeGet(body={"files": []})
+    linker = DriveFolderLinker("key.json", "PARENT_ID", get=get, token=lambda key: "tok")
+
+    assert linker.id_for("_2026_07_17_NOT_YET_PROCESSED_MUSIC") == ""
+
+
 def test_link_for_resolves_the_subfolders_own_drive_link():
     get = FakeGet(body={"files": [{"id": "SUBFOLDER_ID_1"}]})
     linker = DriveFolderLinker("key.json", "PARENT_ID", get=get, token=lambda key: "tok-123")

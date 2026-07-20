@@ -56,12 +56,20 @@ class DriveFolderLinker:
         self._get = get
         self._token = token
 
-    def link_for(self, subfolder_name):
-        """That subfolder's own Drive link, or "" when it can't be resolved: not
+    def id_for(self, subfolder_name):
+        """The Drive-assigned id of the folder named `subfolder_name` directly
+        inside the configured parent, or "" when it can't be resolved: not
         configured, the subfolder hasn't synced up to Drive yet, the service
-        account's token can't be obtained, or the lookup itself fails. The bin's
-        Drive icon falls back to the top-level folder link in every one of these
-        cases rather than ever raising into the request that clicked it."""
+        account's token can't be obtained, or the lookup itself fails. link_for
+        wraps this as a clickable URL for the bin's Drive icon; drive_write's
+        DriveDocFiler calls this directly, to learn the audio's own dated
+        folder id so a native Doc it already filed elsewhere can be moved into
+        it (a files.update addParents call takes a bare id, not a URL).
+
+        Every one of the "can't be resolved" cases falls back quietly rather
+        than raising, since both callers have their own fallback for it: the
+        bin's Drive icon opens the static top-level link instead, and
+        DriveDocFiler leaves the doc exactly where it already filed it."""
         if not self._service_account_file or not self._parent_id or not subfolder_name:
             return ""
         try:
@@ -87,6 +95,12 @@ class DriveFolderLinker:
             files = response.json().get("files", [])
         except Exception:  # noqa: BLE001 — offline/misconfigured/revoked must fall back quietly, not 500
             return ""
-        if not files:
-            return ""
-        return f"https://drive.google.com/drive/folders/{files[0]['id']}"
+        return files[0]["id"] if files else ""
+
+    def link_for(self, subfolder_name):
+        """That subfolder's own Drive link, or "" when it can't be resolved —
+        see id_for for the reasons. The bin's Drive icon falls back to the
+        top-level folder link in every one of those cases rather than ever
+        raising into the request that clicked it."""
+        folder_id = self.id_for(subfolder_name)
+        return f"https://drive.google.com/drive/folders/{folder_id}" if folder_id else ""
