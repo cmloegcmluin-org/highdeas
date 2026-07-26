@@ -1876,6 +1876,60 @@ def test_submit_carries_the_claude_surface_and_model_the_row_chose(tmp_path):
     ]
 
 
+def test_submit_sends_to_asana_once_through_the_whole_stack(tmp_path):
+    # End to end — real service, real Asana router, only the HTTP POST faked — because
+    # the bug lived in the seam between the send and the retire, which the FakeService
+    # tests above stub straight past. One /submit creates exactly one subtask, answers
+    # 204, and moves the recording to the bin. A second /submit for the same note (its
+    # row lingered, a click double-fired, a dropped 204 got retried) must send nothing
+    # more: the row that would have duplicated the task in Asana clears instead.
+    from highdeas.routers import AsanaRouter, Router
+    from highdeas.service import InboxService
+    from highdeas.store import MemoStore
+
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    bin_dir = tmp_path / "bin"
+    (inbox / "a.m4a").write_bytes(b"AUDIO")
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="a.m4a", transcript="an idea", route="asana",
+                      asana_parent="222", status="pending"))
+
+    posts = []
+
+    class _Resp:
+        status_code = 201
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"data": {"permalink_url": "https://app.asana.com/0/0/9/f"}}
+
+    def fake_post(url, **kwargs):
+        posts.append(url)
+        return _Resp()
+
+    asana = AsanaRouter({"": "PAT"}, default_parent="111", post=fake_post)
+    service = InboxService(inbox_dir=inbox, store=store, transcriber=None, bin_dir=bin_dir,
+                           route=Router(notesnook=None, asana=asana))
+    client = create_app(service, inbox_dir=str(inbox), bin_dir=str(bin_dir)).test_client()
+
+    fields = {"name": "", "transcript": "an idea", "route": "asana", "asana_parent": "222"}
+    first = client.post("/submit/a.m4a", data=fields)
+
+    assert first.status_code == 204
+    assert posts == ["https://app.asana.com/api/1.0/tasks/222/subtasks"]  # sent once
+    assert not (inbox / "a.m4a").exists()  # recording moved out of the inbox…
+    assert (bin_dir / "a.m4a").exists()    # …and into the bin
+    assert store.get("a.m4a").asana_url == "https://app.asana.com/0/0/9/f"
+
+    second = client.post("/submit/a.m4a", data=fields)
+
+    assert second.status_code == 204
+    assert posts == ["https://app.asana.com/api/1.0/tasks/222/subtasks"]  # still just one
+
+
 def test_group_route_consolidates_the_posted_notes_and_names_the_group(tmp_path):
     service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="- one\n- two", kind="group")])
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
