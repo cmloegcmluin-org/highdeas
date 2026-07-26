@@ -555,8 +555,30 @@ class InboxService:
         self._letgo(lambda: made.unlink(missing_ok=True))
 
     def submit(self, audio_filename):
-        outcome = self._route(self._store.get(audio_filename)) or {}
-        self._retire(audio_filename, "processed", **outcome)
+        """Route a memo to its destination, then retire it to the bin.
+
+        These are two steps, and only the first reaches out past this machine: the
+        Notesnook / Drive / Asana send. If that send lands but the retire then trips —
+        a recording the PC still has open refusing to move to the bin — the memo is
+        left marked "processed" with the send's outcome already stored, so a retry
+        FINISHES the retire instead of sending the note a second time.
+
+        Asana is where this bit: a re-sent note is a duplicate subtask sitting in the
+        project, where a re-POST to Notesnook's inbox quietly lands the same note again
+        and a Drive re-copy overwrites its own file. So the send is recorded before the
+        recording is moved (list_pending drops a processed memo, so the row leaves the
+        inbox even when the move must be retried), routing is skipped for a memo already
+        processed, and the move itself is waited out rather than failing the submit on a
+        transient lock (see _move_to_bin) — so the everyday case clears the row on one
+        click and the note reaches Asana exactly once."""
+        memo = self._store.get(audio_filename)
+        if memo is None:
+            return
+        if memo.status != "processed":
+            outcome = self._route(memo) or {}
+            self._store.update(audio_filename, status="processed",
+                               processed_at=self._clock(), **outcome)
+        self._move_to_bin(audio_filename)
 
     def delete(self, audio_filename):
         self._retire(audio_filename, "deleted")
@@ -646,20 +668,33 @@ class InboxService:
             source.replace(target)
         return target
 
+    def _move_to_bin(self, audio_filename):
+        """Move a retired memo's recording from the inbox to the bin.
+
+        No route touches the recording in the inbox (Notesnook and Asana never see the
+        file, Drive copies it), so it is always here to move; guard in case it's somehow
+        already gone. The move is waited out rather than attempted once: the page has
+        just been streaming this recording into an <audio> element and iCloud may be
+        uploading it, and Windows refuses to move a file another process still has open
+        — the very grip _letgo exists to outlast. Failing that raw move was how a
+        submitted note's row hung in the inbox until a second, note-duplicating click."""
+        source = Path(self._inbox_dir) / audio_filename
+        if not source.exists():
+            return
+        bin_dir = Path(self._bin_dir)
+        bin_dir.mkdir(parents=True, exist_ok=True)
+        self._letgo(lambda: shutil.move(str(source), str(bin_dir / audio_filename)))
+
     def _retire(self, audio_filename, status, **fields):
         """Take a memo out of the inbox: its recording moves to the bin and it stops
-        being pending. Submitting, trashing, and grouping differ only in the status
-        they leave behind, which the bin reads back as where the memo went. Extra
-        fields about how it left (e.g. Asana's task link) ride the same update.
+        being pending. Trashing and grouping differ only in the status they leave
+        behind, which the bin reads back as where the memo went. Extra fields about how
+        it left ride the same update.
 
-        No route touches the recording in the inbox (Notesnook and Asana never see
-        the file, Drive copies it), so it lands in the bin either way; guard in
-        case it's somehow already gone."""
-        source = Path(self._inbox_dir) / audio_filename
-        if source.exists():
-            bin_dir = Path(self._bin_dir)
-            bin_dir.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(source), str(bin_dir / audio_filename))
+        Submitting retires too, but drives these steps itself — send, then record the
+        send, then move — so a send is never repeated when the move has to be retried
+        (see submit)."""
+        self._move_to_bin(audio_filename)
         self._store.update(audio_filename, status=status, processed_at=self._clock(), **fields)
 
     def _unretire(self, audio_filename):

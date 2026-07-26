@@ -231,6 +231,127 @@ def test_submit_persists_fields_the_router_reports(tmp_path):
     assert memo.asana_url == "https://app.asana.com/0/0/9/f"
 
 
+def test_a_send_that_lands_but_cannot_bin_its_recording_is_not_resent_on_retry(tmp_path, monkeypatch):
+    # The Asana duplicate, in full. Submitting is send-then-retire, and only the send
+    # reaches out past this machine. Here the send lands (the task is created) but moving
+    # the just-played recording to the bin trips on a Windows file lock, so the submit
+    # fails and the row stays. Clicking send again must FINISH the retire — never route
+    # the note a second time and leave two identical subtasks in Asana. The send is
+    # recorded before the fragile move, so the retry sees the memo already processed.
+    import highdeas.service as service_mod
+
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    bin_dir = tmp_path / "bin"
+    (inbox / "a.m4a").write_bytes(b"AUDIO")
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="a.m4a", route="asana", status="pending"))
+
+    sends = []
+
+    def route(memo):
+        sends.append(memo.audio_filename)
+        return {"asana_url": "https://app.asana.com/0/0/9/f"}
+
+    # A recording the PC won't let go of: every move attempt fails while the first
+    # submit runs, then it frees up for the retry.
+    held = {"locked": True}
+    real_move = service_mod.shutil.move
+
+    def guarded_move(src, dst):
+        if held["locked"]:
+            raise PermissionError("the recording is still open")
+        return real_move(src, dst)
+
+    monkeypatch.setattr(service_mod.shutil, "move", guarded_move)
+
+    service = InboxService(
+        inbox_dir=inbox, store=store, transcriber=FakeTranscriber(),
+        bin_dir=bin_dir, route=route, clock=lambda: "T", sleep=lambda _: None,
+    )
+
+    # First send: the note goes out, but the recording won't move, so the retire can't
+    # finish and the submit reports the busy recording.
+    with pytest.raises(RecordingBusy):
+        service.submit("a.m4a")
+    assert sends == ["a.m4a"]                          # sent exactly once
+    sent = store.get("a.m4a")
+    assert sent.status == "processed"                  # recorded as sent before the move
+    assert sent.asana_url == "https://app.asana.com/0/0/9/f"
+
+    # The lock lets go; the retry finishes the job without sending again.
+    held["locked"] = False
+    service.submit("a.m4a")
+    assert sends == ["a.m4a"]                           # STILL once — no duplicate task
+    assert not (inbox / "a.m4a").exists()
+    assert (bin_dir / "a.m4a").read_bytes() == b"AUDIO"
+    assert store.get("a.m4a").status == "processed"
+
+
+def test_submit_waits_out_a_recording_briefly_held_open_then_bins_it(tmp_path, monkeypatch):
+    # The everyday case behind the Asana bug: the page has just been streaming the
+    # recording (and iCloud may be uploading it), so the move to the bin can trip a
+    # transient lock. One submit should wait it out and still bin the recording — the way
+    # every other recording-mover in the service already does (see _letgo) — rather than
+    # fail and leave the row sitting for a second, duplicating click.
+    import highdeas.service as service_mod
+
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    bin_dir = tmp_path / "bin"
+    (inbox / "a.m4a").write_bytes(b"AUDIO")
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="a.m4a", route="asana", status="pending"))
+
+    attempts = {"n": 0}
+    real_move = service_mod.shutil.move
+
+    def jams_twice(src, dst):
+        attempts["n"] += 1
+        if attempts["n"] <= 2:
+            raise PermissionError("still open")
+        return real_move(src, dst)
+
+    monkeypatch.setattr(service_mod.shutil, "move", jams_twice)
+
+    sends = []
+    service = InboxService(
+        inbox_dir=inbox, store=store, transcriber=FakeTranscriber(), bin_dir=bin_dir,
+        route=lambda memo: sends.append(memo.audio_filename), clock=lambda: "T",
+        sleep=lambda _: None,
+    )
+
+    service.submit("a.m4a")  # a single click
+
+    assert sends == ["a.m4a"]
+    assert not (inbox / "a.m4a").exists()
+    assert (bin_dir / "a.m4a").read_bytes() == b"AUDIO"
+    assert store.get("a.m4a").status == "processed"
+
+
+def test_submit_never_routes_an_already_processed_memo_again(tmp_path):
+    # A memo already marked processed has been sent; submitting it again — a retry after
+    # a retire that didn't finish, a double-fired click — must not reach the router and
+    # create a second Asana task. Its stored outcome is left untouched.
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    bin_dir = tmp_path / "bin"
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="a.m4a", route="asana", status="processed",
+                      asana_url="https://app.asana.com/0/0/9/f"))
+
+    sends = []
+    service = InboxService(
+        inbox_dir=inbox, store=store, transcriber=FakeTranscriber(), bin_dir=bin_dir,
+        route=lambda memo: sends.append(memo.audio_filename), clock=lambda: "T",
+    )
+
+    service.submit("a.m4a")
+
+    assert sends == []  # already sent; never routed again
+    assert store.get("a.m4a").asana_url == "https://app.asana.com/0/0/9/f"
+
+
 def test_delete_marks_memo_deleted(tmp_path):
     store = MemoStore(tmp_path / "memos.db")
     store.upsert(Memo(audio_filename="a.m4a", status="pending"))
