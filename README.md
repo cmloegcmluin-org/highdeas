@@ -94,15 +94,19 @@ recording, or a subtask on an Asana task.
    narrows to the notes whose name or transcript holds it, reaching the whole transcript
    (the part the three-line preview clips off included, which the browser's own find can't
    see), and Esc brings the full list back. The bin carries the same find.
-5. **Group** — ideas arrive in clusters. Tick a few notes and press the group button above
-   the checkboxes: they fold into one memo whose transcript is a bullet per note, in inbox
-   order. The group takes a name of its own — the one name among the notes, or, when
-   several are named, whichever you pick (or type fresh) at the ask that pops up. Whichever
-   name rose to the group reads plain in its bullet; a named note whose name did not rise
-   keeps it, reading `- Name: transcript`. Tick an existing group and the rest merge into
-   it, keeping its name; or drag a note by its grip onto a group's badge to drop it in. Two
-   groups have no obvious survivor, so ticking two disables the button. A badge in the
-   third of the row's leading columns marks which rows are groups.
+5. **Group** — ideas arrive in clusters. Drag one row by its grip and drop it *onto*
+   another — the row you aim at lights up whole and the cursor turns to a "+" — and the two
+   fold into one memo whose transcript is one bullet per note, in the order they were
+   recorded. (Dropping *between* two rows reorders them instead.) The group takes a name of
+   its own — the one name between the two notes, or, when they carry different names,
+   whichever you pick (or type fresh) at the ask that pops up. Whichever name rose to the
+   group reads plain in its bullet; a named note whose name did not rise keeps it, reading
+   `- Name: transcript`. Drop a note onto an existing group and it merges in, keeping the
+   group's name. Any row joins any other — drop a group onto a group and they combine too:
+   the topmost group survives and keeps its name, the other's bullets and recording folding
+   in whole. Undo hands an absorbed group back as a group, not as loose notes. The group
+   badge that ends each group's row — the one that breaks it back into its notes — is what
+   marks which rows are groups.
 
    A group is a memo the app makes, not a note promoted out of the pile. It stands where
    the topmost note stood, bound for the same destination, and it **plays all of their
