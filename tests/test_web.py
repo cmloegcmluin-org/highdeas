@@ -1447,6 +1447,32 @@ def test_a_note_is_grabbed_anywhere_along_its_body_not_only_the_thin_grip(tmp_pa
     assert "closest('input, select, audio, button, a')" in js
 
 
+def test_a_press_on_a_rows_own_control_selects_or_scrubs_rather_than_dragging(tmp_path):
+    service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hi", name="groceries")])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    js = asset(client, "inbox.js")
+
+    # The whole row is draggable, but a click-drag begun in the name field must select the
+    # text, and one on the audio scrubber must scrub — not lift the note. Chromium fires
+    # dragstart on the draggable source node (the row), NEVER on the control the press
+    # landed on, so a guard reading dragstart's target only ever sees the row and can't
+    # tell a press meant for a control from one meant to move the note — the drag wins over
+    # the selection. The press is where the two are still distinguishable, so the row drops
+    # its draggability the moment a press lands on one of its own controls, letting that
+    # press select or scrub, and takes it back when the press ends.
+    press = js.split("addEventListener('pointerdown', function", 1)[1]
+    assert "closest('input, select, audio, button, a')" in press
+    assert "draggable = false" in press
+    assert "addEventListener('pointerup'" in press
+    assert "draggable = true" in press
+    # The dead guard this replaces is gone: dragstart's target is always the row, so a
+    # closest() on it matched nothing and prevented no drag.
+    dragstart = js.split("addEventListener('dragstart', function", 1)[1].split(
+        "addEventListener('dragend'", 1)[0]
+    assert "preventDefault" not in dragstart
+
+
 def test_dragging_a_row_carries_a_picture_of_the_whole_row(tmp_path):
     service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="one")])
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
