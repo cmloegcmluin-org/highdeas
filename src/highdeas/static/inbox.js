@@ -476,14 +476,14 @@
   var hovered = null;
   var orderBefore = null;  // the order the drag started from, so dragend can record the move
 
-  // Dropping a note ONTO another note groups them; dropping it BETWEEN notes reorders. So a
-  // whole note is one big "join this" target — the pointer only has to be somewhere on it,
-  // not in a band — and nothing moves while you're over it, so the note you're aiming at
+  // Dropping a row ONTO another row groups them; dropping it BETWEEN rows reorders. So a
+  // whole row is one big "join this" target — the pointer only has to be somewhere on it,
+  // not in a band — and nothing moves while you're over it, so the row you're aiming at
   // can't dodge out from under the drop. Reordering is left to the gaps, where there is no
-  // note to join. Two groups have no obvious survivor, so a group over a group is never a
-  // join — it falls through to a reorder.
+  // row to join. Any row joins any other: a group dropped onto a group folds together too,
+  // the topmost surviving (see service.group).
   function canGroup(over) {
-    return !!over && over !== dragged && !(isGroup(dragged) && isGroup(over));
+    return !!over && over !== dragged;
   }
 
   // Light up the whole row a drop would fold into. hovered holds it, so drop knows the
