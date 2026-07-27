@@ -754,14 +754,27 @@
       select.addEventListener('change', rebind);
     });
     // The whole row is draggable (rows.html marks the .memo), so the note is picked up
-    // anywhere along it — the grip, the timestamp, the transcript, the space between. The
-    // controls that need the press for themselves keep it: a drag begun on the audio scrubber
-    // or in the name field cancels the row drag, so scrubbing and selecting still work.
-    memo.addEventListener('dragstart', function (event) {
-      if (event.target.closest('input, select, audio, button, a')) {
-        event.preventDefault();  // this press is scrubbing or selecting, not moving the note
-        return;
+    // anywhere along it — the grip, the timestamp, the transcript, the space between. But a
+    // press that lands on one of the row's own controls belongs to that control: a click-drag
+    // in the name field selects the text, one on the audio scrubber scrubs. Chromium fires
+    // dragstart on the draggable source node — the row — never on the control the press
+    // landed on, so the dragstart handler can't tell those presses apart (event.target is
+    // always the row). pointerdown can: its target IS the control under the pointer. So a
+    // press on a control drops the row's draggability for that one gesture — the browser then
+    // selects or scrubs instead of lifting the note — and it is handed back when the press
+    // ends, wherever that happens.
+    memo.addEventListener('pointerdown', function (event) {
+      if (!event.target.closest('input, select, audio, button, a')) return;
+      memo.draggable = false;
+      function restore() {
+        memo.draggable = true;
+        document.removeEventListener('pointerup', restore);
+        document.removeEventListener('pointercancel', restore);
       }
+      document.addEventListener('pointerup', restore);
+      document.addEventListener('pointercancel', restore);
+    });
+    memo.addEventListener('dragstart', function (event) {
       dragged = memo;
       orderBefore = orderOf();
       // A row drops two ways — reordered (move) or grouped (copy) — so both effects have to
