@@ -146,6 +146,15 @@ def _bullet(memo, group_name=""):
     return f"- {name or text}"
 
 
+def _fold(memo, group_name=""):
+    """How an absorbed member joins the surviving group's bullets. A note becomes one
+    bullet; an absorbed group brings its own bullets across as they read — its transcript
+    is already a bulleted list, so wrapping it in another bullet would nest it wrongly."""
+    if memo.kind == "group":
+        return memo.transcript.rstrip()
+    return _bullet(memo, group_name)
+
+
 class InboxService:
     def __init__(self, *, inbox_dir, store, transcriber, bin_dir,
                  find_new=find_new_recordings, route=_no_router, clock=_now,
@@ -379,26 +388,24 @@ class InboxService:
         name the group did not take keeps it as a "- Name: transcript" prefix on its
         bullet; the one whose name rose reads as its transcript alone.
 
-        Pick a group among them and it is the group that grows: the rest fold into its
-        bullets, its recording gains theirs on the end, and its name is left alone.
-
-        The merge joins the group's trail, so it can be walked back on its own later."""
+        With a group among the picks the topmost one survives and everything else folds
+        into it — other groups included. An absorbed group brings its bullets and its
+        recording across whole, and the survivor's name is left alone. Each fold joins the
+        survivor's trail, so it can be walked back on its own later: an absorbed group is
+        one step on that trail, handed back whole rather than broken into its notes."""
         chosen = [m for m in self.pending() if m.audio_filename in set(audio_filenames)]
         if len(chosen) < 2:
             raise ValueError("Grouping needs at least two notes still in the inbox.")
-        groups = [memo for memo in chosen if memo.kind == "group"]
-        if len(groups) > 1:
-            raise ValueError("Two groups have no obvious survivor; merge into one at a time.")
-        group = groups[0] if groups else None
-        absorbed = [memo for memo in chosen if memo is not group]
+        survivor = next((memo for memo in chosen if memo.kind == "group"), None)
+        absorbed = [memo for memo in chosen if memo is not survivor]
         for memo in absorbed:
             self._retire(memo.audio_filename, "grouped")
-        if group is None:
+        if survivor is None:
             return self._found_group(chosen, name)
         spoken = _spoken_order(absorbed)
-        trail = _merges(group) + [_step(spoken, group)]
-        return self._rejoin(group, trail, name=group.name, transcript="\n".join(
-            [group.transcript.rstrip(), *(_bullet(memo, group.name) for memo in spoken)]))
+        trail = _merges(survivor) + [_step(spoken, survivor)]
+        return self._rejoin(survivor, trail, name=survivor.name, transcript="\n".join(
+            [survivor.transcript.rstrip(), *(_fold(memo, survivor.name) for memo in spoken)]))
 
     def _found_group(self, members, name=None):
         """Make the memo that stands in the place of the notes it was folded from.

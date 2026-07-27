@@ -1034,23 +1034,73 @@ def test_group_does_not_leave_a_blank_line_when_the_group_text_ends_in_a_newline
     assert grown.transcript == "- one\n- two\n- three"
 
 
-def test_group_refuses_a_selection_holding_two_groups(tmp_path):
-    # Two groups have no obvious survivor — which one's name and recording win? — so the
-    # UI disables the button and the service refuses, leaving both untouched.
+def _two_named_groups(tmp_path, top_title="Song ideas", bottom_title="Song ideas"):
+    """Two founded groups sitting in the inbox — `top` (newest) above `bottom` — each
+    folded from two notes, so both carry a real merge trail and a joined recording. A
+    recording is the filename bytes, so a joined one reads back as its members' names
+    run together (fake_join concatenates)."""
     inbox = tmp_path / "inbox"
     inbox.mkdir()
     store = MemoStore(tmp_path / "memos.db")
-    store.upsert(Memo(audio_filename="g1.m4a", kind="group", transcript="- one",
-                      recorded_at="2026-07-08T01:00"))
-    store.upsert(Memo(audio_filename="g2.m4a", kind="group", transcript="- two",
-                      recorded_at="2026-07-08T02:00"))
+    # Distinct byte lengths so the two joined recordings key to distinct filenames
+    # (recording_key fingerprints size): top folds to 5 bytes, bottom to 7.
+    for name, title, text, at, audio in [
+        ("a.m4a", top_title, "one", "2026-07-08T10:00", b"AAA"),
+        ("b.m4a", "", "two", "2026-07-08T11:00", b"BB"),
+        ("c.m4a", bottom_title, "three", "2026-07-08T08:00", b"CCC"),
+        ("d.m4a", "", "four", "2026-07-08T09:00", b"DDDD"),
+    ]:
+        (inbox / name).write_bytes(audio)
+        store.upsert(Memo(audio_filename=name, name=title, transcript=text, recorded_at=at))
     service = service_with_fake_audio(inbox, store, tmp_path / "bin", clock=lambda: "T")
+    top = service.group(["a.m4a", "b.m4a"])     # newest note 11:00 -> topmost group
+    bottom = service.group(["c.m4a", "d.m4a"])  # newest note 09:00 -> below it
+    return service, store, inbox, top, bottom
 
-    with pytest.raises(ValueError):
-        service.group(["g1.m4a", "g2.m4a"])
 
-    assert [m.audio_filename for m in service.pending()] == ["g2.m4a", "g1.m4a"]
-    assert store.get("g1.m4a").transcript == "- one"
+def test_grouping_two_same_named_groups_folds_them_into_one(tmp_path):
+    # Combining groups is allowed. The topmost group survives and the other folds into it:
+    # its bullets appended whole (a group's transcript is already bullets, so it is not
+    # re-bulleted) and its recording joined on the end. Two "Song ideas" groups become one.
+    service, store, inbox, top, bottom = _two_named_groups(tmp_path)
+
+    combined = service.group([top.audio_filename, bottom.audio_filename])
+
+    assert combined.kind == "group"
+    assert combined.name == "Song ideas"
+    assert combined.transcript == "- one\n- two\n- three\n- four"
+    assert [m.kind for m in service.pending()] == ["group"]
+    # Every note's recording is in the joined one, survivor's first, in spoken order.
+    assert (inbox / combined.audio_filename).read_bytes() == b"AAABBCCCDDDD"
+
+
+def test_grouping_two_differently_named_groups_keeps_the_surviving_group_s_name(tmp_path):
+    # No name to ask about when a group is in the pick — the topmost group survives and
+    # keeps its name, exactly as folding a note into a group already does. The absorbed
+    # group's bullets come across as they read.
+    service, store, inbox, top, bottom = _two_named_groups(
+        tmp_path, top_title="Trip ideas", bottom_title="Vacation plans")
+
+    combined = service.group([top.audio_filename, bottom.audio_filename])
+
+    assert combined.name == "Trip ideas"
+    assert combined.transcript == "- one\n- two\n- three\n- four"
+
+
+def test_unmerging_a_group_combine_hands_the_absorbed_group_back_whole(tmp_path):
+    # The absorbed group is one step on the survivor's trail, tracked by its own filename,
+    # so Undo walks it back as a group — not broken into loose notes — and the survivor
+    # reads as it did before the combine.
+    service, store, inbox, top, bottom = _two_named_groups(tmp_path)
+    combined = service.group([top.audio_filename, bottom.audio_filename])
+
+    survivor_again = service.unmerge(combined.audio_filename)
+
+    assert sorted(m.kind for m in service.pending()) == ["group", "group"]
+    restored = store.get(bottom.audio_filename)
+    assert restored is not None and restored.kind == "group"
+    assert restored.transcript == "- three\n- four"
+    assert store.get(survivor_again).transcript == "- one\n- two"
 
 
 def test_group_refuses_fewer_than_two_pending_notes(tmp_path):
