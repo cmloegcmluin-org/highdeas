@@ -621,6 +621,19 @@ def test_dropping_a_row_onto_another_note_groups_the_two(tmp_path):
     assert "effectAllowed = 'copyMove'" in js
 
 
+def test_a_group_can_be_dropped_onto_a_group_to_combine_them(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    js = asset(client, "inbox.js")
+
+    # Combining groups is allowed, so the drag no longer bars a group from being dropped
+    # onto a group: canGroup is just "some other row", with no isGroup exclusion left. The
+    # server (service.group) folds them, the topmost surviving.
+    can_group = js.split("function canGroup(over)")[1].split("}")[0]
+    assert "over !== dragged" in can_group
+    assert "isGroup" not in can_group
+
+
 def test_a_whole_note_is_the_group_target_and_reordering_lives_in_the_gaps(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
@@ -2044,15 +2057,16 @@ def test_ungroup_route_refuses_a_memo_that_is_not_a_group(tmp_path):
 
 def test_group_route_reports_a_selection_it_cannot_group(tmp_path):
     service = FakeService()
-    service.group_error = "Two groups have no obvious survivor"
+    service.group_error = "Grouping needs at least two notes still in the inbox."
     client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
-    resp = client.post("/group", data={"files": ["g1.m4a", "g2.m4a"]})
+    resp = client.post("/group", data={"files": ["a.m4a"]})
 
-    # The button is disabled for these selections, but a stale page must not silently
-    # mangle notes — the server refuses and says why.
+    # A stale page can still post a selection the server can't group — a row already
+    # submitted from another window leaving fewer than two behind — so the route refuses
+    # and says why rather than mangling what's left.
     assert resp.status_code == 400
-    assert b"Two groups have no obvious survivor" in resp.data
+    assert b"Grouping needs at least two notes" in resp.data
 
 
 def test_submit_defaults_route_to_notesnook_when_fields_are_missing(tmp_path):

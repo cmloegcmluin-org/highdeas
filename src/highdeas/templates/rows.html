@@ -59,7 +59,7 @@
         keep the gesture for themselves (scrubbing the audio, selecting a name); inbox.js lets
         those be. The grip stays as the plainest "pick me up" mark, and the timestamp is still
         the first thing the row has to say: when it was recorded. -#}
-    <div class="grip" title="Drag to reorder, or onto another note to group" aria-label="Drag to reorder, or onto another note to group">{{ grip() }}</div>
+    <div class="grip" title="Drag to reorder, or onto another row to group" aria-label="Drag to reorder, or onto another row to group">{{ grip() }}</div>
     <div class="when">{{ m.recorded_at | when }}</div>
     <audio controls src="{{ m | playable }}"></audio>
     <div class="cell">
