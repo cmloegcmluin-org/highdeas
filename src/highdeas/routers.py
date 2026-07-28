@@ -141,12 +141,29 @@ def read_asana_tokens(parents, env):
     return {account: env.get(_asana_token_variable(account), "") for account in accounts}
 
 
+def _group_items(transcript):
+    """A group's bullets as (task name, task notes) pairs.
+
+    Groups write "- Name: text" for a named note and "- text" for a bare one (see the
+    service's `_bullet`), so a colon splits name from notes; a line without one is all name.
+    Numbered lines and stray prose ride in when an absorbed group brought its own transcript
+    across, so every line with words on it is an item; blank lines are not."""
+    for line in transcript.splitlines():
+        item, _ = _list_item(line)
+        if item is None:
+            item = line.strip()
+        if not item:
+            continue
+        name, _, notes = item.partition(": ")
+        yield (name.strip(), notes.strip()) if notes else (item, "")
+
+
 class AsanaRouter:
     """Create the memo's text as a subtask of its chosen Asana parent task
-    (POST /tasks/{gid}/subtasks). Only the text goes to Asana — the note's
-    name and transcript; the recording itself stays local and retires to the
-    bin like every other route. Reports the created task's permalink for the
-    memo's record, so the bin icon can open the task.
+    (POST /tasks/{gid}/subtasks) — and a GROUP's items as one subtask each. Only
+    the text goes to Asana — the note's name and transcript; the recording itself
+    stays local and retires to the bin like every other route. Reports the created
+    task's permalink for the memo's record, so the bin icon can open the task.
 
     Holds one token per Asana account, since a parent task names the account it
     belongs to: two accounts are two tokens behind one dropdown."""
@@ -167,6 +184,16 @@ class AsanaRouter:
         if not token:
             raise RuntimeError("Asana access token not set — put "
                                f"{_asana_token_variable(account)} in .env.")
+        # A group fans out: its transcript is the bulleted consolidation of its notes, and
+        # sending that as one task made a task named after the group holding the literal
+        # bullets — so each item becomes its own subtask instead, and the group's name stays
+        # in the inbox where it already did its job.
+        if memo.kind == "group":
+            first = ""
+            for name, notes in _group_items(memo.transcript):
+                created = self._create(gid, token, name, notes)
+                first = first or created
+            return {"asana_url": first}
         # A named memo keeps its transcript as the task's notes. An unnamed one has
         # only its transcript, so that becomes the name — a readable task rather than
         # a generic date title — and the notes are left empty rather than repeating it.
@@ -175,6 +202,10 @@ class AsanaRouter:
         else:
             name = memo.transcript or _default_title(memo)
             notes = ""
+        return {"asana_url": self._create(gid, token, name, notes)}
+
+    def _create(self, gid, token, name, notes):
+        """One subtask; the created task's permalink comes back for the memo's record."""
         response = self._post(
             self.ENDPOINT.format(gid=gid),
             headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
@@ -183,7 +214,7 @@ class AsanaRouter:
             timeout=30,
         )
         response.raise_for_status()
-        return {"asana_url": response.json().get("data", {}).get("permalink_url", "")}
+        return response.json().get("data", {}).get("permalink_url", "")
 
 
 def _link(base, **params):
