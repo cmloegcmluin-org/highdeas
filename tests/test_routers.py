@@ -611,3 +611,54 @@ def test_date_format_matches_what_today_produces():
     # DATE_FORMAT is the exact strftime format _today() uses to build that date
     # string in the first place — shared so nothing can reimplement it differently.
     assert datetime(2026, 7, 7).strftime(DATE_FORMAT) == "2026_07_07"
+
+
+def test_a_group_routes_each_item_as_its_own_asana_task():
+    # "instead of creating on the other end one new item with that group name and just like
+    # the literal text with the bullets or numbers, it should create each item in the group as
+    # a separate Asana task." A group's transcript is its bulleted consolidation; each bullet
+    # becomes one subtask - "Name: text" bullets split into task name and notes, bare ones are
+    # all name.
+    post = FakePost(body={"data": {"gid": "42", "permalink_url": "https://app.asana.com/0/0/42/f"}})
+    router = AsanaRouter({"": "PAT"}, default_parent="111", post=post)
+
+    outcome = router.route(Memo(audio_filename="g.m4a", kind="group", name="Groceries",
+                                transcript="- milk\n- eggs: two dozen\n- bread",
+                                route="asana", asana_parent="222"))
+
+    assert [url for url, _ in post.calls] == [
+        "https://app.asana.com/api/1.0/tasks/222/subtasks"] * 3
+    assert [kwargs["json"]["data"] for _, kwargs in post.calls] == [
+        {"name": "milk", "notes": ""},
+        {"name": "eggs", "notes": "two dozen"},
+        {"name": "bread", "notes": ""},
+    ]
+    # The record keeps one link; the first created task stands for the batch in the bin.
+    assert outcome == {"asana_url": "https://app.asana.com/0/0/42/f"}
+
+
+def test_a_groups_numbered_and_prose_lines_still_become_tasks():
+    # Groups write "-" bullets, but an absorbed group's transcript rides in as it reads -
+    # numbered lines and stray prose included. Every line with words on it is an item; blank
+    # lines are not.
+    post = FakePost(body={"data": {}})
+
+    AsanaRouter({"": "PAT"}, default_parent="1", post=post).route(
+        Memo(audio_filename="g.m4a", kind="group", transcript="1. first thing\n\nplain line",
+             route="asana"))
+
+    assert [kwargs["json"]["data"]["name"] for _, kwargs in post.calls] == [
+        "first thing", "plain line"]
+
+
+def test_a_plain_note_still_routes_as_one_task_even_with_bullets_in_it():
+    # Only a GROUP fans out: a single note the user wrote as a list is still one note, and
+    # Notesnook and Google Drive behavior is untouched by any of this.
+    post = FakePost(body={"data": {}})
+
+    AsanaRouter({"": "PAT"}, default_parent="1", post=post).route(
+        Memo(audio_filename="a.m4a", name="Packing", transcript="- socks\n- charger",
+             route="asana"))
+
+    assert len(post.calls) == 1
+    assert post.calls[0][1]["json"]["data"] == {"name": "Packing", "notes": "- socks\n- charger"}
