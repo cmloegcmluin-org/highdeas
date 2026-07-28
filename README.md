@@ -1,3 +1,5 @@
+<img src="docs/highdeas.png" alt="a light-pink microphone on a gray-green cannabis leaf" width="128" align="right">
+
 # Highdeas
 
 Turns iPhone voice memos into finished notes and filed audio with almost no manual

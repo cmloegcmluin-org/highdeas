@@ -1,11 +1,17 @@
-"""Generate the Highdeas app icons — a white microphone on a green cannabis leaf.
+"""Generate the Highdeas app icons — a light-pink microphone on a gray-green cannabis leaf.
 
 This draws the "Highdeas" emblem: a stylized seven-point cannabis leaf
-(green leaflets radiating from a common centre) with a white microphone glyph
-centred on top. Two outputs, one source of truth:
+(leaflets radiating from a common centre) with a microphone glyph centred on
+top, in the two-app family palette shared with Excephalon's Chaosphere -
+gray-green metal, light-pink flesh - so the two taskbar neighbors read as one
+designer's work. The emblem nearly fills its frame: drawn to 90% it sat
+beside full-bleed taskbar icons looking half their size. Two outputs, one source of truth:
 
 - ``highdeas.ico`` at the repository root — multi-size Windows ICO
-  (16, 32, 48, 64, 128, 256), emblem on transparency.
+  (16, 32, 48, 64, 128, 256), emblem on transparency. Sizes up to 64 are
+  packed as classic BMP frames (some shell paths render PNG-compressed small
+  frames poorly); 128 and 256 are PNG.
+- ``docs/highdeas.png`` — the 256px emblem the README shows.
 - ``ios/Highdeas/Assets.xcassets/AppIcon.appiconset/AppIcon.png`` — the iOS
   app icon: the same emblem on an opaque dark-slate square (iOS rejects
   alpha and rounds its own corners), 1024x1024.
@@ -30,15 +36,17 @@ not imported by the application at runtime.
 from __future__ import annotations
 
 import math
+import struct
 from pathlib import Path
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 
 # --- palette ---------------------------------------------------------------
 
-LEAF = (58, 168, 74)  # vivid leaf green (fill)
-LEAF_DARK = (33, 110, 45)  # darker green for leaflet outlines / shading
-WHITE = (255, 255, 255, 255)
+LEAF = (124, 156, 124)  # the family gray-green: the split between his gray and the lurid green
+LEAF_DARK = (88, 112, 88)  # dimmed for leaflet outlines / shading
+MIC = (234, 182, 192, 255)  # the family light pink Excephalon's brain wears
+MIC_EDGE = (196, 118, 132, 255)  # the deeper pink of the brain's folds, for the mic's outline
 
 # --- master canvas ---------------------------------------------------------
 
@@ -129,7 +137,7 @@ def draw_core(draw: ImageDraw.ImageDraw) -> None:
 
 
 def draw_mic(draw: ImageDraw.ImageDraw) -> None:
-    """Draw the white microphone glyph centred over the leaf core."""
+    """Draw the microphone glyph centred over the leaf core."""
     cx = 0.50 * S
 
     # Capsule (the mic head): a fully rounded vertical bar.
@@ -137,7 +145,7 @@ def draw_mic(draw: ImageDraw.ImageDraw) -> None:
     draw.rounded_rectangle(
         [cx - cap_hw, 0.285 * S, cx + cap_hw, 0.495 * S],
         radius=cap_hw,
-        fill=WHITE,
+        fill=MIC,
     )
 
     # Cradle: a U-shaped bracket cupping the lower half of the capsule.
@@ -149,7 +157,7 @@ def draw_mic(draw: ImageDraw.ImageDraw) -> None:
         [cx - ru, cradle_cy - ru, cx + ru, cradle_cy + ru],
         start=start,
         end=end,
-        fill=WHITE,
+        fill=MIC,
         width=stroke,
     )
     # Round the cradle's two tips.
@@ -158,14 +166,14 @@ def draw_mic(draw: ImageDraw.ImageDraw) -> None:
         a = math.radians(ang)
         tx = cx + ru * math.cos(a)
         ty = cradle_cy + ru * math.sin(a)
-        draw.ellipse([tx - cap_r, ty - cap_r, tx + cap_r, ty + cap_r], fill=WHITE)
+        draw.ellipse([tx - cap_r, ty - cap_r, tx + cap_r, ty + cap_r], fill=MIC)
 
     # Stem: connects the cradle down to the base.
     stem_hw = 0.016 * S
     draw.rounded_rectangle(
         [cx - stem_hw, 0.50 * S, cx + stem_hw, 0.645 * S],
         radius=stem_hw,
-        fill=WHITE,
+        fill=MIC,
     )
 
     # Base: a short horizontal foot.
@@ -174,12 +182,13 @@ def draw_mic(draw: ImageDraw.ImageDraw) -> None:
     draw.rounded_rectangle(
         [cx - base_hw, 0.663 * S - base_h, cx + base_hw, 0.663 * S],
         radius=base_h / 2,
-        fill=WHITE,
+        fill=MIC,
     )
 
 
-# Fraction of the canvas edge the emblem should span after centring.
-FILL = 0.90
+# Fraction of the canvas edge the emblem should span after centring. 0.90 read about half the
+# size of the full-bleed icons beside it on the taskbar.
+FILL = 0.98
 
 # The iOS icon is a full-bleed square that iOS masks to its own rounded rect,
 # so the emblem sits smaller on a solid ground. The slate matches the desktop
@@ -199,7 +208,18 @@ def render_master(fill: float = FILL) -> Image.Image:
     draw = ImageDraw.Draw(img)
     draw_leaf(draw)
     draw_core(draw)
-    draw_mic(draw)
+
+    # The mic wears the leaf's own outline treatment: its shapes are drawn on a layer, the
+    # layer's silhouette is thickened by the leaf's stroke weight, and the thickened silhouette
+    # goes down first in the deeper pink - so both shapes on the icon are drawn the same way.
+    mic = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    draw_mic(ImageDraw.Draw(mic))
+    stroke = max(2, round(S * 0.006))
+    halo = mic.getchannel("A").filter(ImageFilter.MaxFilter(2 * stroke + 1))
+    edge = Image.new("RGBA", (S, S), MIC_EDGE)
+    edge.putalpha(halo)
+    img.alpha_composite(edge)
+    img.alpha_composite(mic)
 
     bbox = img.getbbox()
     cropped = img.crop(bbox)
@@ -214,6 +234,43 @@ def render_master(fill: float = FILL) -> Image.Image:
     return centered
 
 
+def _bmp_frame(img: Image.Image) -> bytes:
+    """A classic 32bpp ICO frame: BITMAPINFOHEADER, BGRA rows bottom-up, then the 1-bit AND
+    mask (all zero - the alpha channel already says what is transparent)."""
+    w, h = img.size
+    header = struct.pack("<IiiHHIIiiII", 40, w, h * 2, 1, 32, 0, 0, 0, 0, 0, 0)
+    rows = img.tobytes("raw", "BGRA")
+    bgra = b"".join(rows[y * w * 4:(y + 1) * w * 4] for y in reversed(range(h)))
+    mask_row = ((w + 31) // 32) * 4
+    return header + bgra + b"\x00" * (mask_row * h)
+
+
+def _png_frame(img: Image.Image) -> bytes:
+    import io as _io
+
+    out = _io.BytesIO()
+    img.save(out, format="PNG")
+    return out.getvalue()
+
+
+def pack_ico(frames_by_size: dict[int, Image.Image], out_path: Path) -> None:
+    """Write the ICO by hand: BMP frames up to 64 (some shell paths render PNG-compressed small
+    frames poorly), PNG above that, where the compression matters and support is universal."""
+    sizes = sorted(frames_by_size)
+    blobs = {size: (_bmp_frame if size <= 64 else _png_frame)(frames_by_size[size])
+             for size in sizes}
+    directory = struct.pack("<HHH", 0, 1, len(sizes))
+    offset = len(directory) + 16 * len(sizes)
+    entries, body = b"", b""
+    for size in sizes:
+        blob = blobs[size]
+        entries += struct.pack("<BBBBHHII", size % 256, size % 256, 0, 0, 1, 32,
+                               len(blob), offset)
+        offset += len(blob)
+        body += blob
+    out_path.write_bytes(directory + entries + body)
+
+
 def main() -> None:
     root = Path(__file__).resolve().parents[1]
     out_path = root / "highdeas.ico"
@@ -226,14 +283,12 @@ def main() -> None:
     # The ICO plugin derives every frame from the base image; hand it the
     # largest LANCZOS-downscaled frame and the explicit size list so no frame
     # is upscaled from a smaller source.
-    largest = frames[-1]
-    largest.save(
-        out_path,
-        format="ICO",
-        sizes=[(s, s) for s in ICON_SIZES],
-        append_images=frames[:-1],
-    )
+    pack_ico(dict(zip(ICON_SIZES, frames)), out_path)
     print(f"wrote {out_path} with sizes {ICON_SIZES}")
+
+    docs_png = root / "docs/highdeas.png"
+    frames[ICON_SIZES.index(256)].save(docs_png, format="PNG")
+    print(f"wrote {docs_png} (README emblem)")
 
     layer_path = root / "tools/Highdeas.icon/Assets/leaf.png"
     layer_path.parent.mkdir(parents=True, exist_ok=True)
