@@ -391,7 +391,12 @@ body:has(#empty-bin:not(:disabled):hover) .row .purge:not(:disabled) { border-co
 /* Bin rows */
 .row { display: contents; }
 .row audio { width: 100%; }
-.row .text { font-size: .9rem; white-space: pre-wrap; max-height: 5.5em; overflow: auto; opacity: .85; }
+/* The whole transcript of a retired note, and the one place you reach back into the bin
+   to lift a line out of one. So it takes selection back the way the notice does — pywebview
+   injects `body { user-select: none }` over every page (see .notice) and would otherwise
+   leave these words impossible to highlight or copy — and wears the I-beam that says so. */
+.row .text { font-size: .9rem; white-space: pre-wrap; max-height: 5.5em; overflow: auto; opacity: .85;
+             user-select: text; cursor: text; }
 .row .name { font-weight: 600; }
 /* Where the memo went. It reports rather than acts, so it wears the row's square (.icon)
    without its border — and its glyph lands on the line Restore and Delete draw theirs on,
