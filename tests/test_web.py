@@ -2265,6 +2265,27 @@ def test_bin_lists_binned_items(tmp_path):
     assert b"b.m4a" in resp.data
 
 
+def test_a_bin_transcript_is_text_the_reader_can_select(tmp_path):
+    service = FakeService(binned=[
+        Memo(audio_filename="b.m4a", transcript="an idea worth keeping",
+             status="deleted", processed_at="2026-07-07T03:00"),
+    ])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/bin").data.decode()
+    css = asset(client, "app.css")
+
+    # The bin shows a memo's whole transcript, and it is the one place you reach back into
+    # a retired note to lift a line out of it. But the desktop window is pywebview, which
+    # injects `body { user-select: none }` into every page (see the notice), so the words
+    # can't be picked up. The transcript takes selection back for itself, as the notice
+    # does, and wears an I-beam to say they can be.
+    assert '<div class="text">an idea worth keeping</div>' in body
+    rule = css.split(".row .text {")[1].split("}")[0]
+    assert "user-select: text" in rule
+    assert "cursor: text" in rule
+
+
 def test_a_binned_memo_counts_the_days_it_has_left_rather_than_naming_its_hour(tmp_path):
     service = FakeService(binned=[
         Memo(audio_filename="old.m4a", status="deleted", processed_at="2026-04-08T03:00"),
