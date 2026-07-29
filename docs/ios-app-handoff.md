@@ -155,8 +155,9 @@ clients; fixing it would mean changing the fingerprint scheme itself.
   scratch locations, then `.venv/bin/python -m highdeas.app`. Phone and Mac on the same
   Wi-Fi gives a true end-to-end loop; production is the same code on the PC once
   Douglas pulls.
-- Heads-up: opening a memo's editor autoplays its audio — recordings are private, so
-  mute the Mac before driving the UI.
+- Heads-up: opening a memo's editor autoplays its audio by default — recordings are
+  private, so mute the Mac before driving the UI, or untick the Auto-play box in the
+  player bar (the choice sticks across every future note).
 - The first transcription downloads the ASR model and takes ~15s; it runs in the
   background and doesn't matter to upload testing.
 

@@ -27,6 +27,11 @@
       <button type="button" id="editor-play" class="btn play" aria-label="Play or pause">Pause</button>
       <span id="editor-time" class="time">0:00 / 0:00</span>
       <span id="editor-wave-note" class="wave-note" hidden>Waveform unavailable</span>
+      {#- Whether a note plays itself the moment it opens. Ticked ships as the default; a
+          reader who'd rather a private memo not sound off on open unticks it, and editor.js
+          remembers the choice for every future note. It sits at the right of the bar, past
+          the controls it governs. -#}
+      <label class="autoplay"><input type="checkbox" id="editor-autoplay" checked> Auto-play</label>
     </div>
     <audio id="editor-audio" preload="auto"></audio>
   </div>

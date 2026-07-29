@@ -1186,6 +1186,22 @@ def test_editor_offers_copy_buttons_for_both_fields_and_the_move_chevron(tmp_pat
     assert 'class="btn icon move editor-move"' in body
 
 
+def test_the_player_bar_carries_an_autoplay_toggle_right_of_play_and_time(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    body = client.get("/").data.decode()
+
+    # The player bar carries an Auto-play checkbox: a reader who doesn't want a private voice
+    # memo playing itself the moment the note opens can turn autoplay off. It sits to the
+    # right of the Play button and the running time — the two controls it speaks for.
+    bar = body.split('class="player-bar"', 1)[1].split("</div>", 1)[0]
+    assert 'id="editor-autoplay"' in bar
+    assert 'type="checkbox"' in bar
+    assert "Auto-play" in bar
+    assert bar.index('id="editor-play"') < bar.index('id="editor-autoplay"')
+    assert bar.index('id="editor-time"') < bar.index('id="editor-autoplay"')
+
+
 def test_editor_move_chevron_points_up_or_down_centered_above_the_transcript(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
@@ -1243,13 +1259,44 @@ def test_the_editor_autoplays_and_highlights_without_selecting(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     script = asset(client, "editor.js")
-    # It starts playing on open — the click that opened the dialog is the gesture
-    # autoplay needs.
+    # It starts playing on open by default — the click that opened the dialog is the gesture
+    # autoplay needs. (Whether it does is the Auto-play box's to say; see the test below.)
     assert "audio.play()" in script
     # And it lights the spoken word with the Custom Highlight API, which paints a
     # range without touching the selection or the caret.
     assert "CSS.highlights.set('spoken'" in script
     assert "::highlight(spoken)" in asset(client, "app.css")
+
+
+def test_the_editor_autoplays_only_when_the_box_is_ticked_and_remembers_it(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    js = asset(client, "editor.js")
+
+    # Opening a note plays it only when Auto-play is ticked; unticked, the recording waits
+    # for Play — so a private memo opened to be read doesn't sound off on its own.
+    opening = js.split("function open(note)")[1].split("\n  }")[0]
+    assert "audio.play()" in opening
+    assert opening.index("autoplayEl.checked") < opening.index("audio.play()")
+
+    # The choice rides in localStorage, so it holds across reloads and every future note —
+    # not just this one reused dialog. The box is set from the stored choice on load, and
+    # every flip of it writes the choice back.
+    assert "'highdeas.autoplay'" in js
+    assert "autoplayEl.checked =" in js          # restored from storage on load
+    assert "localStorage.getItem" in js
+    assert "localStorage.setItem" in js
+
+
+def test_the_autoplay_toggle_is_pushed_to_the_far_right_of_the_player_bar(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    css = asset(client, "app.css")
+
+    # A flex margin sweeps the Auto-play control to the far right of the bar, clear of the
+    # Play button and running time it speaks for and sits to the right of.
+    rule = css.split(".autoplay {", 1)[1].split("}", 1)[0]
+    assert "margin-left: auto" in rule
 
 
 def test_opening_the_editor_hushes_the_players_left_running_behind_it(tmp_path):
