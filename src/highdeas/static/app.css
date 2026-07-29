@@ -449,6 +449,10 @@ body:has(#empty-bin:not(:disabled):hover) .row .purge:not(:disabled) { border-co
 .time { opacity: .6; font-variant-numeric: tabular-nums; }
 .wave-note { opacity: .5; }
 .wave-note[hidden] { display: none; }
+/* The Auto-play box rides at the right end of the bar, swept clear of the transport controls
+   it speaks for; a compact label so the tick and its word read as one control. */
+.autoplay { margin-left: auto; display: flex; align-items: center; gap: 6px; cursor: pointer; opacity: .7; }
+.autoplay input { cursor: pointer; margin: 0; }
 
 .toolbar { display: flex; gap: 8px; }
 .tool { font-size: .8rem; padding: 5px 11px; }

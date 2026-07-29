@@ -29,6 +29,7 @@
   var timeEl = document.getElementById('editor-time');
   var waveNote = document.getElementById('editor-wave-note');
   var moveBtn = dialog.querySelector('.editor-move');
+  var autoplayEl = document.getElementById('editor-autoplay');
 
   var SAVE_MS = 400;      // debounce before an edit is reported to the caller
   var ALIGN_MS = 150;     // debounce before edited text is re-matched to the audio
@@ -741,8 +742,10 @@
     align();
     syncMove();
     loadWaveform(note.audioUrl);
-    // The click that opened the dialog is the gesture autoplay needs.
-    audio.play().catch(function () { /* the user can still press play */ });
+    // The click that opened the dialog is the gesture autoplay needs — when the reader has
+    // left the box ticked. Unticked, the recording waits for Play, so a private memo opened
+    // to be read doesn't sound off on its own.
+    if (autoplayEl.checked) audio.play().catch(function () { /* the user can still press play */ });
     tick();
   }
 
@@ -831,6 +834,17 @@
       syncMove();
       scheduleSave();
     });
+  });
+
+  // Whether a note plays itself the moment it opens. The reader sets it with the Auto-play
+  // box; the choice rides in localStorage so it holds across reloads and every future note,
+  // not just this one reused dialog. A webview that refuses to store it just leaves autoplay
+  // on — the default the box ships ticked for.
+  var AUTOPLAY_KEY = 'highdeas.autoplay';
+  try { autoplayEl.checked = localStorage.getItem(AUTOPLAY_KEY) !== 'off'; } catch (err) { /* keep the ticked default */ }
+  autoplayEl.addEventListener('change', function () {
+    try { localStorage.setItem(AUTOPLAY_KEY, autoplayEl.checked ? 'on' : 'off'); }
+    catch (err) { /* a webview that won't store it forgets across reloads; no worse than before */ }
   });
 
   playBtn.addEventListener('click', function () { if (audio.paused) audio.play(); else audio.pause(); });
