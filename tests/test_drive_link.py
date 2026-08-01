@@ -50,12 +50,11 @@ def test_service_account_token_reads_the_key_file_and_returns_the_access_token()
         def refresh(self, request):
             calls.append("refreshed")
 
-        @classmethod
-        def from_service_account_file(cls, path, scopes):
-            calls.append((path, scopes))
-            return cls()
+    def fake_credentials(path, scopes):
+        calls.append((path, scopes))
+        return FakeCredentials()
 
-    token = _service_account_token("service-account.json", credentials_cls=FakeCredentials)
+    token = _service_account_token("service-account.json", credentials=fake_credentials)
 
     assert token == "fake-access-token"
     assert calls == [("service-account.json", [TOKEN_SCOPE]), "refreshed"]

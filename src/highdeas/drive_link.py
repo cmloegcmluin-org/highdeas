@@ -9,8 +9,6 @@ subfolder's name, ask Drive for the one folder matching both and read its id bac
 import re
 
 import requests
-from google.auth.transport.requests import Request
-from google.oauth2.service_account import Credentials
 
 # Read-only: this only ever looks a folder up by name, never creates or changes anything.
 TOKEN_SCOPE = "https://www.googleapis.com/auth/drive.readonly"
@@ -27,16 +25,32 @@ def parent_id_from_folder_url(url):
     return match.group(1) if match else ""
 
 
-def _service_account_token(service_account_file, *, credentials_cls=Credentials):
+def _service_account_credentials(service_account_file, scopes):
+    """google-auth is reached for here, inside the call, rather than at import: it is
+    the one dependency a machine is allowed to be missing (see pyproject), and a
+    module-level import would make its absence fatal to the whole app instead of to
+    this one lookup. Same shape as sheet.py's, for the same reason."""
+    from google.oauth2.service_account import Credentials
+
+    return Credentials.from_service_account_file(service_account_file, scopes=scopes)
+
+
+def _refresh(credentials):
+    from google.auth.transport.requests import Request
+
+    credentials.refresh(Request())
+
+
+def _service_account_token(service_account_file, *, credentials=_service_account_credentials):
     """A fresh OAuth access token for the configured service account, or "" without a
     key file. The resolver that builds a DriveFolderLinker is already None in that
     case (see app._drive_link_resolver), but this stays defensive rather than assume
     it's never reached any other way."""
     if not service_account_file:
         return ""
-    credentials = credentials_cls.from_service_account_file(service_account_file, scopes=[TOKEN_SCOPE])
-    credentials.refresh(Request())
-    return credentials.token
+    signed_in = credentials(service_account_file, [TOKEN_SCOPE])
+    _refresh(signed_in)
+    return signed_in.token
 
 
 def _escaped(value):

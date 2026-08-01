@@ -16,12 +16,11 @@ def test_user_access_token_reads_the_token_file_and_returns_the_access_token():
         def refresh(self, request):
             calls.append("refreshed")
 
-        @classmethod
-        def from_authorized_user_file(cls, path, scopes):
-            calls.append((path, scopes))
-            return cls()
+    def fake_credentials(path, scopes):
+        calls.append((path, scopes))
+        return FakeCredentials()
 
-    token = _user_access_token("token.json", credentials_cls=FakeCredentials)
+    token = _user_access_token("token.json", credentials=fake_credentials)
 
     assert token == "fake-user-access-token"
     assert calls == [("token.json", [TOKEN_SCOPE]), "refreshed"]

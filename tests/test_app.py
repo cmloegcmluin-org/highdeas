@@ -7,6 +7,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import quote
 
+import highdeas.drive_link
+import highdeas.drive_write
+import highdeas.sheet
 from highdeas.app import (
     PROJECT_ROOT,
     _ingest_continuously,
@@ -27,6 +30,21 @@ from highdeas.drive_write import DriveDocReconciler
 from highdeas.routers import parse_choices
 from highdeas.store import Memo, MemoStore
 from highdeas.window_state import WindowGeometry, load_geometry, save_geometry
+
+from conftest import reload_without
+
+
+def test_the_engine_starts_on_a_machine_without_google_auth():
+    """google-auth is the one dependency a machine is allowed to be missing (see
+    pyproject): without it the Drive calls fail where they are used and the app
+    falls back — the names it last saw, the static top-level folder link.
+
+    Reaching for it at import time makes its absence fatal to the whole engine
+    instead. That is how the Mac lost Highdeas: its venv never got the package,
+    `import highdeas.app` died on drive_link's first line, and the native shell
+    could only report it as a crash on launch."""
+    for module in (highdeas.sheet, highdeas.drive_link, highdeas.drive_write):
+        reload_without(module, "google")
 
 
 def test_open_when_ready_updates_then_waits_then_loads_then_restores_the_menu():

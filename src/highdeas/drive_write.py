@@ -74,10 +74,8 @@ very next memo that day is likely to reuse anyway."""
 import json
 
 import requests
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
 
-from highdeas.drive_link import _escaped
+from highdeas.drive_link import _escaped, _refresh
 
 # The narrowest Drive scope that can create files at all: see the module
 # docstring for why this, and not the full (and restricted) drive scope.
@@ -87,7 +85,16 @@ _FILES_ENDPOINT = "https://www.googleapis.com/drive/v3/files"
 _UPLOAD_ENDPOINT = "https://www.googleapis.com/upload/drive/v3/files"
 
 
-def _user_access_token(token_file, *, credentials_cls=Credentials):
+def _authorized_user_credentials(token_file, scopes):
+    """Deferred, like drive_link's: google-auth is the one dependency a machine may
+    be missing, and importing it at module scope would cost that machine the app
+    rather than just its Doc filing."""
+    from google.oauth2.credentials import Credentials
+
+    return Credentials.from_authorized_user_file(token_file, scopes=scopes)
+
+
+def _user_access_token(token_file, *, credentials=_authorized_user_credentials):
     """A fresh OAuth access token for the Google account authorized into
     `token_file` (the file scripts/authorize_google_docs.py writes after Douglas
     signs in once) -- or "" without one configured. The caller that builds a
@@ -96,9 +103,9 @@ def _user_access_token(token_file, *, credentials_cls=Credentials):
     the same posture drive_link._service_account_token takes."""
     if not token_file:
         return ""
-    credentials = credentials_cls.from_authorized_user_file(token_file, scopes=[TOKEN_SCOPE])
-    credentials.refresh(Request())
-    return credentials.token
+    signed_in = credentials(token_file, [TOKEN_SCOPE])
+    _refresh(signed_in)
+    return signed_in.token
 
 
 _DOC_MIME_TYPE = "application/vnd.google-apps.document"
