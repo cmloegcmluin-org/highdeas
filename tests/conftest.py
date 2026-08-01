@@ -1,8 +1,52 @@
+import importlib
+import sys
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
 
 import highdeas.app
+
+
+class _Absent:
+    """An import hook that makes one package look uninstalled."""
+
+    def __init__(self, package):
+        self._package = package
+
+    def find_spec(self, name, path=None, target=None):
+        if name == self._package or name.startswith(f"{self._package}."):
+            raise ModuleNotFoundError(f"No module named {name!r}", name=name)
+        return None
+
+
+@contextmanager
+def uninstalled(package):
+    """Run the block on a machine that doesn't have `package` — the hook refuses it,
+    and anything already imported from it is hidden for the duration and put back
+    after, so the rest of the suite still sees a normal machine."""
+    hook = _Absent(package)
+    hidden = {name: module for name, module in list(sys.modules.items())
+              if name == package or name.startswith(f"{package}.")}
+    for name in hidden:
+        del sys.modules[name]
+    sys.meta_path.insert(0, hook)
+    try:
+        yield
+    finally:
+        sys.meta_path.remove(hook)
+        sys.modules.update(hidden)
+
+
+def reload_without(module, package):
+    """Re-execute `module` from source as it would be imported on a machine without
+    `package` installed — the import a missing optional dependency has to survive.
+    Reloaded again afterwards so the suite keeps the module it started with."""
+    try:
+        with uninstalled(package):
+            importlib.reload(module)
+    finally:
+        importlib.reload(module)
 
 
 @pytest.fixture(autouse=True)
