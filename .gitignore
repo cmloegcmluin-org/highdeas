@@ -32,6 +32,12 @@ window.json
 # Generated, machine-specific taskbar shortcut (rebuild with "Create Highdeas Shortcut.bat")
 /Highdeas.lnk
 
+# The Mac shell's copy of the icon, which tools/make_mac_app.sh replaces wholesale from
+# tools/Highdeas.icon on every build — one artwork source, so this is only ever derived.
+# Tracked, it went stale the first time the icon changed and then dirtied the running
+# app's own checkout on the next rebuild, which is enough to make its `git pull` refuse.
+/mac/HighdeasMac/Highdeas.icon/
+
 # Claude Code worktrees and local settings
 .claude/
 
