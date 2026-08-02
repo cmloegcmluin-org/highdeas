@@ -23,6 +23,11 @@ public struct UploadEndpoint: Equatable, Sendable {
         baseURL.appending(path: "upload")
     }
 
+    /// How the queue names this machine when it records who has a recording.
+    /// Stable across relaunches and distinct per machine, because it is just
+    /// the address the Settings line gave.
+    public var key: String { uploadURL.absoluteString }
+
     /// The Settings field holds one machine per line; every valid line becomes
     /// an endpoint. All of them share one token — the same value lives in both
     /// machines' .env files by design.

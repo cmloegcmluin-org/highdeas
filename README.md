@@ -484,7 +484,9 @@ Everything but the keys for the destinations you use is optional. Set these in `
 
 - No-special-machine Highdeas (decided with Douglas 2026-07-10, deferred to its own
   session): both desks run the full app against state in a folder both machines
-  sync; the iOS app pushes to a *list* of peers — whichever answers first — over
+  sync; the iOS app pushes to a *list* of peers — keeping each recording until
+  every one of them has confirmed it, so a machine that was asleep is caught up by
+  the phone rather than by the sync layer — over
   Tailscale so it works away from home too. Building blocks and landmines, in
   dependency order: (1) shared memo state is the kernel — SQLite inside a sync
   folder corrupts under concurrent writers, so it needs a single-writer rule or

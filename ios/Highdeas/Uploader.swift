@@ -6,7 +6,10 @@ import HighdeasKit
 /// Each finished attempt is reported back as an `UploadOutcome`; the queue
 /// rules live in HighdeasKit, not here.
 final class Uploader: NSObject, URLSessionDataDelegate {
-    var onOutcome: (@MainActor (String, UploadOutcome) -> Void)?
+    /// Recording, the machine that answered, what it said. The queue records
+    /// deliveries per machine, so an outcome that didn't say who it came from
+    /// would be unusable.
+    var onOutcome: (@MainActor (String, String, UploadOutcome) -> Void)?
     /// The system's "wake finished" handler, parked here between
     /// handleEventsForBackgroundURLSession and the session draining its
     /// queued delegate events.
@@ -53,10 +56,13 @@ final class Uploader: NSObject, URLSessionDataDelegate {
             try MultipartUpload.writeBody(of: recording, boundary: boundary, to: body)
             let task = session.uploadTask(
                 with: MultipartUpload.request(to: endpoint, boundary: boundary), fromFile: body)
-            task.taskDescription = recording.lastPathComponent + "|" + bodyName
+            // recording | machine | staged body. None of the three can contain a
+            // pipe: the first two are generated names, the third an address.
+            task.taskDescription = [recording.lastPathComponent, endpoint.key, bodyName]
+                .joined(separator: "|")
             task.resume()
         } catch {
-            report(recording.lastPathComponent, .retriable)
+            report(recording.lastPathComponent, endpoint.key, .retriable)
         }
     }
 
@@ -77,17 +83,21 @@ final class Uploader: NSObject, URLSessionDataDelegate {
     nonisolated func urlSession(_ session: URLSession, task: URLSessionTask,
                                 didCompleteWithError error: Error?) {
         guard let description = task.taskDescription else { return }
-        let parts = description.split(separator: "|", maxSplits: 1).map(String.init)
-        let fileName = parts[0]
+        let parts = description.split(separator: "|", maxSplits: 2).map(String.init)
+        guard parts.count >= 2 else { return }
+        // The staged body is always last, and wants clearing either way — a task
+        // an older build started names no machine (recording|body), so its answer
+        // can't be recorded against one. The stale-flight release re-pushes it.
+        try? FileManager.default.removeItem(
+            at: bodiesDirectory.appending(path: parts[parts.count - 1]))
+        guard parts.count == 3 else { return }
         let status = (task.response as? HTTPURLResponse)?.statusCode
         let outcome = error == nil ? UploadOutcome(statusCode: status) : UploadOutcome.retriable
-        if parts.count == 2 {
-            try? FileManager.default.removeItem(at: bodiesDirectory.appending(path: parts[1]))
-        }
-        report(fileName, outcome)
+        report(parts[0], parts[1], outcome)
     }
 
-    private nonisolated func report(_ fileName: String, _ outcome: UploadOutcome) {
-        Task { @MainActor in self.onOutcome?(fileName, outcome) }
+    private nonisolated func report(_ fileName: String, _ peer: String,
+                                    _ outcome: UploadOutcome) {
+        Task { @MainActor in self.onOutcome?(fileName, peer, outcome) }
     }
 }
