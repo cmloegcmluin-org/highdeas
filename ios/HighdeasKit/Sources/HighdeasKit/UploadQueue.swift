@@ -14,13 +14,24 @@ public struct PendingUpload: Equatable, Identifiable, Sendable {
     /// Shown on the row; a blocked upload still retries, slowly, so fixing
     /// the token in Settings heals the queue without any per-row action.
     public var blockedReason: String?
-    /// Fan-out bookkeeping: how many machines this flight is still waiting
-    /// on, the refusal to surface if the flight ends without a 2xx, and when
-    /// the flight began — so the UI can stop saying "Uploading…" about a
+    /// Fan-out bookkeeping: which machines this flight went to and which have
+    /// answered, the refusal to surface if the flight ends with no 2xx, and
+    /// when the flight began — so the UI can stop saying "Uploading…" about a
     /// flight nothing has answered in minutes.
-    public var outcomesAwaited: Int
+    public var flightPeers: Set<String>
+    public var answered: Set<String>
     public var refusalDuringFlight: String?
     public var flightStartedAt: Date?
+    /// Which machines are known to hold this recording. It outlives the flight
+    /// that earned it: a peer that took the file in one round is not pushed to
+    /// again, and the recording stays on the phone until every machine is in
+    /// here. That is the whole point — the phone is the only device present at
+    /// both ends of a trip, so it, not Syncthing, is what carries a note to a
+    /// machine that was asleep when the note was spoken.
+    public var confirmedBy: Set<String>
+    /// When the first machine took it, and so when the patience clock starts
+    /// for the machines that haven't (see `releaseLongUndelivered`).
+    public var firstConfirmedAt: Date?
 
     public var id: String { fileName }
 
@@ -43,16 +54,20 @@ public struct PendingUpload: Equatable, Identifiable, Sendable {
 
     public init(fileName: String, attempts: Int = 0, notBefore: Date = .distantPast,
                 inFlight: Bool = false, blockedReason: String? = nil,
-                outcomesAwaited: Int = 0, refusalDuringFlight: String? = nil,
-                flightStartedAt: Date? = nil) {
+                flightPeers: Set<String> = [], answered: Set<String> = [],
+                refusalDuringFlight: String? = nil, flightStartedAt: Date? = nil,
+                confirmedBy: Set<String> = [], firstConfirmedAt: Date? = nil) {
         self.fileName = fileName
         self.attempts = attempts
         self.notBefore = notBefore
         self.inFlight = inFlight
         self.blockedReason = blockedReason
-        self.outcomesAwaited = outcomesAwaited
+        self.flightPeers = flightPeers
+        self.answered = answered
         self.refusalDuringFlight = refusalDuringFlight
         self.flightStartedAt = flightStartedAt
+        self.confirmedBy = confirmedBy
+        self.firstConfirmedAt = firstConfirmedAt
     }
 }
 
@@ -87,45 +102,69 @@ public struct UploadQueue: Equatable, Sendable {
         pending.first { !$0.inFlight && $0.notBefore <= now }
     }
 
-    /// A flight begins: the recording is being pushed to `expecting` machines
-    /// at once (every configured peer — the shared store dedupes, so whichever
-    /// machine answers second just says "already have it").
-    public mutating func markInFlight(_ fileName: String, expecting: Int = 1, at now: Date = Date()) {
+    /// A flight begins: the recording is being pushed to each of `peers` at
+    /// once. The caller passes only the machines that don't have it yet, so a
+    /// second round after a partial delivery is addressed to the stragglers
+    /// alone — the machine that already answered is neither asked again nor
+    /// waited for.
+    public mutating func markInFlight(_ fileName: String, toward peers: [String],
+                                      at now: Date = Date()) {
         update(fileName) {
             $0.inFlight = true
-            $0.outcomesAwaited = expecting
+            $0.flightPeers = Set(peers)
+            $0.answered = []
             $0.refusalDuringFlight = nil
             $0.flightStartedAt = now
         }
     }
 
-    /// One machine's answer arrives. The first confirmation wins immediately;
-    /// failure is declared only when the last machine has answered — one dead
-    /// peer's fast refusal must not unlock a re-push while another's task is
-    /// still grinding through the system's background retry.
-    public mutating func resolve(_ fileName: String, _ outcome: UploadOutcome, at now: Date) {
+    /// One machine's answer arrives. A confirmation is recorded against that
+    /// machine and nothing more: the recording leaves the phone only once every
+    /// machine in the flight has taken it. Failure is likewise declared only
+    /// when the last machine has answered — one dead peer's fast refusal must
+    /// not unlock a re-push while another's task is still grinding through the
+    /// system's background retry.
+    public mutating func resolve(_ fileName: String, from peer: String,
+                                 _ outcome: UploadOutcome, at now: Date) {
         guard let index = pending.firstIndex(where: { $0.fileName == fileName }) else { return }
-        switch outcome {
-        case .confirmed:
+        // A confirmation is a fact about that machine — it has the bytes — and
+        // stays true however late it arrives, including from a flight already
+        // given up on. A failure is only ever news about the flight it belongs
+        // to: a dead flight's echo (a cancelled task, a machine answering past
+        // the deadline) steers nothing, because that entry's course was set
+        // when the flight was released.
+        if case .confirmed = outcome {
+            pending[index].confirmedBy.insert(peer)
+            if pending[index].firstConfirmedAt == nil {
+                pending[index].firstConfirmedAt = now
+            }
+        }
+        var flightIsOver = false
+        if pending[index].inFlight, pending[index].flightPeers.contains(peer) {
+            pending[index].answered.insert(peer)
+            if case .blocked(let reason) = outcome {
+                pending[index].refusalDuringFlight = reason
+            }
+            flightIsOver = pending[index].answered.isSuperset(of: pending[index].flightPeers)
+        }
+        // Everyone it was last addressed to has it: the phone is done carrying it.
+        if !pending[index].flightPeers.isEmpty,
+           pending[index].flightPeers.isSubset(of: pending[index].confirmedBy) {
             confirmSent(fileName)
-        case .blocked(let reason):
-            // A dead flight's echo (a cancelled task, a machine answering
-            // past the deadline) steers nothing: the entry's course was set
-            // when the flight was released. Only a confirmation is final
-            // wherever it comes from.
-            guard pending[index].inFlight else { return }
-            pending[index].refusalDuringFlight = reason
-            fallthrough
-        case .retriable:
-            guard pending[index].inFlight else { return }
-            pending[index].outcomesAwaited -= 1
-            guard pending[index].outcomesAwaited <= 0 else { return }
+        } else if flightIsOver {
             if let reason = pending[index].refusalDuringFlight {
                 block(fileName, reason: reason, at: now)
             } else {
                 retryLater(fileName, at: now)
             }
         }
+    }
+
+    /// The machines that still owe this recording a home — what the next flight
+    /// is addressed to, given everything currently configured.
+    public func peersStillOwed(_ fileName: String, of peers: [String]) -> [String] {
+        guard let entry = pending.first(where: { $0.fileName == fileName }) else { return [] }
+        return peers.filter { !entry.confirmedBy.contains($0) }
     }
 
     /// Declare lost any flight silent past `silentFor`, returning it to the
@@ -144,7 +183,10 @@ public struct UploadQueue: Equatable, Sendable {
             pending[index].inFlight = false
             pending[index].attempts += 1
             pending[index].flightStartedAt = nil
-            pending[index].outcomesAwaited = 0
+            // flightPeers outlives the flight: it is the record of who this
+            // recording is owed to, and a confirmation that trickles in after
+            // the release still has to be able to complete the set.
+            pending[index].answered = []
             pending[index].refusalDuringFlight = nil
             pending[index].notBefore = now.addingTimeInterval(
                 Self.backoff(afterAttempts: pending[index].attempts))
@@ -193,6 +235,30 @@ public struct UploadQueue: Equatable, Sendable {
         for index in pending.indices where !pending[index].inFlight {
             pending[index].notBefore = .distantPast
         }
+    }
+
+    /// How long a recording that at least one machine already holds goes on
+    /// waiting for the rest.
+    ///
+    /// Without a limit, "keep it until every machine has it" means a machine
+    /// that is never coming back — a laptop sold, an address mistyped in
+    /// Settings — pins every recording on the phone forever, and the only cure
+    /// is noticing and deleting the line. A week is longer than any trip that
+    /// ends at one of these desks, and the note is not at risk meanwhile: some
+    /// machine has had it since the clock started, so letting go costs the
+    /// second copy, never the note.
+    public static let deliveryPatience: TimeInterval = 7 * 24 * 60 * 60
+
+    /// Let go of recordings that one machine took and the others never came
+    /// for. Returns their names so the caller can delete the files.
+    public mutating func releaseLongUndelivered(
+            at now: Date, patience: TimeInterval = deliveryPatience) -> [String] {
+        let given = pending.filter {
+            guard let since = $0.firstConfirmedAt else { return false }
+            return now.timeIntervalSince(since) >= patience
+        }.map(\.fileName)
+        pending.removeAll { given.contains($0.fileName) }
+        return given
     }
 
     public static let maximumBackoff: TimeInterval = 300

@@ -76,8 +76,8 @@ final class CaptureModel: ObservableObject {
             serverURLs = old
         }
         recorder.onFinished = { [weak self] url in self?.adopt(url) }
-        uploader.onOutcome = { [weak self] fileName, outcome in
-            self?.handle(fileName, outcome)
+        uploader.onOutcome = { [weak self] fileName, peer, outcome in
+            self?.handle(fileName, peer, outcome)
         }
         adoptLeftovers()
         uploader.reconnect()  // collect outcomes that arrived while the app was gone
@@ -179,35 +179,61 @@ final class CaptureModel: ObservableObject {
         for stale in queue.releaseStaleFlights(at: now) {
             uploader.abandon(stale)
         }
+        // A recording one machine took and the others never came for is let go
+        // of eventually, or a machine that is never coming back would pin every
+        // recording on the phone forever. Some machine has had it all along.
+        for given in queue.releaseLongUndelivered(at: now) {
+            try? FileManager.default.removeItem(
+                at: recordingsDirectory.appending(path: given))
+        }
         let peers = endpoints
         guard !peers.isEmpty else { return }
         while let ready = queue.next(at: now) {
-            queue.markInFlight(ready.fileName, expecting: peers.count)
-            for peer in peers {
+            // Only the machines that don't have it yet: a second round after a
+            // partial delivery is addressed to the stragglers alone.
+            let owed = queue.peersStillOwed(ready.fileName, of: peers.map(\.key))
+            guard !owed.isEmpty else {
+                // Everything still listed already has it — a machine dropped
+                // from Settings after a partial delivery. Nothing left to carry.
+                letGo(of: ready.fileName)
+                continue
+            }
+            queue.markInFlight(ready.fileName, toward: owed, at: now)
+            for peer in peers where owed.contains(peer.key) {
                 uploader.push(recordingsDirectory.appending(path: ready.fileName), to: peer)
             }
         }
     }
 
-    private func handle(_ fileName: String, _ outcome: UploadOutcome) {
-        // The queue arbitrates the fan-out: first confirmation wins, failure
-        // waits for the last machine to answer.
-        queue.resolve(fileName, outcome, at: Date())
-        if case .confirmed = outcome, let recordedAt = recordedDate(of: fileName) {
-            // The row stays on for a few seconds to say it arrived, so the note is
-            // never nowhere. Read the recording's own time first: in a moment there
-            // will be no file left to read it from — and if there is no file to read
-            // it from now, this is a late echo of a delivery already seen and gone
-            // (a background outcome replayed on relaunch), not a note just landed.
-            // Announcing that one would put "Delivered" at the foot of the list,
-            // dated distantPast, about a recording the phone finished with long ago.
-            receipts.confirm(fileName, recordedAt: recordedAt, at: Date())
-            // Entry first, file second: a crash in between costs one duplicate
-            // upload (the server dedupes), never a lost memo.
-            try? FileManager.default.removeItem(
-                at: recordingsDirectory.appending(path: fileName))
+    private func handle(_ fileName: String, _ peer: String, _ outcome: UploadOutcome) {
+        // The queue arbitrates the fan-out: a confirmation is recorded against
+        // the machine that gave it, and the recording is released only once
+        // every machine has one. Failure waits for the last machine to answer.
+        let carried = queue.pending.contains { $0.fileName == fileName }
+        queue.resolve(fileName, from: peer, outcome, at: Date())
+        if carried, !queue.pending.contains(where: { $0.fileName == fileName }) {
+            letGo(of: fileName)
         }
         wake()
+    }
+
+    /// Every machine has it (or the phone has waited long enough for the ones
+    /// that don't): show the row as delivered for a moment, then let the file go.
+    private func letGo(of fileName: String) {
+        // Read the recording's own time first: in a moment there will be no file
+        // left to read it from — and if there is no file to read it from now, this
+        // is a late echo of a delivery already seen and gone (a background outcome
+        // replayed on relaunch), not a note just landed. Announcing that one would
+        // put "Delivered" at the foot of the list, dated distantPast, about a
+        // recording the phone finished with long ago.
+        if let recordedAt = recordedDate(of: fileName) {
+            receipts.confirm(fileName, recordedAt: recordedAt, at: Date())
+        }
+        // Entry first, file second: a crash in between costs one duplicate
+        // upload (the server dedupes), never a lost memo.
+        queue.confirmSent(fileName)
+        try? FileManager.default.removeItem(
+            at: recordingsDirectory.appending(path: fileName))
     }
 
     private func rebuildItems() {

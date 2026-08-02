@@ -4,6 +4,18 @@ import Testing
 
 private let t0 = Date(timeIntervalSince1970: 1_780_000_000)
 
+/// The machines a flight is addressed to. Endpoints are identified by their
+/// upload URL, which is what the app has to hand and what stays stable across
+/// relaunches.
+let pc = "http://192.168.1.23:5055/upload"
+let mac = "http://192.168.1.44:5055/upload"
+let spare = "http://192.168.1.99:5055/upload"
+
+/// The first `count` of them, for tests that only care how many answered.
+func machines(_ count: Int) -> [String] {
+    Array([pc, mac, spare].prefix(count))
+}
+
 @Suite struct UploadQueueTests {
     @Test func enqueueDedupes() {
         var queue = UploadQueue()
@@ -31,7 +43,7 @@ private let t0 = Date(timeIntervalSince1970: 1_780_000_000)
         queue.enqueue("flying.m4a")
         queue.enqueue("waiting.m4a")
         queue.enqueue("ready.m4a")
-        queue.markInFlight("flying.m4a")
+        queue.markInFlight("flying.m4a", toward: [pc])
         queue.retryLater("waiting.m4a", at: t0)
 
         #expect(queue.next(at: t0)?.fileName == "ready.m4a")
@@ -42,7 +54,7 @@ private let t0 = Date(timeIntervalSince1970: 1_780_000_000)
     @Test func nextIsEmptyWhenEverythingWaits() {
         var queue = UploadQueue()
         queue.enqueue("a.m4a")
-        queue.markInFlight("a.m4a")
+        queue.markInFlight("a.m4a", toward: [pc])
         #expect(queue.next(at: t0) == nil)
     }
 
@@ -56,7 +68,7 @@ private let t0 = Date(timeIntervalSince1970: 1_780_000_000)
     @Test func retryLaterBacksOffAndClearsInFlight() {
         var queue = UploadQueue()
         queue.enqueue("a.m4a")
-        queue.markInFlight("a.m4a")
+        queue.markInFlight("a.m4a", toward: [pc])
 
         queue.retryLater("a.m4a", at: t0)
 
@@ -107,14 +119,14 @@ private let t0 = Date(timeIntervalSince1970: 1_780_000_000)
     private func queued(_ name: String = "a.m4a", expecting peers: Int) -> UploadQueue {
         var queue = UploadQueue()
         queue.enqueue(name)
-        queue.markInFlight(name, expecting: peers)
+        queue.markInFlight(name, toward: machines(peers))
         return queue
     }
 
     @Test func aFlightStaysInFlightUntilEveryPeerHasAnswered() {
         var queue = queued(expecting: 2)
 
-        queue.resolve("a.m4a", .retriable, at: now)
+        queue.resolve("a.m4a", from: pc, .retriable, at: now)
 
         // One dead machine must not unlock a re-push while the other's task
         // is still grinding in the system's background retry.
@@ -125,8 +137,8 @@ private let t0 = Date(timeIntervalSince1970: 1_780_000_000)
     @Test func aFlightFailsOnlyWhenTheLastPeerFails() {
         var queue = queued(expecting: 2)
 
-        queue.resolve("a.m4a", .retriable, at: now)
-        queue.resolve("a.m4a", .retriable, at: now)
+        queue.resolve("a.m4a", from: pc, .retriable, at: now)
+        queue.resolve("a.m4a", from: mac, .retriable, at: now)
 
         let entry = queue.pending.first
         #expect(entry?.inFlight == false)
@@ -134,19 +146,46 @@ private let t0 = Date(timeIntervalSince1970: 1_780_000_000)
         #expect(entry?.notBefore ?? .distantPast > now)
     }
 
-    @Test func theFirstConfirmationWinsImmediately() {
+    @Test func twoAnswersFromTheSameMachineAreOneAnswer() {
+        // The count that ends a flight is of machines, not of callbacks: a
+        // background session can replay an outcome, and a replayed refusal must
+        // not stand in for the machine that hasn't spoken yet.
         var queue = queued(expecting: 2)
 
-        queue.resolve("a.m4a", .confirmed, at: now)
+        queue.resolve("a.m4a", from: pc, .retriable, at: now)
+        queue.resolve("a.m4a", from: pc, .retriable, at: now)
 
-        #expect(queue.pending.isEmpty)
+        #expect(queue.pending.first?.inFlight == true)
     }
 
-    @Test func aLateOutcomeAfterConfirmationIsANoOp() {
-        var queue = queued(expecting: 2)
-        queue.resolve("a.m4a", .confirmed, at: now)
+    @Test func aFailureFromAMachineTheFlightNeverWentToIsIgnored() {
+        // Settings changed mid-flight, or a task from the previous round landed
+        // late: either way that refusal is news about a different flight, and
+        // must not stand in for the machine this one is still waiting on.
+        var queue = queued(expecting: 1)
 
-        queue.resolve("a.m4a", .retriable, at: now)
+        queue.resolve("a.m4a", from: spare, .retriable, at: now)
+
+        #expect(queue.pending.first?.inFlight == true)
+        #expect(queue.pending.first?.attempts == 0)
+    }
+
+    @Test func aConfirmationCountsWhoeverItCameFrom() {
+        // Unlike a refusal: a 2xx means that machine holds the bytes, which
+        // stays true whether or not this flight was addressed to it.
+        var queue = queued(expecting: 1)
+
+        queue.resolve("a.m4a", from: spare, .confirmed, at: now)
+
+        #expect(queue.pending.first?.confirmedBy == [spare])
+    }
+
+    @Test func aLateOutcomeAfterFullDeliveryIsANoOp() {
+        var queue = queued(expecting: 2)
+        queue.resolve("a.m4a", from: pc, .confirmed, at: now)
+        queue.resolve("a.m4a", from: mac, .confirmed, at: now)
+
+        queue.resolve("a.m4a", from: pc, .retriable, at: now)
 
         #expect(queue.pending.isEmpty)
     }
@@ -155,8 +194,9 @@ private let t0 = Date(timeIntervalSince1970: 1_780_000_000)
         // One machine 401s (config problem worth words), the other is off.
         var queue = queued(expecting: 2)
 
-        queue.resolve("a.m4a", .blocked("The server rejected the upload token — check Settings."), at: now)
-        queue.resolve("a.m4a", .retriable, at: now)
+        queue.resolve("a.m4a", from: pc,
+                      .blocked("The server rejected the upload token — check Settings."), at: now)
+        queue.resolve("a.m4a", from: mac, .retriable, at: now)
 
         let entry = queue.pending.first
         #expect(entry?.blockedReason?.contains("token") == true)
@@ -166,7 +206,7 @@ private let t0 = Date(timeIntervalSince1970: 1_780_000_000)
     @Test func singlePeerFlightsBehaveAsTheyAlwaysHave() {
         var queue = queued(expecting: 1)
 
-        queue.resolve("a.m4a", .retriable, at: now)
+        queue.resolve("a.m4a", from: pc, .retriable, at: now)
 
         let entry = queue.pending.first
         #expect(entry?.inFlight == false)
@@ -174,9 +214,99 @@ private let t0 = Date(timeIntervalSince1970: 1_780_000_000)
     }
 }
 
+// MARK: - Carrying a recording until every machine has it
+
+@Suite struct EveryMachineTests {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    private func flying(_ name: String = "a.m4a", toward peers: [String]) -> UploadQueue {
+        var queue = UploadQueue()
+        queue.enqueue(name)
+        queue.markInFlight(name, toward: peers, at: now)
+        return queue
+    }
+
+    @Test func aRecordingStaysUntilEveryMachineHasIt() {
+        // The PC takes it; the Mac is asleep in the next room. Syncthing can only
+        // converge two machines that are awake together, so if the phone lets go
+        // now the note reaches the Mac when the PC next wakes -- which, for a Mac
+        // being packed for a trip, can be after it has left the house.
+        var queue = flying(toward: [pc, mac])
+
+        queue.resolve("a.m4a", from: pc, .confirmed, at: now)
+
+        #expect(queue.pending.count == 1)
+        #expect(queue.pending.first?.confirmedBy == [pc])
+    }
+
+    @Test func theLastMachineToTakeItReleasesTheRecording() {
+        var queue = flying(toward: [pc, mac])
+        queue.resolve("a.m4a", from: pc, .confirmed, at: now)
+
+        queue.resolve("a.m4a", from: mac, .confirmed, at: now)
+
+        #expect(queue.pending.isEmpty)
+    }
+
+    @Test func aPartlyDeliveredRecordingRetriesTheStragglersAlone() {
+        // The next round is addressed only to the machines that never answered:
+        // re-pushing to the one that already has it costs bytes on a phone that
+        // may be on cellular, and earns a "already have it" at best.
+        var queue = flying(toward: [pc, mac])
+        queue.resolve("a.m4a", from: pc, .confirmed, at: now)
+        queue.resolve("a.m4a", from: mac, .retriable, at: now)
+
+        #expect(queue.peersStillOwed("a.m4a", of: [pc, mac]) == [mac])
+    }
+
+    @Test func aMachineDroppedFromSettingsStopsBeingWaitedFor() {
+        // The peer list is the caller's, read fresh each round: delete a machine
+        // in Settings and the recording it never took is owed to nobody, which
+        // is the caller's cue to let the file go.
+        var queue = flying(toward: [pc, mac])
+        queue.resolve("a.m4a", from: pc, .confirmed, at: now)
+        queue.resolve("a.m4a", from: mac, .retriable, at: now)
+
+        #expect(queue.peersStillOwed("a.m4a", of: [pc]).isEmpty)
+    }
+
+    @Test func aRecordingOneMachineTookIsLetGoAfterThePatienceRunsOut() {
+        // Otherwise a machine that is never coming back -- sold, or a mistyped
+        // address -- pins every recording on the phone forever.
+        var queue = flying(toward: [pc, mac])
+        queue.resolve("a.m4a", from: pc, .confirmed, at: now)
+        queue.resolve("a.m4a", from: mac, .retriable, at: now)
+
+        let week = now.addingTimeInterval(UploadQueue.deliveryPatience)
+        #expect(queue.releaseLongUndelivered(at: week.addingTimeInterval(-1)) == [])
+        #expect(queue.releaseLongUndelivered(at: week) == ["a.m4a"])
+        #expect(queue.pending.isEmpty)
+    }
+
+    @Test func aRecordingNoMachineHasIsNeverLetGoOf() {
+        // The patience is for a second copy, never for the note itself: away
+        // from every machine for a month, the phone keeps carrying it.
+        var queue = flying(toward: [pc, mac])
+        queue.resolve("a.m4a", from: pc, .retriable, at: now)
+        queue.resolve("a.m4a", from: mac, .retriable, at: now)
+
+        #expect(queue.releaseLongUndelivered(at: now.addingTimeInterval(30 * 24 * 3600)) == [])
+        #expect(queue.pending.count == 1)
+    }
+}
+
 // MARK: - Parsing the Settings screen's list of machines
 
 @Suite struct EndpointListTests {
+    @Test func anEndpointIsIdentifiedByTheAddressItPostsTo() {
+        // The queue records deliveries against this string, so it has to be the
+        // same across relaunches and different between machines. The upload URL
+        // is both — and is what the Settings line already is.
+        let endpoint = UploadEndpoint(serverURL: "http://192.168.1.23:5055", token: "tok")
+
+        #expect(endpoint?.key == "http://192.168.1.23:5055/upload")
+    }
+
     @Test func oneEndpointPerLineTrimmedAndValidated() {
         let endpoints = UploadEndpoint.list(
             from: " http://192.168.1.23:5055 \n\nhttp://mac.tail1234.ts.net:5055\nnot a url\n",
@@ -202,7 +332,7 @@ private let t0 = Date(timeIntervalSince1970: 1_780_000_000)
         var queue = UploadQueue()
         queue.enqueue("a.m4a")
 
-        queue.markInFlight("a.m4a", expecting: 3, at: start)
+        queue.markInFlight("a.m4a", toward: machines(3), at: start)
 
         #expect(queue.pending.first?.flightStartedAt == start)
     }
@@ -210,9 +340,9 @@ private let t0 = Date(timeIntervalSince1970: 1_780_000_000)
     @Test func resolvingClearsTheFlightClock() {
         var queue = UploadQueue()
         queue.enqueue("a.m4a")
-        queue.markInFlight("a.m4a", expecting: 1, at: start)
+        queue.markInFlight("a.m4a", toward: machines(1), at: start)
 
-        queue.resolve("a.m4a", .retriable, at: start.addingTimeInterval(5))
+        queue.resolve("a.m4a", from: pc, .retriable, at: start.addingTimeInterval(5))
 
         #expect(queue.pending.first?.flightStartedAt == nil)
     }
@@ -232,7 +362,7 @@ private let t0 = Date(timeIntervalSince1970: 1_780_000_000)
     @Test func aFreshFlightIsStillJustUploading() {
         var queue = UploadQueue()
         queue.enqueue("a.m4a")
-        queue.markInFlight("a.m4a", expecting: 2, at: start)
+        queue.markInFlight("a.m4a", toward: machines(2), at: start)
 
         #expect(!entry(in: queue).awaitingMachine(at: start.addingTimeInterval(5)))
     }
@@ -240,7 +370,7 @@ private let t0 = Date(timeIntervalSince1970: 1_780_000_000)
     @Test func aFlightNothingAnswersGoesToAwaitingAMachine() {
         var queue = UploadQueue()
         queue.enqueue("a.m4a")
-        queue.markInFlight("a.m4a", expecting: 2, at: start)
+        queue.markInFlight("a.m4a", toward: machines(2), at: start)
 
         #expect(entry(in: queue).awaitingMachine(at: start.addingTimeInterval(11)))
     }
@@ -248,9 +378,9 @@ private let t0 = Date(timeIntervalSince1970: 1_780_000_000)
     @Test func aRoundThatCameBackEmptyWaitsAsAwaitingAMachineNotAsACountdown() {
         var queue = UploadQueue()
         queue.enqueue("a.m4a")
-        queue.markInFlight("a.m4a", expecting: 2, at: start)
-        queue.resolve("a.m4a", .retriable, at: start.addingTimeInterval(1))
-        queue.resolve("a.m4a", .retriable, at: start.addingTimeInterval(2))
+        queue.markInFlight("a.m4a", toward: machines(2), at: start)
+        queue.resolve("a.m4a", from: pc, .retriable, at: start.addingTimeInterval(1))
+        queue.resolve("a.m4a", from: mac, .retriable, at: start.addingTimeInterval(2))
 
         #expect(entry(in: queue).awaitingMachine(at: start.addingTimeInterval(3)))
     }
@@ -258,8 +388,8 @@ private let t0 = Date(timeIntervalSince1970: 1_780_000_000)
     @Test func aRefusalIsNotAMissingMachine() {
         var queue = UploadQueue()
         queue.enqueue("a.m4a")
-        queue.markInFlight("a.m4a", expecting: 1, at: start)
-        queue.resolve("a.m4a", .blocked("Server refused (401)."), at: start.addingTimeInterval(1))
+        queue.markInFlight("a.m4a", toward: machines(1), at: start)
+        queue.resolve("a.m4a", from: pc, .blocked("Server refused (401)."), at: start.addingTimeInterval(1))
 
         #expect(!entry(in: queue).awaitingMachine(at: start.addingTimeInterval(60)))
     }
@@ -280,8 +410,8 @@ private let t0 = Date(timeIntervalSince1970: 1_780_000_000)
     @Test func expediteMakesABackedOffEntryDueImmediately() {
         var queue = UploadQueue()
         queue.enqueue("a.m4a")
-        queue.markInFlight("a.m4a", at: start)
-        queue.resolve("a.m4a", .retriable, at: start)  // backoff pushes notBefore out
+        queue.markInFlight("a.m4a", toward: [pc], at: start)
+        queue.resolve("a.m4a", from: pc, .retriable, at: start)  // backoff pushes notBefore out
 
         queue.expedite()
 
@@ -291,8 +421,8 @@ private let t0 = Date(timeIntervalSince1970: 1_780_000_000)
     @Test func expediteKeepsABlockedReasonButRetriesAnyway() {
         var queue = UploadQueue()
         queue.enqueue("a.m4a")
-        queue.markInFlight("a.m4a", at: start)
-        queue.resolve("a.m4a", .blocked("Server refused (401)."), at: start)
+        queue.markInFlight("a.m4a", toward: [pc], at: start)
+        queue.resolve("a.m4a", from: pc, .blocked("Server refused (401)."), at: start)
 
         queue.expedite()
 
@@ -305,7 +435,7 @@ private let t0 = Date(timeIntervalSince1970: 1_780_000_000)
     @Test func expediteLeavesALiveFlightAlone() {
         var queue = UploadQueue()
         queue.enqueue("a.m4a")
-        queue.markInFlight("a.m4a", at: start)
+        queue.markInFlight("a.m4a", toward: [pc], at: start)
 
         queue.expedite()
 
@@ -326,7 +456,7 @@ private let t0 = Date(timeIntervalSince1970: 1_780_000_000)
     private func stuckQueue() -> UploadQueue {
         var queue = UploadQueue()
         queue.enqueue("a.m4a")
-        queue.markInFlight("a.m4a", expecting: 2, at: start)
+        queue.markInFlight("a.m4a", toward: machines(2), at: start)
         return queue
     }
 
@@ -357,8 +487,8 @@ private let t0 = Date(timeIntervalSince1970: 1_780_000_000)
 
         // The cancelled tasks (and any machine answering after the deadline)
         // still echo through the delegate; the entry's course is already set.
-        queue.resolve("a.m4a", .retriable, at: start.addingTimeInterval(122))
-        queue.resolve("a.m4a", .blocked("Server refused (401)."), at: start.addingTimeInterval(123))
+        queue.resolve("a.m4a", from: pc, .retriable, at: start.addingTimeInterval(122))
+        queue.resolve("a.m4a", from: pc, .blocked("Server refused (401)."), at: start.addingTimeInterval(123))
 
         #expect(queue.pending[0] == released)
     }
@@ -367,7 +497,21 @@ private let t0 = Date(timeIntervalSince1970: 1_780_000_000)
         var queue = stuckQueue()
         _ = queue.releaseStaleFlights(at: start.addingTimeInterval(121))
 
-        queue.resolve("a.m4a", .confirmed, at: start.addingTimeInterval(122))
+        queue.resolve("a.m4a", from: pc, .confirmed, at: start.addingTimeInterval(122))
+
+        // That machine really does have it, whenever it got round to saying so,
+        // and the next round won't ask it again — but the other machine hasn't,
+        // so the recording stays.
+        #expect(queue.pending[0].confirmedBy == [pc])
+        #expect(queue.peersStillOwed("a.m4a", of: [pc, mac]) == [mac])
+    }
+
+    @Test func aDeadFlightsLateConfirmationCanBeTheLastOneOwed() {
+        var queue = stuckQueue()
+        _ = queue.releaseStaleFlights(at: start.addingTimeInterval(121))
+        queue.resolve("a.m4a", from: pc, .confirmed, at: start.addingTimeInterval(122))
+
+        queue.resolve("a.m4a", from: mac, .confirmed, at: start.addingTimeInterval(123))
 
         #expect(queue.pending.isEmpty)
     }
