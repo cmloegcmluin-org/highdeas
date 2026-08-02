@@ -11,6 +11,11 @@ struct RecordingItem: Identifiable, Equatable {
         case recording
         case uploading
         case awaitingMachine
+        /// Some machines have it and some don't. Its own state because the
+        /// waiting one would otherwise say "when a computer is around" about a
+        /// recording a computer has already taken — which reads as a failure,
+        /// and is the opposite of the truth.
+        case landedOnSome(have: Int, of: Int)
         case queued
         case blocked(String)
         case delivered
@@ -273,7 +278,15 @@ final class CaptureModel: ObservableObject {
         // No machine around — a silent flight, or a round nobody confirmed —
         // is an ordinary afternoon out, not an incident: one calm state
         // instead of an alarm and a retry countdown. Refusals stay loud.
-        if entry.awaitingMachine(at: Date()) { return .awaitingMachine }
+        if entry.awaitingMachine(at: Date()) {
+            // Unless a machine has already taken it: then nothing is missing but
+            // the second copy, and the row should say which way round that is.
+            if !entry.confirmedBy.isEmpty {
+                return .landedOnSome(have: entry.confirmedBy.count,
+                                     of: max(endpoints.count, entry.confirmedBy.count))
+            }
+            return .awaitingMachine
+        }
         if entry.inFlight { return .uploading }
         if let reason = entry.blockedReason { return .blocked(reason) }
         return .queued
