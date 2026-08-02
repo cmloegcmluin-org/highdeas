@@ -2907,6 +2907,23 @@ def test_a_refused_update_reports_and_stays_alive():
     assert updates.respawned == 0
 
 
+def test_a_refused_update_replaces_the_banner_with_the_reason(tmp_path):
+    # The page raises "Updating Highdeas to the latest…" before posting, and nothing
+    # lowered it again: fetch resolves rather than rejects on a 502, so the .catch
+    # never ran and the refusal's words -- the only copy of them -- were dropped on
+    # the floor. A checkout that can't fast-forward (a stray local edit is enough)
+    # then reads as an update that hung, with no way to learn otherwise, and
+    # restarting doesn't help because launch refuses for the same reason.
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    js = asset(client, "inbox.js")
+
+    answered = js.split("post('/update')")[1][:300]
+    assert ".ok" in answered        # the answer is looked at at all…
+    assert ".text()" in answered    # …and the server's sentence is read out of it
+    assert "notify(" in answered    # …and put where the banner was
+
+
 def test_every_page_carries_the_in_page_find(tmp_path):
     # "A Ctrl+F for each page." The browser's own find can't reach a transcript the
     # three-line preview clips off, nor the bin's scrolled text box — so both pages
