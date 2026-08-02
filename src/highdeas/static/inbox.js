@@ -1049,7 +1049,20 @@
         if (!(v && v.behind > 0)) return;
         if (!document.hidden && Date.now() - lastTouch < IDLE_BEFORE_UPDATE_MS) return;
         notify('Updating Highdeas to the latest…');
-        post('/update').catch(function () {});
+        // A refusal is a 502 with words in it, and fetch resolves rather than
+        // rejects on one — so the answer has to be looked at. Left unread, the
+        // banner sat there claiming an update was under way while the checkout
+        // had already declined it, and restarting didn't help: launch refuses
+        // for the same reason, silently. The reason is the whole point (it names
+        // the file standing in the way), so it replaces the banner.
+        post('/update').then(function (r) {
+          if (r.ok) return;
+          return r.text().then(function (why) {
+            notify(why || 'Highdeas could not update itself.');
+          });
+        }).catch(function (err) {
+          notify('Highdeas could not update itself' + describe(err) + '.');
+        });
       })
       .catch(function () {});
   }
