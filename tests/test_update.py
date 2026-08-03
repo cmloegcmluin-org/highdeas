@@ -14,13 +14,12 @@ from highdeas.update import UpdateChecker, close_inherited_descriptors
 class FakeGit:
     """Records the commands the updater runs and scripts their outcomes."""
 
-    def __init__(self, behind="0", fetch_fails=False, pull_fails=False, changed=(),
+    def __init__(self, behind="0", fetch_fails=False, pull_fails=False,
                  install_fails=False):
         self.calls = []
         self._behind = behind
         self._fetch_fails = fetch_fails
         self._pull_fails = pull_fails
-        self._changed = list(changed)
         self._install_fails = install_fails
 
     def __call__(self, cmd, **kwargs):
@@ -34,13 +33,9 @@ class FakeGit:
             return SimpleNamespace(returncode=1 if self._fetch_fails else 0, stdout="", stderr="")
         if sub == "rev-list":
             return SimpleNamespace(returncode=0, stdout=self._behind + "\n", stderr="")
-        if sub == "rev-parse":
-            return SimpleNamespace(returncode=0, stdout="0ldsha\n", stderr="")
         if sub == "pull":
             return SimpleNamespace(returncode=1 if self._pull_fails else 0,
                                    stdout="", stderr="cannot fast-forward" if self._pull_fails else "")
-        if sub == "diff":
-            return SimpleNamespace(returncode=0, stdout="\n".join(self._changed), stderr="")
         raise AssertionError(f"unexpected git call: {cmd}")
 
     def of(self, sub):
@@ -120,37 +115,108 @@ def test_a_diverged_checkout_refuses_to_update_and_does_not_relaunch(tmp_path):
     assert spawned == []
 
 
-def test_a_pull_that_changes_the_manifest_installs_what_the_new_code_needs():
+def _checkout_with_venv(tmp_path, manifest="dependencies = ['flask']"):
+    """A checkout whose virtualenv is somewhere the marker can be written."""
+    (tmp_path / "pyproject.toml").write_text(manifest)
+    executable = tmp_path / ".venv" / "bin" / "python"
+    executable.parent.mkdir(parents=True)
+    return executable
+
+
+def test_an_install_that_failed_is_tried_again_next_launch(tmp_path):
+    # "Did this pull move pyproject.toml" is a question about one pull, so an
+    # install that failed -- offline at the wrong moment -- was never retried, and
+    # the app went on running against a virtualenv missing what its code imports.
+    # That is how this Mac lost Highdeas for days: a pull introduced google-auth,
+    # its install didn't take, and every launch after that died on the import
+    # while the checkout sat perfectly up to date.
+    executable = _checkout_with_venv(tmp_path)
+    git = FakeGit(install_fails=True)
+    checker = UpdateChecker(str(tmp_path), runner=git, executable=str(executable))
+
+    checker.ensure_dependencies()
+    checker.ensure_dependencies()
+
+    assert len(git.installs()) == 2
+
+
+def test_a_virtualenv_that_matches_the_manifest_is_left_alone(tmp_path):
+    # pip costs seconds that the launch holds a splash screen through, and nearly
+    # every launch has nothing to do.
+    executable = _checkout_with_venv(tmp_path)
+    git = FakeGit()
+    checker = UpdateChecker(str(tmp_path), runner=git, executable=str(executable))
+
+    checker.ensure_dependencies()
+    checker.ensure_dependencies()
+    checker.ensure_dependencies()
+
+    assert len(git.installs()) == 1
+
+
+def test_a_manifest_that_changes_installs_again(tmp_path):
+    # Including when it changed by a pull done by hand, which the old rule --
+    # comparing the two ends of an update the app performed -- could never see.
+    executable = _checkout_with_venv(tmp_path)
+    git = FakeGit()
+    checker = UpdateChecker(str(tmp_path), runner=git, executable=str(executable))
+    checker.ensure_dependencies()
+
+    (tmp_path / "pyproject.toml").write_text("dependencies = ['flask', 'google-auth']")
+    checker.ensure_dependencies()
+
+    assert len(git.installs()) == 2
+
+
+def test_a_checkout_without_a_manifest_installs_nothing(tmp_path):
+    git = FakeGit()
+    executable = tmp_path / ".venv" / "bin" / "python"
+    executable.parent.mkdir(parents=True)
+
+    UpdateChecker(str(tmp_path), runner=git, executable=str(executable)).ensure_dependencies()
+
+    assert git.installs() == []
+
+
+def test_a_pull_installs_what_the_new_code_needs(tmp_path):
     # Both desks pull new code on their own, and neither runs pip afterwards. A
-    # release that adds a package would otherwise land as an app quietly missing it —
-    # on the machine nobody is sitting at, silently, for as long as it takes to notice.
-    git = FakeGit(changed=["pyproject.toml", "src/highdeas/sheet.py"])
-    checker = UpdateChecker("/repo", runner=git, executable="/venv/bin/python",
+    # release that adds a package would otherwise land as an app quietly missing
+    # it -- on the machine nobody is sitting at, for as long as it takes to notice.
+    executable = _checkout_with_venv(tmp_path)
+    git = FakeGit(behind="2")
+    checker = UpdateChecker(str(tmp_path), runner=git, executable=str(executable),
                             respawn=lambda: None)
 
     checker.update()
 
     assert git.installs() == [
-        ["/venv/bin/python", "-m", "pip", "install", "-e", "/repo", "--quiet"]]
+        [str(executable), "-m", "pip", "install", "-e", str(tmp_path), "--quiet"]]
 
 
-def test_a_pull_that_leaves_the_manifest_alone_installs_nothing():
+def test_a_pull_that_leaves_the_virtualenv_current_installs_nothing(tmp_path):
     # Which is nearly every pull, and pip costs seconds the launch is holding a
     # splash screen through.
-    git = FakeGit(changed=["src/highdeas/web.py", "README.md"])
+    executable = _checkout_with_venv(tmp_path)
+    git = FakeGit()
+    checker = UpdateChecker(str(tmp_path), runner=git, executable=str(executable),
+                            respawn=lambda: None)
+    checker.ensure_dependencies()
+    git.calls.clear()
 
-    UpdateChecker("/repo", runner=git, respawn=lambda: None).update()
+    checker.update()
 
     assert git.installs() == []
 
 
-def test_an_install_that_fails_still_launches_the_new_code():
+def test_an_install_that_fails_still_launches_the_new_code(tmp_path):
     # Offline, or a package that won't build: better the app comes up on what it has
     # than not at all. Whatever needs the missing package fails where it's used.
-    git = FakeGit(changed=["pyproject.toml"], install_fails=True)
+    executable = _checkout_with_venv(tmp_path)
+    git = FakeGit(install_fails=True)
     spawned = []
 
-    UpdateChecker("/repo", runner=git, respawn=lambda: spawned.append(True)).update()
+    UpdateChecker(str(tmp_path), runner=git, executable=str(executable),
+                  respawn=lambda: spawned.append(True)).update()
 
     assert spawned == [True]
 
@@ -164,6 +230,10 @@ class FakeChecker:
         self._refuse = refuse
         self.pulled = 0
         self.respawned = 0
+        self.ensured = 0
+
+    def ensure_dependencies(self):
+        self.ensured += 1
 
     def status(self):
         return {"behind": self._behind}
@@ -185,6 +255,18 @@ def test_launch_becomes_current_when_behind():
 
     assert checker.pulled == 1
     assert checker.respawned == 1
+
+
+def test_launch_installs_what_is_missing_even_when_the_code_is_current():
+    # The retry that matters. An install that failed leaves a checkout perfectly
+    # up to date and a virtualenv that can't run it -- so nothing is ever behind
+    # again, no pull ever happens, and the launch that would fix it never asks.
+    from highdeas.app import _become_current
+    checker = FakeChecker(behind=0)
+
+    _become_current(checker)
+
+    assert checker.ensured == 1
 
 
 def test_launch_proceeds_untouched_when_current():
