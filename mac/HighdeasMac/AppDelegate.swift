@@ -96,7 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 
     private var inboxURL: URL { URL(string: "http://127.0.0.1:\(port)/")! }
 
-    private func waitForEngineThenLoad(attempt: Int = 0) {
+    private func waitForEngineThenLoad() {
         var request = URLRequest(url: inboxURL)
         request.timeoutInterval = 1
         URLSession.shared.dataTask(with: request) { _, response, _ in
@@ -106,20 +106,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                     // stay up, not a running total over a week-long session.
                     self.engineStarts = 0
                     self.webView.load(URLRequest(url: self.inboxURL))
-                } else if self.engine?.isRunning != true {
-                    // Not up yet and not running: the termination handler is
-                    // already bringing another one along, or startup never got
-                    // one at all. Either way, keep knocking until it answers.
-                    if attempt > 40 {
-                        self.present(error: "The Highdeas engine did not come up.")
-                    } else {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                            self.waitForEngineThenLoad(attempt: attempt + 1)
-                        }
-                    }
                 } else {
+                    // Not serving yet. Never a deadline: a live engine that
+                    // hasn't answered is *starting* — it fetches from origin,
+                    // may pull, may run pip, all before it binds its port, and a
+                    // slow network makes that a minute. An engine that has
+                    // genuinely died is the termination handler's business, not
+                    // a stopwatch's. (A 16-second cap here quit the app on a
+                    // launch that was merely updating.)
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                        self.waitForEngineThenLoad(attempt: attempt + 1)
+                        self.waitForEngineThenLoad()
                     }
                 }
             }
