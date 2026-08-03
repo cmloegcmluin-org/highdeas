@@ -171,21 +171,20 @@ func machines(_ count: Int) -> [String] {
     }
 
     @Test func aConfirmationCountsWhoeverItCameFrom() {
-        // Unlike a refusal: a 2xx means that machine holds the bytes, which
-        // stays true whether or not this flight was addressed to it.
+        // Unlike a refusal: a 2xx means a computer holds the bytes, which is
+        // true whether or not this flight was addressed to that one.
         var queue = queued(expecting: 1)
 
         queue.resolve("a.m4a", from: spare, .confirmed, at: now)
 
-        #expect(queue.pending.first?.confirmedBy == [spare])
+        #expect(queue.pending.isEmpty)
     }
 
-    @Test func aLateOutcomeAfterFullDeliveryIsANoOp() {
+    @Test func aLateOutcomeAfterConfirmationIsANoOp() {
         var queue = queued(expecting: 2)
         queue.resolve("a.m4a", from: pc, .confirmed, at: now)
-        queue.resolve("a.m4a", from: mac, .confirmed, at: now)
 
-        queue.resolve("a.m4a", from: pc, .retriable, at: now)
+        queue.resolve("a.m4a", from: mac, .retriable, at: now)
 
         #expect(queue.pending.isEmpty)
     }
@@ -214,9 +213,13 @@ func machines(_ count: Int) -> [String] {
     }
 }
 
-// MARK: - Carrying a recording until every machine has it
+// MARK: - Leaving the phone as soon as a computer has it
 
-@Suite struct EveryMachineTests {
+/// A recording exists on the phone exactly until a computer has it. Not until
+/// every computer has it: the phone is a capture device, not a replica. Once a
+/// note is on a machine it is inside the synced store, and the other desk is
+/// that store's problem, not something the user should watch a row about.
+@Suite struct FirstComputerTests {
     let now = Date(timeIntervalSince1970: 1_800_000_000)
 
     private func flying(_ name: String = "a.m4a", toward peers: [String]) -> UploadQueue {
@@ -226,72 +229,32 @@ func machines(_ count: Int) -> [String] {
         return queue
     }
 
-    @Test func aRecordingStaysUntilEveryMachineHasIt() {
-        // The PC takes it; the Mac is asleep in the next room. Syncthing can only
-        // converge two machines that are awake together, so if the phone lets go
-        // now the note reaches the Mac when the PC next wakes -- which, for a Mac
-        // being packed for a trip, can be after it has left the house.
+    @Test func theFirstComputerToTakeItReleasesTheRecording() {
         var queue = flying(toward: [pc, mac])
 
         queue.resolve("a.m4a", from: pc, .confirmed, at: now)
+
+        #expect(queue.pending.isEmpty)
+    }
+
+    @Test func oneMachineFailingLeavesTheRecordingWithTheOther() {
+        // Nothing is released on a refusal: a note in zero places is the one
+        // outcome the queue exists to prevent.
+        var queue = flying(toward: [pc, mac])
+
+        queue.resolve("a.m4a", from: pc, .retriable, at: now)
 
         #expect(queue.pending.count == 1)
-        #expect(queue.pending.first?.confirmedBy == [pc])
     }
 
-    @Test func theLastMachineToTakeItReleasesTheRecording() {
+    @Test func aRoundNoMachineTookKeepsTheRecording() {
         var queue = flying(toward: [pc, mac])
-        queue.resolve("a.m4a", from: pc, .confirmed, at: now)
 
-        queue.resolve("a.m4a", from: mac, .confirmed, at: now)
-
-        #expect(queue.pending.isEmpty)
-    }
-
-    @Test func aPartlyDeliveredRecordingRetriesTheStragglersAlone() {
-        // The next round is addressed only to the machines that never answered:
-        // re-pushing to the one that already has it costs bytes on a phone that
-        // may be on cellular, and earns a "already have it" at best.
-        var queue = flying(toward: [pc, mac])
-        queue.resolve("a.m4a", from: pc, .confirmed, at: now)
-        queue.resolve("a.m4a", from: mac, .retriable, at: now)
-
-        #expect(queue.peersStillOwed("a.m4a", of: [pc, mac]) == [mac])
-    }
-
-    @Test func aMachineDroppedFromSettingsStopsBeingWaitedFor() {
-        // The peer list is the caller's, read fresh each round: delete a machine
-        // in Settings and the recording it never took is owed to nobody, which
-        // is the caller's cue to let the file go.
-        var queue = flying(toward: [pc, mac])
-        queue.resolve("a.m4a", from: pc, .confirmed, at: now)
-        queue.resolve("a.m4a", from: mac, .retriable, at: now)
-
-        #expect(queue.peersStillOwed("a.m4a", of: [pc]).isEmpty)
-    }
-
-    @Test func aRecordingOneMachineTookIsLetGoAfterThePatienceRunsOut() {
-        // Otherwise a machine that is never coming back -- sold, or a mistyped
-        // address -- pins every recording on the phone forever.
-        var queue = flying(toward: [pc, mac])
-        queue.resolve("a.m4a", from: pc, .confirmed, at: now)
-        queue.resolve("a.m4a", from: mac, .retriable, at: now)
-
-        let week = now.addingTimeInterval(UploadQueue.deliveryPatience)
-        #expect(queue.releaseLongUndelivered(at: week.addingTimeInterval(-1)) == [])
-        #expect(queue.releaseLongUndelivered(at: week) == ["a.m4a"])
-        #expect(queue.pending.isEmpty)
-    }
-
-    @Test func aRecordingNoMachineHasIsNeverLetGoOf() {
-        // The patience is for a second copy, never for the note itself: away
-        // from every machine for a month, the phone keeps carrying it.
-        var queue = flying(toward: [pc, mac])
         queue.resolve("a.m4a", from: pc, .retriable, at: now)
         queue.resolve("a.m4a", from: mac, .retriable, at: now)
 
-        #expect(queue.releaseLongUndelivered(at: now.addingTimeInterval(30 * 24 * 3600)) == [])
         #expect(queue.pending.count == 1)
+        #expect(queue.pending.first?.inFlight == false)   // free to be tried again
     }
 }
 
@@ -499,20 +462,8 @@ func machines(_ count: Int) -> [String] {
 
         queue.resolve("a.m4a", from: pc, .confirmed, at: start.addingTimeInterval(122))
 
-        // That machine really does have it, whenever it got round to saying so,
-        // and the next round won't ask it again — but the other machine hasn't,
-        // so the recording stays.
-        #expect(queue.pending[0].confirmedBy == [pc])
-        #expect(queue.peersStillOwed("a.m4a", of: [pc, mac]) == [mac])
-    }
-
-    @Test func aDeadFlightsLateConfirmationCanBeTheLastOneOwed() {
-        var queue = stuckQueue()
-        _ = queue.releaseStaleFlights(at: start.addingTimeInterval(121))
-        queue.resolve("a.m4a", from: pc, .confirmed, at: start.addingTimeInterval(122))
-
-        queue.resolve("a.m4a", from: mac, .confirmed, at: start.addingTimeInterval(123))
-
+        // A computer has it, whenever it got round to saying so. Only a
+        // confirmation may speak for a flight already given up on.
         #expect(queue.pending.isEmpty)
     }
 }

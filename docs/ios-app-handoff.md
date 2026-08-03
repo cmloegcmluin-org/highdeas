@@ -95,10 +95,7 @@ loopback-only port** behind the native window; browser mode on `127.0.0.1:HIGHDE
 `{"stored": "<keyed filename>"}` on first receipt; **200** same body when the
 server already has it (retry of a landed upload); **400** no/empty file; **401**
 missing/bad token; **413** body over 1GB; **415** suffix not in
-`AUDIO_EXTENSIONS`. Any 2xx means durably stored *on that machine* — which since
-2026-08-01 is what the phone records rather than what frees the file: a recording
-is deleted once every machine in Settings has answered 2xx (see `docs/mac-peer.md`
-phase 4). 4xx
+`AUDIO_EXTENSIONS`. Any 2xx means durably stored — the phone may delete. 4xx
 means retrying won't help (fix settings / drop the file); everything else
 retries with backoff.
 
