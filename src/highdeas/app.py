@@ -367,6 +367,11 @@ def _become_current(checker=None):
     process finds itself at origin/main and sails through."""
     checker = checker or UpdateChecker(PROJECT_ROOT)
     if checker.status()["behind"] <= 0:
+        # Current code is not the same as a machine able to run it: an install
+        # that failed leaves the checkout perfectly up to date and the virtualenv
+        # missing what the code imports, so nothing is ever behind again and the
+        # pull that would retry it never happens. Ask on every launch instead.
+        checker.ensure_dependencies()
         return
     try:
         checker.pull()

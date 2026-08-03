@@ -5,6 +5,7 @@ app reads as a sync bug — the shared store fills with changes its pages don't
 know how to show — so the app itself watches origin and offers a one-click
 "pull and relaunch". Loopback pages only; nothing network-facing can reach it.
 """
+import hashlib
 import os
 import subprocess
 import sys
@@ -149,35 +150,70 @@ class UpdateChecker:
         by themselves and neither runs pip afterwards, so a release that adds a
         package would otherwise land as an app quietly missing it — on the
         machine nobody is sitting at, for as long as it takes to notice."""
-        was = self._git("rev-parse", "HEAD").stdout.strip()
         pulled = self._git("pull", "--ff-only", "origin", "main")
         if pulled.returncode != 0:
             raise RuntimeError(pulled.stderr.strip() or "git pull refused")
-        if self._brought_new_dependencies(was):
-            self._install()
+        self.ensure_dependencies()
 
-    def _brought_new_dependencies(self, was):
-        """Whether the pull moved the dependency manifest. Nearly no pull does, and
-        pip costs seconds the launch is holding a splash screen through. No previous
-        commit to compare against reads as no change — the app runs on what it has."""
-        if not was:
-            return False
-        changed = self._git("diff", "--name-only", f"{was}..HEAD")
-        return MANIFEST in changed.stdout.split()
+    def ensure_dependencies(self):
+        """Install into this virtualenv whatever the manifest now asks for, unless
+        it is already what was last installed from.
 
-    def _install(self):
-        """Bring this checkout's virtualenv up to what the pulled code imports.
-
-        A failure is only a printed line: offline, or a package that won't build,
-        must still leave the app launching on the code it already has, with whatever
-        wants the missing package failing where it is used."""
+        The question deliberately is not "did this pull move the manifest". That
+        asks about one pull, and answers it once: an install that failed — offline
+        at the wrong moment, a package that wouldn't build — was never tried
+        again, and the app went on launching against a virtualenv missing what its
+        code imports. That is how the MacBook lost Highdeas for days; a pull
+        introduced google-auth, its install didn't take, and every launch after
+        that died on the import while the checkout sat perfectly up to date. Asking
+        instead whether the virtualenv matches the manifest keeps asking until an
+        install succeeds, and catches a pull done by hand into the bargain."""
+        wanted = self._manifest_digest()
+        if wanted is None or wanted == self._installed_digest():
+            return
         print("Highdeas: installing what the new code needs.")
         done = self._run(
             [self._executable, "-m", "pip", "install", "-e", self._repo, "--quiet"],
             capture_output=True, text=True, creationflags=_NO_WINDOW)
         if done.returncode != 0:
+            # A failure is only a printed line: offline, or a package that won't
+            # build, must still leave the app launching on the code it already has,
+            # with whatever wants the missing package failing where it is used.
+            # Nothing is recorded, so the next launch tries again.
             print(f"Highdeas: couldn't install them ({done.stderr.strip()}); "
                   "launching on what this machine already has.")
+            return
+        self._remember_installed(wanted)
+
+    def _manifest_digest(self):
+        """What the code wants installed, as a fingerprint — or None where there is
+        no manifest to read, which is not a machine to install on."""
+        try:
+            return hashlib.sha256((Path(self._repo) / MANIFEST).read_bytes()).hexdigest()
+        except OSError:
+            return None
+
+    def _installed_record(self):
+        """Where this virtualenv remembers the manifest it was last installed from.
+
+        Inside the virtualenv, because that is what the record is about — a second
+        virtualenv on the same checkout has its own answer — and because the
+        virtualenv is already ignored by git and never synced between machines."""
+        return Path(self._executable).parent.parent / ".highdeas-installed"
+
+    def _installed_digest(self):
+        try:
+            return self._installed_record().read_text().strip()
+        except OSError:
+            return None
+
+    def _remember_installed(self, digest):
+        """Best effort: an unwritable virtualenv costs a pip run per launch, which
+        is slow but correct — never a launch that fails."""
+        try:
+            self._installed_record().write_text(digest)
+        except OSError:
+            pass
 
     def respawn(self):
         """Replace this process with a fresh launch of the pulled code."""
