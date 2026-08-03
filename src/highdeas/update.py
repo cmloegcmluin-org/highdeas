@@ -45,6 +45,39 @@ def respawn_environment(environ, dotenv_keys):
     return {key: value for key, value in environ.items() if key not in dropped}
 
 
+def close_inherited_descriptors():
+    """Mark every descriptor above the standard streams close-on-exec.
+
+    The relaunch is an exec, which keeps the process — and with it every
+    descriptor not marked to close. Werkzeug marks its listening socket
+    *inheritable* (its reloader hands the bound socket to the child), so the
+    freshly-exec'd app inherits the very ports it exists to serve, fails to bind
+    them, and exits at startup complaining the address is in use — about itself.
+    The app is then simply gone: on the Mac, a window on a splash screen with no
+    engine under it.
+
+    Standard streams are left alone: they are how a failed relaunch says
+    anything at all. No-op where fcntl doesn't exist — Windows respawns through
+    Popen(close_fds=True), which already covers this.
+    """
+    try:
+        import fcntl
+    except ImportError:  # pragma: no cover — Windows takes the Popen path
+        return
+    for name in os.listdir("/dev/fd") if os.path.isdir("/dev/fd") else ():
+        try:
+            descriptor = int(name)
+        except ValueError:
+            continue
+        if descriptor <= 2:
+            continue
+        try:
+            flags = fcntl.fcntl(descriptor, fcntl.F_GETFD)
+            fcntl.fcntl(descriptor, fcntl.F_SETFD, flags | fcntl.FD_CLOEXEC)
+        except OSError:
+            continue  # the listing itself opened one that is already gone
+
+
 def _relaunch(repo=None):
     """Become the freshly-pulled code. On Windows, exec is spawn-and-exit
     with rough edges (thread contexts, window sessions) — do the spawn
@@ -63,6 +96,7 @@ def _relaunch(repo=None):
     if sys.platform == "win32":
         subprocess.Popen(command, close_fds=True, env=environment)
         os._exit(0)
+    close_inherited_descriptors()
     os.execve(command[0], command, environment)
 
 

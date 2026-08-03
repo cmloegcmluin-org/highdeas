@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from highdeas.update import UpdateChecker
+from highdeas.update import UpdateChecker, close_inherited_descriptors
 
 
 class FakeGit:
@@ -231,6 +231,43 @@ def test_a_launcher_script_run_relaunches_through_the_launcher():
     # imports nothing and dies without a console to say so — the launch-update
     # that "opened then closed itself".
     assert command == [r"C:\repo\.venv\Scripts\pythonw.exe", r"C:\repo\run_highdeas.py"]
+
+
+def test_the_listening_sockets_are_dropped_at_the_exec():
+    # The exec keeps the process, so every descriptor left inheritable comes with
+    # it -- and Werkzeug marks its listening socket that way, since its reloader
+    # hands the bound socket to the child. The new image then can't bind the port
+    # it exists to serve, dies at startup complaining the address is in use
+    # (about itself), and the app is simply gone: on the Mac, a window on a
+    # splash screen with no engine under it. Reproduced twice there.
+    import socket
+    import sys
+
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+    listener.set_inheritable(True)
+    try:
+        close_inherited_descriptors()
+
+        # Windows never reaches this path -- it respawns through
+        # Popen(close_fds=True), which already drops them -- so there the call is
+        # a no-op and the socket is left as it was found.
+        assert listener.get_inheritable() == (sys.platform == "win32")
+    finally:
+        listener.close()
+
+
+def test_dropping_descriptors_leaves_the_standard_streams_alone():
+    # stdout and stderr are how a failed relaunch says anything at all; closing
+    # them over the exec would make the next failure silent.
+    import os
+
+    before = [os.get_inheritable(stream) for stream in (0, 1, 2)]
+
+    close_inherited_descriptors()
+
+    assert [os.get_inheritable(stream) for stream in (0, 1, 2)] == before
 
 
 def test_a_respawn_sheds_dotenv_values_so_fresh_edits_take_effect():
