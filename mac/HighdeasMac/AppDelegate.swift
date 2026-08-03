@@ -14,6 +14,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     private var window: NSWindow!
     private var webView: WKWebView!
     private var engine: Process?
+    /// How many engines this shell has started, so a crash loop stops rather
+    /// than spinning forever.
+    private var engineStarts = 0
     private let port = Engine.pickPort()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -37,6 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
 
+        engineStarts = 1
         do {
             engine = try Engine.launch(port: port)
         } catch {
@@ -64,9 +68,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         URLSession.shared.dataTask(with: request) { _, response, _ in
             DispatchQueue.main.async {
                 if (response as? HTTPURLResponse)?.statusCode == 200 {
+                    // Serving again: the allowance is for an engine that won't
+                    // stay up, not a running total over a week-long session.
+                    self.engineStarts = 0
                     self.webView.load(URLRequest(url: self.inboxURL))
-                } else if self.engine?.isRunning != true && attempt > 3 {
-                    self.present(error: "The Highdeas engine exited during startup.")
+                } else if self.engine?.isRunning != true {
+                    // The engine is gone. During startup that means it never came
+                    // up; later it means it died — a self-update whose re-exec
+                    // didn't take, most often. Either way the shell used to sit on
+                    // the splash forever, a window doing nothing with no way to
+                    // say so, because nothing here ever started a second engine.
+                    // So start one, and only give up if that keeps failing too.
+                    self.restartEngine(attempt: attempt)
                 } else {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                         self.waitForEngineThenLoad(attempt: attempt + 1)
@@ -74,6 +87,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                 }
             }
         }.resume()
+    }
+
+    /// How many times the shell will start an engine that won't stay up before it
+    /// stops trying and says so. Generous: a machine mid-update can take a moment.
+    private static let engineAttempts = 3
+
+    private func restartEngine(attempt: Int) {
+        guard engineStarts < Self.engineAttempts else {
+            if attempt > 3 {
+                present(error: "The Highdeas engine keeps exiting. "
+                        + "Try running it by hand to see why:\n\n"
+                        + "\(Engine.repo.path)/.venv/bin/python -m highdeas.app")
+            }
+            return
+        }
+        engineStarts += 1
+        do {
+            engine = try Engine.launch(port: port)
+        } catch {
+            present(error: "The Highdeas engine could not start: \(error.localizedDescription)")
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            self.waitForEngineThenLoad(attempt: attempt + 1)
+        }
     }
 
     /// Any failed navigation means the engine is between lives (a self-update
