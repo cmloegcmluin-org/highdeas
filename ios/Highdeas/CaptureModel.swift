@@ -11,11 +11,6 @@ struct RecordingItem: Identifiable, Equatable {
         case recording
         case uploading
         case awaitingMachine
-        /// Some machines have it and some don't. Its own state because the
-        /// waiting one would otherwise say "when a computer is around" about a
-        /// recording a computer has already taken — which reads as a failure,
-        /// and is the opposite of the truth.
-        case landedOnSome(have: Int, of: Int)
         case queued
         case blocked(String)
         case delivered
@@ -184,46 +179,26 @@ final class CaptureModel: ObservableObject {
         for stale in queue.releaseStaleFlights(at: now) {
             uploader.abandon(stale)
         }
-        // A recording one machine took and the others never came for is let go
-        // of eventually, or a machine that is never coming back would pin every
-        // recording on the phone forever. Some machine has had it all along.
-        for given in queue.releaseLongUndelivered(at: now) {
-            try? FileManager.default.removeItem(
-                at: recordingsDirectory.appending(path: given))
-        }
         let peers = endpoints
         guard !peers.isEmpty else { return }
         while let ready = queue.next(at: now) {
-            // Only the machines that don't have it yet: a second round after a
-            // partial delivery is addressed to the stragglers alone.
-            let owed = queue.peersStillOwed(ready.fileName, of: peers.map(\.key))
-            guard !owed.isEmpty else {
-                // Everything still listed already has it — a machine dropped
-                // from Settings after a partial delivery. Nothing left to carry.
-                letGo(of: ready.fileName)
-                continue
-            }
-            queue.markInFlight(ready.fileName, toward: owed, at: now)
-            for peer in peers where owed.contains(peer.key) {
+            queue.markInFlight(ready.fileName, toward: peers.map(\.key), at: now)
+            for peer in peers {
                 uploader.push(recordingsDirectory.appending(path: ready.fileName), to: peer)
             }
         }
     }
 
     private func handle(_ fileName: String, _ peer: String, _ outcome: UploadOutcome) {
-        // The queue arbitrates the fan-out: a confirmation is recorded against
-        // the machine that gave it, and the recording is released only once
-        // every machine has one. Failure waits for the last machine to answer.
-        let carried = queue.pending.contains { $0.fileName == fileName }
+        // The queue arbitrates the fan-out: the first confirmation wins, failure
+        // waits for the last machine to answer.
         queue.resolve(fileName, from: peer, outcome, at: Date())
-        if carried, !queue.pending.contains(where: { $0.fileName == fileName }) {
-            letGo(of: fileName)
-        }
+        if case .confirmed = outcome { letGo(of: fileName) }
         wake()
     }
 
-    /// Every machine has it (or the phone has waited long enough for the ones
-    /// that don't): show the row as delivered for a moment, then let the file go.
+    /// A computer has it: show the row as delivered for a moment, then let the
+    /// file go. The other desk gets its copy from the synced store.
     private func letGo(of fileName: String) {
         // Read the recording's own time first: in a moment there will be no file
         // left to read it from — and if there is no file to read it from now, this
@@ -278,15 +253,7 @@ final class CaptureModel: ObservableObject {
         // No machine around — a silent flight, or a round nobody confirmed —
         // is an ordinary afternoon out, not an incident: one calm state
         // instead of an alarm and a retry countdown. Refusals stay loud.
-        if entry.awaitingMachine(at: Date()) {
-            // Unless a machine has already taken it: then nothing is missing but
-            // the second copy, and the row should say which way round that is.
-            if !entry.confirmedBy.isEmpty {
-                return .landedOnSome(have: entry.confirmedBy.count,
-                                     of: max(endpoints.count, entry.confirmedBy.count))
-            }
-            return .awaitingMachine
-        }
+        if entry.awaitingMachine(at: Date()) { return .awaitingMachine }
         if entry.inFlight { return .uploading }
         if let reason = entry.blockedReason { return .blocked(reason) }
         return .queued

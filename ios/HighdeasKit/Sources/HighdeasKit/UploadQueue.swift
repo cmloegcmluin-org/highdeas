@@ -22,16 +22,6 @@ public struct PendingUpload: Equatable, Identifiable, Sendable {
     public var answered: Set<String>
     public var refusalDuringFlight: String?
     public var flightStartedAt: Date?
-    /// Which machines are known to hold this recording. It outlives the flight
-    /// that earned it: a peer that took the file in one round is not pushed to
-    /// again, and the recording stays on the phone until every machine is in
-    /// here. That is the whole point — the phone is the only device present at
-    /// both ends of a trip, so it, not Syncthing, is what carries a note to a
-    /// machine that was asleep when the note was spoken.
-    public var confirmedBy: Set<String>
-    /// When the first machine took it, and so when the patience clock starts
-    /// for the machines that haven't (see `releaseLongUndelivered`).
-    public var firstConfirmedAt: Date?
 
     public var id: String { fileName }
 
@@ -55,8 +45,7 @@ public struct PendingUpload: Equatable, Identifiable, Sendable {
     public init(fileName: String, attempts: Int = 0, notBefore: Date = .distantPast,
                 inFlight: Bool = false, blockedReason: String? = nil,
                 flightPeers: Set<String> = [], answered: Set<String> = [],
-                refusalDuringFlight: String? = nil, flightStartedAt: Date? = nil,
-                confirmedBy: Set<String> = [], firstConfirmedAt: Date? = nil) {
+                refusalDuringFlight: String? = nil, flightStartedAt: Date? = nil) {
         self.fileName = fileName
         self.attempts = attempts
         self.notBefore = notBefore
@@ -66,8 +55,6 @@ public struct PendingUpload: Equatable, Identifiable, Sendable {
         self.answered = answered
         self.refusalDuringFlight = refusalDuringFlight
         self.flightStartedAt = flightStartedAt
-        self.confirmedBy = confirmedBy
-        self.firstConfirmedAt = firstConfirmedAt
     }
 }
 
@@ -103,10 +90,9 @@ public struct UploadQueue: Equatable, Sendable {
     }
 
     /// A flight begins: the recording is being pushed to each of `peers` at
-    /// once. The caller passes only the machines that don't have it yet, so a
-    /// second round after a partial delivery is addressed to the stragglers
-    /// alone — the machine that already answered is neither asked again nor
-    /// waited for.
+    /// once — every machine configured, since any one of them taking it is
+    /// enough. Naming them (rather than counting them) is what lets a replayed
+    /// answer from one machine not stand in for another that hasn't spoken.
     public mutating func markInFlight(_ fileName: String, toward peers: [String],
                                       at now: Date = Date()) {
         update(fileName) {
@@ -118,53 +104,37 @@ public struct UploadQueue: Equatable, Sendable {
         }
     }
 
-    /// One machine's answer arrives. A confirmation is recorded against that
-    /// machine and nothing more: the recording leaves the phone only once every
-    /// machine in the flight has taken it. Failure is likewise declared only
-    /// when the last machine has answered — one dead peer's fast refusal must
-    /// not unlock a re-push while another's task is still grinding through the
-    /// system's background retry.
+    /// One machine's answer arrives. The first confirmation releases the
+    /// recording; failure is declared only when the last machine has answered.
     public mutating func resolve(_ fileName: String, from peer: String,
                                  _ outcome: UploadOutcome, at now: Date) {
         guard let index = pending.firstIndex(where: { $0.fileName == fileName }) else { return }
-        // A confirmation is a fact about that machine — it has the bytes — and
-        // stays true however late it arrives, including from a flight already
-        // given up on. A failure is only ever news about the flight it belongs
-        // to: a dead flight's echo (a cancelled task, a machine answering past
-        // the deadline) steers nothing, because that entry's course was set
-        // when the flight was released.
+        // A confirmation is final wherever it comes from and however late it
+        // arrives: some computer has the bytes, which is the whole condition for
+        // the phone letting go. The other desk gets it from the synced store —
+        // the phone is a capture device, not a replica of both machines.
         if case .confirmed = outcome {
-            pending[index].confirmedBy.insert(peer)
-            if pending[index].firstConfirmedAt == nil {
-                pending[index].firstConfirmedAt = now
-            }
-        }
-        var flightIsOver = false
-        if pending[index].inFlight, pending[index].flightPeers.contains(peer) {
-            pending[index].answered.insert(peer)
-            if case .blocked(let reason) = outcome {
-                pending[index].refusalDuringFlight = reason
-            }
-            flightIsOver = pending[index].answered.isSuperset(of: pending[index].flightPeers)
-        }
-        // Everyone it was last addressed to has it: the phone is done carrying it.
-        if !pending[index].flightPeers.isEmpty,
-           pending[index].flightPeers.isSubset(of: pending[index].confirmedBy) {
             confirmSent(fileName)
-        } else if flightIsOver {
-            if let reason = pending[index].refusalDuringFlight {
-                block(fileName, reason: reason, at: now)
-            } else {
-                retryLater(fileName, at: now)
-            }
+            return
         }
-    }
-
-    /// The machines that still owe this recording a home — what the next flight
-    /// is addressed to, given everything currently configured.
-    public func peersStillOwed(_ fileName: String, of peers: [String]) -> [String] {
-        guard let entry = pending.first(where: { $0.fileName == fileName }) else { return [] }
-        return peers.filter { !entry.confirmedBy.contains($0) }
+        // A failure is only ever news about the flight it belongs to. A dead
+        // flight's echo — a cancelled task, a machine answering past the
+        // deadline — steers nothing: that entry's course was set when the
+        // flight was released.
+        guard pending[index].inFlight, pending[index].flightPeers.contains(peer) else { return }
+        pending[index].answered.insert(peer)
+        if case .blocked(let reason) = outcome {
+            pending[index].refusalDuringFlight = reason
+        }
+        // Failure is declared only once the last machine has answered: one dead
+        // peer's fast refusal must not unlock a re-push while another's task is
+        // still grinding through the system's background retry.
+        guard pending[index].answered.isSuperset(of: pending[index].flightPeers) else { return }
+        if let reason = pending[index].refusalDuringFlight {
+            block(fileName, reason: reason, at: now)
+        } else {
+            retryLater(fileName, at: now)
+        }
     }
 
     /// Declare lost any flight silent past `silentFor`, returning it to the
@@ -183,9 +153,7 @@ public struct UploadQueue: Equatable, Sendable {
             pending[index].inFlight = false
             pending[index].attempts += 1
             pending[index].flightStartedAt = nil
-            // flightPeers outlives the flight: it is the record of who this
-            // recording is owed to, and a confirmation that trickles in after
-            // the release still has to be able to complete the set.
+            pending[index].flightPeers = []
             pending[index].answered = []
             pending[index].refusalDuringFlight = nil
             pending[index].notBefore = now.addingTimeInterval(
@@ -235,30 +203,6 @@ public struct UploadQueue: Equatable, Sendable {
         for index in pending.indices where !pending[index].inFlight {
             pending[index].notBefore = .distantPast
         }
-    }
-
-    /// How long a recording that at least one machine already holds goes on
-    /// waiting for the rest.
-    ///
-    /// Without a limit, "keep it until every machine has it" means a machine
-    /// that is never coming back — a laptop sold, an address mistyped in
-    /// Settings — pins every recording on the phone forever, and the only cure
-    /// is noticing and deleting the line. A week is longer than any trip that
-    /// ends at one of these desks, and the note is not at risk meanwhile: some
-    /// machine has had it since the clock started, so letting go costs the
-    /// second copy, never the note.
-    public static let deliveryPatience: TimeInterval = 7 * 24 * 60 * 60
-
-    /// Let go of recordings that one machine took and the others never came
-    /// for. Returns their names so the caller can delete the files.
-    public mutating func releaseLongUndelivered(
-            at now: Date, patience: TimeInterval = deliveryPatience) -> [String] {
-        let given = pending.filter {
-            guard let since = $0.firstConfirmedAt else { return false }
-            return now.timeIntervalSince(since) >= patience
-        }.map(\.fileName)
-        pending.removeAll { given.contains($0.fileName) }
-        return given
     }
 
     public static let maximumBackoff: TimeInterval = 300

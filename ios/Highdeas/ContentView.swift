@@ -113,12 +113,6 @@ private struct StateLine: View {
             Label("Will sync when a computer is around",
                   systemImage: "arrow.up.circle.dotted")
                 .font(.caption).foregroundStyle(.secondary)
-        case .landedOnSome(let have, let total):
-            // Green, like Delivered: the note is safe on a computer. What is
-            // outstanding is only the copy on the other one.
-            Label("Safe on \(have) of \(total) computers",
-                  systemImage: "checkmark.circle.badge.questionmark")
-                .font(.caption).foregroundStyle(.green)
         case .queued:
             Label("Queued", systemImage: "clock")
                 .font(.caption).foregroundStyle(.secondary)

@@ -50,22 +50,18 @@ on both desks; act on a memo wherever you're sitting.
    Tailscale addresses work as plain lines in Settings the day Tailscale is
    installed on the machines and phone — the remaining, purely operational leg.
 
-   **Amended 2026-08-01 — the phone keeps a recording until *every* machine has
-   it,** not until the first one does. First-2xx-wins leaned on Syncthing to
-   carry the note the rest of the way, and Syncthing can only converge two
-   machines that are awake at the same time. Notes recorded the night before a
-   trip reached the PC, the Mac was asleep, and the Mac left the house without
-   them — recoverable only when the PC next woke, which is no use from an
-   airport. So delivery is now tracked per machine (`PendingUpload.confirmedBy`):
-   a confirmation is recorded against the machine that gave it, the next round is
-   addressed to the stragglers alone, and the file is deleted once the set is
-   complete. The phone is the only device present at both ends of a trip, so it,
-   not the sync layer, is what carries a note to a machine that was asleep.
-
-   A machine that never comes back — sold, or a mistyped address — would
-   otherwise pin every recording on the phone forever, so a recording at least
-   one machine holds is let go of after `UploadQueue.deliveryPatience` (a week).
-   A recording *no* machine has is never let go of on a timer.
+   **Settled 2026-08-03, after trying the other way.** For two days the phone
+   kept each recording until *every* machine had confirmed it, to stop a note
+   reaching only the PC while the Mac slept and then travelled. It works, and
+   Douglas rejected it on sight: rows that stay after the note has arrived read
+   as failure, and the phone is a capture device, not a replica of both desks.
+   The rule is his, and it is the whole rule — **once a note is on one computer
+   it leaves the phone; a note is never in zero places.** Getting it to the
+   *other* desk is the synced store's job, and if that is slow the answer is to
+   fix the store, never to make the phone hold a second copy the user has to
+   watch. What survived from the attempt is per-machine flight accounting
+   (`flightPeers`/`answered`): a replayed answer from one machine no longer
+   stands in for another that hasn't spoken.
 
 ## Hazards, named early
 
