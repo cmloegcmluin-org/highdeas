@@ -101,6 +101,22 @@ detaches the running app's HEAD, which silently swallows every later merge and b
 the app's own `git pull` self-update. This has already eaten a merge here. Inspect
 other branches read-only from your own worktree (`git -C <primary> show/diff/log`).
 
+## Never run a build inside the primary checkout
+
+`tools/make_mac_app.sh` and `ios/resign.sh` write into the tree they are run from.
+Run them **from your worktree**, pointing at the primary checkout when the built
+app needs to be wired to it:
+
+```bash
+REPO=/Users/douglasblumeyer/workspace/highdeas zsh tools/make_mac_app.sh
+```
+
+Run from the primary checkout, a build leaves modified files in the folder the app
+is *running from*, and `git pull` refuses to overwrite them — so the app silently
+stops self-updating, and its "Updating Highdeas to the latest…" banner sits there
+forever. It cost Douglas an afternoon once; the derived icon copy that caused it is
+now gitignored, but any future generated file in the tree would do the same.
+
 ## Showing the user unlanded work
 
 The desks only ever run `main`, and the user cannot check out your branch — your
