@@ -486,13 +486,13 @@ def test_build_app_sends_a_memo_to_the_asana_account_its_parent_task_names(tmp_p
     monkeypatch.setenv("ASANA_PARENT_TASKS", "111=Song ideas;WORK:333=Work backlog")
     sent = []
 
-    def fake_post(url, **kwargs):
-        sent.append((url, kwargs))
-        return SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"data": {}})
+    def fake_create(pat, parent_gid, name, notes=""):
+        sent.append((pat, parent_gid))
+        return ""
 
     real_router = app_mod.AsanaRouter
     monkeypatch.setattr(app_mod, "AsanaRouter",
-                        lambda tokens, **kwargs: real_router(tokens, post=fake_post, **kwargs))
+                        lambda tokens, **kwargs: real_router(tokens, create=fake_create, **kwargs))
 
     app, _ = build_app()
     MemoStore(db_path).upsert(Memo(audio_filename="voice-3.m4a", route="asana"))
@@ -503,9 +503,7 @@ def test_build_app_sends_a_memo_to_the_asana_account_its_parent_task_names(tmp_p
     )
 
     assert response.status_code == 204
-    url, kwargs = sent[0]
-    assert url == "https://app.asana.com/api/1.0/tasks/333/subtasks"
-    assert kwargs["headers"]["Authorization"] == "Bearer THEIRS"
+    assert sent == [("THEIRS", "333")]  # the WORK account's own token, under its own task
 
 
 def test_build_app_opens_a_claude_code_session_at_the_configured_folder(tmp_path, monkeypatch):
