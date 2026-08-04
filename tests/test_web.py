@@ -1983,20 +1983,11 @@ def test_submit_sends_to_asana_once_through_the_whole_stack(tmp_path):
 
     posts = []
 
-    class _Resp:
-        status_code = 201
+    def fake_create(pat, parent_gid, name, notes=""):
+        posts.append(parent_gid)
+        return "https://app.asana.com/0/0/9/f"
 
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return {"data": {"permalink_url": "https://app.asana.com/0/0/9/f"}}
-
-    def fake_post(url, **kwargs):
-        posts.append(url)
-        return _Resp()
-
-    asana = AsanaRouter({"": "PAT"}, default_parent="111", post=fake_post)
+    asana = AsanaRouter({"": "PAT"}, default_parent="111", create=fake_create)
     service = InboxService(inbox_dir=inbox, store=store, transcriber=None, bin_dir=bin_dir,
                            route=Router(notesnook=None, asana=asana))
     client = create_app(service, inbox_dir=str(inbox), bin_dir=str(bin_dir)).test_client()
@@ -2005,7 +1996,7 @@ def test_submit_sends_to_asana_once_through_the_whole_stack(tmp_path):
     first = client.post("/submit/a.m4a", data=fields)
 
     assert first.status_code == 204
-    assert posts == ["https://app.asana.com/api/1.0/tasks/222/subtasks"]  # sent once
+    assert posts == ["222"]  # sent once
     assert not (inbox / "a.m4a").exists()  # recording moved out of the inbox…
     assert (bin_dir / "a.m4a").exists()    # …and into the bin
     assert store.get("a.m4a").asana_url == "https://app.asana.com/0/0/9/f"
@@ -2013,7 +2004,7 @@ def test_submit_sends_to_asana_once_through_the_whole_stack(tmp_path):
     second = client.post("/submit/a.m4a", data=fields)
 
     assert second.status_code == 204
-    assert posts == ["https://app.asana.com/api/1.0/tasks/222/subtasks"]  # still just one
+    assert posts == ["222"]  # still just one
 
 
 def test_group_route_consolidates_the_posted_notes_and_names_the_group(tmp_path):

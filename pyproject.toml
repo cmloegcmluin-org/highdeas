@@ -20,6 +20,10 @@ dependencies = [
     # service account. Optional in practice: a machine without it falls back to the
     # names it last saw, and to the static top-level Drive folder link.
     "google-auth>=2.30",
+    # The family's shared Asana client (and MCP server) - one personal access token,
+    # every workspace. Filing a memo as a task goes through it, so Highdeas and
+    # Excephalon cannot grow separate spellings of one request.
+    "asana-mcp @ git+https://github.com/cmloegcmluin-org/asana-mcp",
 ]
 
 [project.optional-dependencies]

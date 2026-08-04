@@ -5,11 +5,13 @@ opens it in Claude as a prompt nobody has sent yet."""
 import html
 import re
 import shutil
+import urllib.error
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote, urlencode
 
 import requests
+from asana_client import create_subtask
 
 
 # A note is stored as plain text, so a list is just its Markdown line — which is
@@ -166,14 +168,15 @@ class AsanaRouter:
     task's permalink for the memo's record, so the bin icon can open the task.
 
     Holds one token per Asana account, since a parent task names the account it
-    belongs to: two accounts are two tokens behind one dropdown."""
+    belongs to: two accounts are two tokens behind one dropdown. The request
+    itself is the family's shared client (asana_client, the asana-mcp repo) -
+    Excephalon files tasks through the same code, so the two apps cannot grow
+    separate spellings of one request."""
 
-    ENDPOINT = "https://app.asana.com/api/1.0/tasks/{gid}/subtasks"
-
-    def __init__(self, tokens, *, default_parent="", post=requests.post):
+    def __init__(self, tokens, *, default_parent="", create=create_subtask):
         self._tokens = tokens
         self._default_parent = default_parent
-        self._post = post
+        self._create_subtask = create
 
     def route(self, memo):
         parent = memo.asana_parent or self._default_parent
@@ -205,16 +208,16 @@ class AsanaRouter:
         return {"asana_url": self._create(gid, token, name, notes)}
 
     def _create(self, gid, token, name, notes):
-        """One subtask; the created task's permalink comes back for the memo's record."""
-        response = self._post(
-            self.ENDPOINT.format(gid=gid),
-            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-            params={"opt_fields": "permalink_url"},
-            json={"data": {"name": name, "notes": notes}},
-            timeout=30,
-        )
-        response.raise_for_status()
-        return response.json().get("data", {}).get("permalink_url", "")
+        """One subtask via the shared client; the permalink comes back for the memo's record.
+
+        A refusal carries Asana's own words ("Not a recognized ID", "You do not have
+        access") - an opaque status code sends whoever reads the error off to fix the
+        wrong thing."""
+        try:
+            return self._create_subtask(token, gid, name, notes)
+        except urllib.error.HTTPError as denied:
+            words = denied.read().decode("utf-8", errors="replace")[:300]
+            raise RuntimeError(f"Asana refused the task: {words}") from denied
 
 
 def _link(base, **params):

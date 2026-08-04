@@ -198,93 +198,108 @@ def test_router_dispatches_to_asana_and_returns_its_outcome():
     assert notesnook.routed == []
 
 
+class FakeCreate:
+    """Stands in for the shared client's create_subtask: records each ask, returns a permalink.
+    The HTTP shape underneath - endpoint, headers, permalink opt_fields - is the shared repo's
+    own tested concern now; what is Highdeas' to verify is WHICH task, under WHOSE token."""
+
+    def __init__(self, url="https://app.asana.com/0/0/42/f"):
+        self.calls = []
+        self._url = url
+
+    def __call__(self, pat, parent_gid, name, notes=""):
+        self.calls.append((pat, parent_gid, name, notes))
+        return self._url
+
+
 def test_asana_router_creates_a_subtask_under_the_memos_chosen_parent():
-    post = FakePost(body={"data": {"gid": "42", "permalink_url": "https://app.asana.com/0/0/42/f"}})
-    router = AsanaRouter({"": "PAT"}, default_parent="111", post=post)
+    create = FakeCreate()
+    router = AsanaRouter({"": "PAT"}, default_parent="111", create=create)
 
     outcome = router.route(Memo(audio_filename="a.m4a", name="Bassline idea",
                                 transcript="dum dum da dum", route="asana", asana_parent="222"))
 
-    url, kwargs = post.calls[0]
-    # The memo's own chosen parent wins over the configured default.
-    assert url == "https://app.asana.com/api/1.0/tasks/222/subtasks"
-    assert kwargs["headers"] == {"Authorization": "Bearer PAT", "Content-Type": "application/json"}
-    # Ask Asana to return the created task's permalink so the bin can link to it.
-    assert kwargs["params"] == {"opt_fields": "permalink_url"}
-    # Only the text travels: the name and transcript, never the audio.
-    assert kwargs["json"] == {"data": {"name": "Bassline idea", "notes": "dum dum da dum"}}
+    # The memo's own chosen parent wins over the configured default; only the text travels -
+    # the name and transcript, never the audio.
+    assert create.calls == [("PAT", "222", "Bassline idea", "dum dum da dum")]
     assert outcome == {"asana_url": "https://app.asana.com/0/0/42/f"}
 
 
 def test_asana_router_falls_back_to_the_default_parent_when_none_chosen():
     # A memo submitted before its dropdown was ever touched has no stored parent;
     # it lands under the first configured task rather than failing.
-    post = FakePost(body={"data": {}})
+    create = FakeCreate()
 
-    AsanaRouter({"": "PAT"}, default_parent="111", post=post).route(
+    AsanaRouter({"": "PAT"}, default_parent="111", create=create).route(
         Memo(audio_filename="a.m4a", name="X", transcript="y", route="asana"))
 
-    assert post.calls[0][0] == "https://app.asana.com/api/1.0/tasks/111/subtasks"
+    assert create.calls[0][1] == "111"
 
 
 def test_asana_router_opens_a_parent_with_the_token_of_the_account_it_names():
     # Two Asana accounts, one dropdown: a parent written "account:gid" is created
     # under that account's own token, so the second account's tasks sit beside the
     # first's with nothing in the UI to say they are elsewhere.
-    post = FakePost(body={"data": {}})
-    router = AsanaRouter({"": "MINE", "WORK": "THEIRS"}, default_parent="111", post=post)
+    create = FakeCreate()
+    router = AsanaRouter({"": "MINE", "WORK": "THEIRS"}, default_parent="111", create=create)
 
     router.route(Memo(audio_filename="a.m4a", name="X", transcript="y",
                       route="asana", asana_parent="WORK:333"))
 
-    url, kwargs = post.calls[0]
-    assert url == "https://app.asana.com/api/1.0/tasks/333/subtasks"
-    assert kwargs["headers"]["Authorization"] == "Bearer THEIRS"
+    [(pat, parent, _, _)] = create.calls
+    assert (pat, parent) == ("THEIRS", "333")
 
 
 def test_asana_router_explains_missing_setup_instead_of_calling_asana():
     # An unset token or an empty parent list would otherwise surface as an opaque
     # Asana 401/404; name the .env variable to fix instead, and never hit the wire.
-    post = FakePost()
+    create = FakeCreate()
 
     with pytest.raises(RuntimeError, match="ASANA_ACCESS_TOKEN"):
-        AsanaRouter({"": ""}, default_parent="111", post=post).route(
+        AsanaRouter({"": ""}, default_parent="111", create=create).route(
             Memo(audio_filename="a.m4a", route="asana", asana_parent="222"))
     with pytest.raises(RuntimeError, match="ASANA_PARENT_TASKS"):
-        AsanaRouter({"": "PAT"}, post=post).route(Memo(audio_filename="a.m4a", route="asana"))
-    assert post.calls == []
+        AsanaRouter({"": "PAT"}, create=create).route(Memo(audio_filename="a.m4a", route="asana"))
+    assert create.calls == []
 
 
 def test_asana_router_names_unnamed_memo_by_its_transcript():
     # With nothing but spoken words, the transcript becomes the task's name so the
     # note reads at a glance in Asana instead of hiding under a generic date title.
     # It moves into the name, leaving the notes empty rather than repeating itself.
-    post = FakePost(body={"data": {}})
+    create = FakeCreate()
 
-    AsanaRouter({"": "PAT"}, default_parent="1", post=post).route(
+    AsanaRouter({"": "PAT"}, default_parent="1", create=create).route(
         Memo(audio_filename="a.m4a", name="", transcript="call the plumber back",
              recorded_at="2026-07-07T15:45:00", route="asana"))
 
-    assert post.calls[0][1]["json"]["data"] == {"name": "call the plumber back", "notes": ""}
+    assert create.calls[0][2:] == ("call the plumber back", "")
 
 
 def test_asana_router_titles_an_empty_memo_with_its_recording_time():
     # No name and no transcript — a failed or silent capture — still needs a title;
     # fall back to the recording-time convention shared with Notesnook.
-    post = FakePost(body={"data": {}})
+    create = FakeCreate()
 
-    AsanaRouter({"": "PAT"}, default_parent="1", post=post).route(
+    AsanaRouter({"": "PAT"}, default_parent="1", create=create).route(
         Memo(audio_filename="a.m4a", name="", transcript="",
              recorded_at="2026-07-07T15:45:00", route="asana"))
 
-    assert post.calls[0][1]["json"]["data"]["name"] == "Note 2026-07-07 3:45:00 PM"
+    assert create.calls[0][2] == "Note 2026-07-07 3:45:00 PM"
 
 
-def test_asana_router_raises_on_error_response():
-    post = FakePost(status_code=403)
+def test_asana_router_raises_asanas_own_words_on_a_refusal():
+    # An opaque status code sends whoever reads the error off to fix the wrong thing;
+    # Asana's body names the actual problem, so it rides the raise.
+    import io
+    import urllib.error
 
-    with pytest.raises(RuntimeError):
-        AsanaRouter({"": "PAT"}, default_parent="1", post=post).route(
+    def denies(pat, parent_gid, name, notes=""):
+        raise urllib.error.HTTPError("url", 403, "Forbidden", {},
+                                     io.BytesIO(b'{"errors":[{"message":"You do not have access"}]}'))
+
+    with pytest.raises(RuntimeError, match="do not have access"):
+        AsanaRouter({"": "PAT"}, default_parent="1", create=denies).route(
             Memo(audio_filename="a.m4a", name="X", transcript="y", route="asana"))
 
 
@@ -619,20 +634,16 @@ def test_a_group_routes_each_item_as_its_own_asana_task():
     # a separate Asana task." A group's transcript is its bulleted consolidation; each bullet
     # becomes one subtask - "Name: text" bullets split into task name and notes, bare ones are
     # all name.
-    post = FakePost(body={"data": {"gid": "42", "permalink_url": "https://app.asana.com/0/0/42/f"}})
-    router = AsanaRouter({"": "PAT"}, default_parent="111", post=post)
+    create = FakeCreate()
+    router = AsanaRouter({"": "PAT"}, default_parent="111", create=create)
 
     outcome = router.route(Memo(audio_filename="g.m4a", kind="group", name="Groceries",
                                 transcript="- milk\n- eggs: two dozen\n- bread",
                                 route="asana", asana_parent="222"))
 
-    assert [url for url, _ in post.calls] == [
-        "https://app.asana.com/api/1.0/tasks/222/subtasks"] * 3
-    assert [kwargs["json"]["data"] for _, kwargs in post.calls] == [
-        {"name": "milk", "notes": ""},
-        {"name": "eggs", "notes": "two dozen"},
-        {"name": "bread", "notes": ""},
-    ]
+    assert [call[1] for call in create.calls] == ["222"] * 3
+    assert [call[2:] for call in create.calls] == [
+        ("milk", ""), ("eggs", "two dozen"), ("bread", "")]
     # The record keeps one link; the first created task stands for the batch in the bin.
     assert outcome == {"asana_url": "https://app.asana.com/0/0/42/f"}
 
@@ -641,24 +652,23 @@ def test_a_groups_numbered_and_prose_lines_still_become_tasks():
     # Groups write "-" bullets, but an absorbed group's transcript rides in as it reads -
     # numbered lines and stray prose included. Every line with words on it is an item; blank
     # lines are not.
-    post = FakePost(body={"data": {}})
+    create = FakeCreate()
 
-    AsanaRouter({"": "PAT"}, default_parent="1", post=post).route(
+    AsanaRouter({"": "PAT"}, default_parent="1", create=create).route(
         Memo(audio_filename="g.m4a", kind="group", transcript="1. first thing\n\nplain line",
              route="asana"))
 
-    assert [kwargs["json"]["data"]["name"] for _, kwargs in post.calls] == [
+    assert [call[2] for call in create.calls] == [
         "first thing", "plain line"]
 
 
 def test_a_plain_note_still_routes_as_one_task_even_with_bullets_in_it():
     # Only a GROUP fans out: a single note the user wrote as a list is still one note, and
     # Notesnook and Google Drive behavior is untouched by any of this.
-    post = FakePost(body={"data": {}})
+    create = FakeCreate()
 
-    AsanaRouter({"": "PAT"}, default_parent="1", post=post).route(
+    AsanaRouter({"": "PAT"}, default_parent="1", create=create).route(
         Memo(audio_filename="a.m4a", name="Packing", transcript="- socks\n- charger",
              route="asana"))
 
-    assert len(post.calls) == 1
-    assert post.calls[0][1]["json"]["data"] == {"name": "Packing", "notes": "- socks\n- charger"}
+    assert create.calls == [("PAT", "1", "Packing", "- socks\n- charger")]
