@@ -243,8 +243,10 @@ right away. Set `HIGHDEAS_DESKTOP=0` to force plain-browser mode.
        py -m venv .venv
        .venv/Scripts/python -m pip install -e ".[dev]"
 
-   (The app also runs straight from `src/` — `Run Highdeas.bat` just puts `src` on
-   `PYTHONPATH` — so the editable install is optional.)
+   (The app also runs straight from `src/`: both launchers put `src` on `PYTHONPATH`
+   — `Run Highdeas.bat` through `run_highdeas.py` on the PC, `Highdeas.app` when it
+   starts its engine on the Mac — so the editable install is optional, and an install
+   that has gone stale or points somewhere else cannot stop the app from opening.)
 2. **Notesnook key** — run **`Set Notesnook Key.bat`** and paste your Inbox API key
    (Notesnook → Settings → Inbox → Enable Inbox API → create a key), or copy
    `.env.example` to `.env` and fill it in. Needed only to submit memos to Notesnook.
