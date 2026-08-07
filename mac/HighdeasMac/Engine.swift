@@ -56,6 +56,18 @@ enum Engine {
         environment["HIGHDEAS_DESKTOP"] = "0"       // serve-only: this shell is the window
         environment["HIGHDEAS_OPEN_BROWSER"] = "0"
         environment["HIGHDEAS_PORT"] = String(port)
+        // Reach the code through the checkout, as run_highdeas.py does for the PC,
+        // instead of through wherever the virtualenv's editable install points. That
+        // pointer is one line in site-packages naming a directory, and a `pip install
+        // -e .` run from a second worktree rewrites it to that worktree — which is
+        // then deleted when the work lands. The engine dies on `import highdeas` the
+        // moment it starts, the shell has no engine to show, and the app quits as it
+        // opens; the launch-time dependency check can't rescue it, because it lives
+        // inside the package that won't import. The checkout is true by construction,
+        // so it goes first and the install is free to be wrong.
+        environment["PYTHONPATH"] = [repo.appending(path: "src").path,
+                                     environment["PYTHONPATH"]]
+            .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ":")
         process.environment = environment
         try process.run()
         return process

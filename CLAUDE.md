@@ -117,6 +117,34 @@ stops self-updating, and its "Updating Highdeas to the latest…" banner sits th
 forever. It cost Douglas an afternoon once; the derived icon copy that caused it is
 now gitignored, but any future generated file in the tree would do the same.
 
+## Never pip into the primary checkout's virtualenv
+
+`/Users/douglasblumeyer/workspace/highdeas/.venv` is the engine the user's Mac app
+runs. **Install only into your own worktree's `.venv`**, and if yours is stale or
+missing, create or repair *it* — never reach for the primary's python because yours
+lacks something:
+
+```bash
+# from your worktree — note the LEADING .venv, which is yours
+.venv/bin/python -m pip install -e .
+```
+
+`pip install -e .` run from a worktree with the *primary's* pip rewrites the primary
+virtualenv's `highdeas` pointer to your worktree's `src`. Delete the worktree when
+your PR lands and that pointer dangles: the Mac app's engine dies on `import
+highdeas` the instant it starts, the shell has no engine to show, and the app quits
+as it opens — a crash on launch with a checkout sitting perfectly at `origin/main`.
+The launch-time dependency check cannot rescue it, because that check lives inside
+the package that won't import. This has already cost Douglas his app once.
+
+The Mac shell now puts the checkout's `src` on the engine's `PYTHONPATH`, so a
+hijacked pointer no longer takes the app down — but it still leaves the primary
+virtualenv quietly wrong, so don't rely on that. Repair it with:
+
+```bash
+cd /Users/douglasblumeyer/workspace/highdeas && .venv/bin/python -m pip install -e .
+```
+
 ## Showing the user unlanded work
 
 The desks only ever run `main`, and the user cannot check out your branch — your
