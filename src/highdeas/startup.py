@@ -5,6 +5,12 @@ virtualenv is missing something, so it must not need anything from it.
 """
 import sys
 
+# A failure, not a notice; and in front of whatever the reader was doing rather
+# than behind it — an app that never appeared should not be joined by a dialog
+# that never appeared either.
+MB_ICONERROR = 0x10
+MB_SETFOREGROUND = 0x10000
+
 
 def dialog_for(platform):
     """A way to put a message on screen, or None where there isn't one.
@@ -18,9 +24,8 @@ def dialog_for(platform):
     import ctypes
 
     def show(message):
-        # MB_OK | MB_ICONERROR | MB_SETFOREGROUND, so it comes up in front of
-        # whatever the reader was doing rather than behind it.
-        ctypes.windll.user32.MessageBoxW(None, message, "Highdeas", 0x10 | 0x10000)
+        ctypes.windll.user32.MessageBoxW(
+            None, message, "Highdeas", MB_ICONERROR | MB_SETFOREGROUND)
 
     return show
 
@@ -40,6 +45,18 @@ def report(message, *, dialog=None, stream=None):
             pass
 
 
+def _with_a_console(python):
+    """The console twin of the interpreter that is running.
+
+    This dialog exists because the shortcut runs pythonw.exe, so that is what
+    sys.executable holds — and a pip command built from it would install with
+    no console and no output at all. The reader would run the fix, watch
+    nothing happen, and reasonably conclude it hadn't worked."""
+    if python.lower().endswith("pythonw.exe"):
+        return python[:-len("pythonw.exe")] + "python.exe"
+    return python
+
+
 def describe_failure(error, *, python, repo):
     """A startup failure, as something to read and something to do about it.
 
@@ -50,6 +67,6 @@ def describe_failure(error, *, python, repo):
     if isinstance(error, ModuleNotFoundError) and error.name:
         return (f"Highdeas couldn't start: this virtualenv is missing "
                 f"{error.name}.\n\nInstall what it needs:\n\n"
-                f"{python} -m pip install -e {repo}")
+                f"{_with_a_console(python)} -m pip install -e {repo}")
     return (f"Highdeas couldn't start.\n\n"
             f"{type(error).__name__}: {error}")
