@@ -64,6 +64,27 @@ def test_the_reason_goes_to_the_console_and_to_a_dialog():
     assert "it broke" in stream.getvalue()
 
 
+def test_the_reason_is_left_on_disk_for_whoever_looks_later(tmp_path):
+    # A dialog is only read by someone sitting there, and this app fails on the
+    # way up -- when nobody necessarily is. Today's outage was diagnosed from
+    # scratch precisely because the reason existed nowhere after the fact.
+    record = tmp_path / ".highdeas-startup-error"
+
+    report("it broke", record=record, stream=io.StringIO())
+
+    assert "it broke" in record.read_text()
+
+
+def test_a_reason_that_cannot_be_written_is_still_reported(tmp_path):
+    # An unwritable virtualenv is not a reason to lose the message as well.
+    shown = []
+
+    report("it broke", record=tmp_path / "no-such-dir" / "err", dialog=shown.append,
+           stream=io.StringIO())
+
+    assert shown == ["it broke"]
+
+
 def test_only_windows_gets_a_dialog():
     # ctypes.windll exists nowhere else, so asking for it on the Mac would fail
     # inside the failure reporter -- losing the reason it was called to give.

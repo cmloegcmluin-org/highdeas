@@ -117,6 +117,21 @@ stops self-updating, and its "Updating Highdeas to the latest…" banner sits th
 forever. It cost Douglas an afternoon once; the derived icon copy that caused it is
 now gitignored, but any future generated file in the tree would do the same.
 
+## When the app won't open, read the reason it left
+
+Look here first, before reconstructing anything:
+
+```bash
+cat <the checkout>/.venv/.highdeas-startup-error    # PC: .venv\.highdeas-startup-error
+```
+
+A launch that dies on the way up — the virtualenv missing something `app.py`
+imports, which is the failure this app keeps having — writes the reason and a
+timestamp there, and a launch that gets past its imports deletes it. So a file
+that exists describes a failure that is still true. It is written by
+`run_highdeas.py`, which is the PC's taskbar shortcut; the Mac shell runs
+`-m highdeas.app` directly and says its piece in an alert instead.
+
 ## Never pip into the primary checkout's virtualenv
 
 `/Users/douglasblumeyer/workspace/highdeas/.venv` is the engine the user's Mac app

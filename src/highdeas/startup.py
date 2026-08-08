@@ -4,6 +4,7 @@ Standard library only, and deliberately so: this is what runs when the
 virtualenv is missing something, so it must not need anything from it.
 """
 import sys
+import time
 
 # A failure, not a notice; and in front of whatever the reader was doing rather
 # than behind it — an app that never appeared should not be joined by a dialog
@@ -30,19 +31,40 @@ def dialog_for(platform):
     return show
 
 
-def report(message, *, dialog=None, stream=None):
-    """Put the reason wherever this machine can show it.
+def report(message, *, dialog=None, stream=None, record=None):
+    """Put the reason wherever this machine can show it, and leave it on disk.
 
-    Both paths, because neither is always available: under pythonw the stream
+    Every route, because none of them is always there: under pythonw the stream
     goes nowhere and only the dialog lands; the Mac shell captures the stream
-    and has no dialog. A dialog that itself fails must not replace the failure
-    being reported with its own."""
+    and has no dialog. The record outlives both — a dialog is only read by
+    someone sitting in front of it, and this app fails on the way up, when
+    nobody necessarily is. Whoever is asked "why won't it open" later should
+    find the answer waiting rather than reconstruct it.
+
+    Neither a dialog nor a disk that refuses may replace the failure being
+    reported with one of its own."""
     print(message, file=stream if stream is not None else sys.stderr, flush=True)
+    if record is not None:
+        try:
+            record.write_text(f"{time.strftime('%Y-%m-%d %H:%M:%S')}\n{message}\n")
+        except OSError:
+            pass
     if dialog is not None:
         try:
             dialog(message)
         except Exception:  # noqa: BLE001 — the message already went to the stream
             pass
+
+
+def forget(record):
+    """Drop a previous failure once the app has got past the point of failing.
+
+    A stale reason is worse than none: it describes a machine that has since
+    been fixed, and sends the next reader after a problem that isn't there."""
+    try:
+        record.unlink()
+    except OSError:
+        pass
 
 
 def _with_a_console(python):
