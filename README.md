@@ -157,7 +157,11 @@ recording, or a subtask on an Asana task.
      `HIGHDEAS_GOOGLE_DOCS_TOKEN_FILE` is set up (see "Google Drive native Doc filing"
      below), landing right beside that same audio when "Google Drive per-memo folder
      links" is also set up; until the token file is configured, or if a submit can't
-     reach Drive, a `.docx` alongside the audio is the fallback, exactly as before.
+     reach Drive, a `.docx` alongside the audio is the fallback, exactly as before —
+     **and when Docs were configured and the Doc still didn't happen, the submit says
+     so**, in the notice bar, naming what Google refused. The row leaves the inbox
+     either way, because the send did land; what it lands as is the thing worth
+     hearing about. Silence there once hid a lapsed sign-in for weeks.
 
      The dated folder is the app's to create; the Drive base above it is Drive's. If
      that base isn't there — Drive for Desktop not installed or not signed in on this
@@ -389,6 +393,18 @@ Repeat steps 3-6 (a new OAuth client and a new token, same project) on any other
 machine that should file native Docs too — or copy the token file from step 5 there
 instead and point that machine's own `.env` at the copy, since the token speaks for
 Douglas's account, not for the machine that ran the authorization.
+
+**Publish the consent screen, or the token dies every seven days.** While the app
+sits in "Testing" (step 2), Google expires its refresh tokens after a week — no
+warning, no email, and the only outward sign is transcripts quietly arriving as
+`.docx` again. That is exactly what happened here: the token written on 2026-07-20
+was dead by the 27th, and it went unnoticed until 2026-08-09. In the Cloud console,
+**APIs & Services → OAuth consent screen → Publish app**: for a scope as narrow as
+`drive.file` this needs no Google review, and refresh tokens stop having a shelf
+life. (The consent screen shows an "unverified app" warning the first time; that is
+cosmetic, and only ever seen by you.) Submits now say when a Doc didn't happen, so a
+lapse costs one visible notice instead of weeks of the wrong file format — but not
+lapsing at all is better.
 
 If the saved token is ever lost, revoked, or starts failing, just rerun step 5 — it's
 safe to run again any time, and a fresh **Allow** always leaves a fresh, working token

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from highdeas import drive_write  # the module: see test_drive_write.py's own note
 from highdeas.routers import (
     DATE_FORMAT, AsanaRouter, ClaudeRouter, DriveMusicRouter, NotesnookRouter, Router,
     drive_subfolder_name, parse_choices, read_asana_tokens, write_docx,
@@ -483,7 +484,7 @@ def test_drive_router_files_a_native_google_doc_instead_of_docx_when_configured(
     assert doc_calls == [("_2026_07_07_NOT_YET_PROCESSED_MUSIC", "Korok Dance", "<p>la la la</p>")]
     assert outcome == {"drive_subfolder": "_2026_07_07_NOT_YET_PROCESSED_MUSIC",
                        "drive_doc_link": "https://docs.google.com/document/d/DOC_ID/edit",
-                       "drive_doc_needs_move": False}
+                       "drive_doc_needs_move": False, "warning": ""}
 
 
 def test_drive_router_reports_when_a_filed_docs_move_still_needs_retrying(tmp_path):
@@ -508,7 +509,7 @@ def test_drive_router_reports_when_a_filed_docs_move_still_needs_retrying(tmp_pa
 
     assert outcome == {"drive_subfolder": "_2026_07_07_NOT_YET_PROCESSED_MUSIC",
                        "drive_doc_link": "https://docs.google.com/document/d/DOC_ID/edit",
-                       "drive_doc_needs_move": True}
+                       "drive_doc_needs_move": True, "warning": ""}
 
 
 def test_drive_router_titles_an_unnamed_memos_doc_the_way_notesnook_titles_untitled_notes(tmp_path):
@@ -556,6 +557,37 @@ def test_drive_router_falls_back_to_docx_when_doc_filing_returns_blank(tmp_path)
     folder = drive / "_2026_07_07_NOT_YET_PROCESSED_MUSIC"
     assert docs == [(folder / "Song.docx", "la la")]
     assert outcome["drive_doc_link"] == ""
+    assert outcome["warning"] == ""  # nothing was attempted; the docx is the intended answer
+
+
+def test_drive_router_says_out_loud_when_a_configured_doc_could_not_be_filed(tmp_path):
+    # The .docx still gets written -- a transcript filed the old way beats one lost --
+    # but the memo's send now carries the reason back, so a Docs setup that has quietly
+    # stopped working is noticed on the first submit instead of weeks later.
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    drive = tmp_path / "drive"
+    drive.mkdir()
+    (inbox / "voice-4.m4a").write_bytes(b"AUDIO")
+    docs = []
+
+    def refuse(subfolder_name, title, html):
+        raise drive_write.DriveDocUnavailable("Google would not renew the Docs sign-in (expired).")
+
+    router = DriveMusicRouter(
+        inbox, drive,
+        today=lambda: "2026_07_07",
+        write_doc=lambda path, text: docs.append((Path(path), text)),
+        file_doc=refuse,
+    )
+
+    outcome = router.route(Memo(audio_filename="voice-4.m4a", name="Song", transcript="la la"))
+
+    folder = drive / "_2026_07_07_NOT_YET_PROCESSED_MUSIC"
+    assert docs == [(folder / "Song.docx", "la la")]
+    assert outcome["drive_doc_link"] == ""
+    assert "expired" in outcome["warning"]
+    assert ".docx" in outcome["warning"]  # says what it did, not only what it couldn't
 
 
 def test_drive_router_never_calls_doc_filing_when_transcript_is_blank(tmp_path):
@@ -613,7 +645,7 @@ def test_drive_router_reports_which_subfolder_it_filed_the_memo_into(tmp_path):
     outcome = router.route(Memo(audio_filename="v.m4a", name="Song", transcript=""))
 
     assert outcome == {"drive_subfolder": "_2026_07_07_NOT_YET_PROCESSED_MUSIC", "drive_doc_link": "",
-                       "drive_doc_needs_move": False}
+                       "drive_doc_needs_move": False, "warning": ""}
 
 
 def test_drive_router_sanitizes_illegal_filename_characters(tmp_path):

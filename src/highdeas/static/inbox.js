@@ -275,13 +275,22 @@
   // Remove the row only after a 2xx: the memo is retired server-side only on success,
   // so mirror that here. A non-ok response (routing failed, memo still pending) leaves
   // the row in place, flagged, and rejects, so callers can report the failure.
+  //
+  // The body is read either way, and resolved with. A send can land and still be worth
+  // a word — a Drive note filed as a .docx because the Google Docs sign-in lapsed —
+  // and the server says so in the body of a 200 (a plain 204 has none). Reading it only
+  // on failure dropped those words on the floor, which is how filing quietly degraded
+  // for weeks without anyone being told.
   function retireOnOk(memo, response) {
     memo.classList.remove('failed');
     setBusy(memo, true);
     return Promise.resolve(response).then(function (r) {
-      if (!r.ok) return r.text().then(function (t) { throw new Error(t || 'Failed'); });
-      retired[memo.dataset.file] = true;
-      removeRow(memo);
+      return r.text().then(function (body) {
+        if (!r.ok) throw new Error(body || 'Failed');
+        retired[memo.dataset.file] = true;
+        removeRow(memo);
+        return body;
+      });
     }).catch(function (err) {
       setBusy(memo, false);
       memo.classList.add('failed');
@@ -294,6 +303,7 @@
     var go = memo.querySelector('.go');
     label(go, 'Sending…');
     return retireOnOk(memo, post(urlFor('/submit/', memo), fields(memo)))
+      .then(function (warning) { if (warning) notify(warning); })
       .catch(function (err) { label(go, 'Submit'); throw err; });
   }
 

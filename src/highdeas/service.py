@@ -562,7 +562,9 @@ class InboxService:
         self._letgo(lambda: made.unlink(missing_ok=True))
 
     def submit(self, audio_filename):
-        """Route a memo to its destination, then retire it to the bin.
+        """Route a memo to its destination, then retire it to the bin. Returns the
+        route's warning, if it had one — a send that landed in a lesser form than it
+        should have — or "" when nothing needs saying.
 
         These are two steps, and only the first reaches out past this machine: the
         Notesnook / Drive / Asana send. If that send lands but the retire then trips —
@@ -580,12 +582,18 @@ class InboxService:
         click and the note reaches Asana exactly once."""
         memo = self._store.get(audio_filename)
         if memo is None:
-            return
+            return ""
+        warning = ""
         if memo.status != "processed":
             outcome = self._route(memo) or {}
+            # Not a memo field: a sentence about a send that landed in a lesser form
+            # than it should have (see routers.Router). It leaves the outcome here so
+            # the store only ever sees columns, and travels on to the page instead.
+            warning = outcome.pop("warning", "")
             self._store.update(audio_filename, status="processed",
                                processed_at=self._clock(), **outcome)
         self._move_to_bin(audio_filename)
+        return warning
 
     def delete(self, audio_filename):
         self._retire(audio_filename, "deleted")

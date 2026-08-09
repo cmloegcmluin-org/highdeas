@@ -13,6 +13,13 @@ from urllib.parse import quote, urlencode
 import requests
 from asana_client import create_subtask
 
+# The module, not the class: drive_write is re-executed on purpose (see
+# test_the_engine_starts_on_a_machine_without_google_auth, which imports it as a
+# machine missing google-auth would), and a reload mints a new exception class.
+# A name bound here at import time would then be a stale class this `except`
+# quietly stops matching. Looked up at raise time, both sides always agree.
+from highdeas import drive_write
+
 
 # A note is stored as plain text, so a list is just its Markdown line — which is
 # what the editor writes and reads back. Both destinations turn those lines into
@@ -252,7 +259,13 @@ class ClaudeRouter:
 class Router:
     """Dispatch a memo to the router for its chosen route (Notesnook by default),
     passing through whatever fields that router reports for the store to persist
-    (e.g. Asana's link to the created task)."""
+    (e.g. Asana's link to the created task).
+
+    One key in that dict is not a memo field: "warning" is a sentence about a send
+    that landed in a lesser form than it should have (see DriveMusicRouter and the
+    .docx fallback). InboxService.submit takes it out before the rest is stored and
+    hands it back for the page to show, because a degraded send is neither a failure
+    to raise nor a success to pass over in silence."""
 
     def __init__(self, notesnook, drive=None, asana=None, claude=None):
         self._routers = {"notesnook": notesnook, "drive": drive, "asana": asana,
@@ -352,11 +365,20 @@ class DriveMusicRouter:
         source = self._inbox / memo.audio_filename
         base = _sanitize_filename(memo.name or Path(memo.audio_filename).stem)
         self._copy(str(source), str(folder / (base + source.suffix)))
-        doc_link, needs_move = "", False
+        doc_link, needs_move, warning = "", False, ""
         if memo.transcript.strip():
             if self._file_doc is not None:
                 title = memo.name or _default_title(memo)
-                doc_link, needs_move = self._file_doc(subfolder_name, title, _text_to_html(memo.transcript))
+                try:
+                    doc_link, needs_move = self._file_doc(
+                        subfolder_name, title, _text_to_html(memo.transcript))
+                except drive_write.DriveDocUnavailable as exc:
+                    # The docx below still runs -- the transcript reaches a filed doc
+                    # either way -- but a Docs setup that has stopped working is now
+                    # said out loud on the first submit that hits it, rather than
+                    # discovered later by noticing the file format.
+                    warning = (f"Filed the transcript as a .docx instead of a Google "
+                               f"Doc: {exc}")
             if not doc_link:
                 self._write_doc(folder / (base + ".docx"), memo.transcript)
         # Nothing here yet knows this subfolder's own Drive ID — Drive for Desktop
@@ -364,4 +386,4 @@ class DriveMusicRouter:
         # the bin's Drive icon looks up the ID from this name later, via the real
         # Drive API, when it's asked to open this memo.
         return {"drive_subfolder": subfolder_name, "drive_doc_link": doc_link,
-                "drive_doc_needs_move": needs_move}
+                "drive_doc_needs_move": needs_move, "warning": warning}

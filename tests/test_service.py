@@ -231,6 +231,44 @@ def test_submit_persists_fields_the_router_reports(tmp_path):
     assert memo.asana_url == "https://app.asana.com/0/0/9/f"
 
 
+def test_submit_hands_back_a_routers_warning_without_storing_it(tmp_path):
+    # A send can land in a lesser form than it should have — the Drive route writing a
+    # .docx because the Google Docs sign-in has lapsed. That is neither a failure to
+    # raise nor a success to say nothing about, so the sentence comes back for the page
+    # to show. It is not a memo field, and must not reach the store as one.
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="a.m4a", route="drive", status="pending"))
+
+    service = InboxService(
+        inbox_dir="/inbox", store=store, transcriber=FakeTranscriber(),
+        bin_dir=tmp_path / "bin",
+        route=lambda memo: {"drive_subfolder": "_2026_08_09_NOT_YET_PROCESSED_MUSIC",
+                            "warning": "Filed the transcript as a .docx instead."},
+        clock=lambda: "2026-07-09T05:00",
+    )
+
+    assert service.submit("a.m4a") == "Filed the transcript as a .docx instead."
+
+    memo = store.get("a.m4a")
+    assert memo.status == "processed"
+    assert memo.drive_subfolder == "_2026_08_09_NOT_YET_PROCESSED_MUSIC"
+    assert not hasattr(memo, "warning")
+
+
+def test_submit_hands_back_nothing_when_the_send_was_whole(tmp_path):
+    store = MemoStore(tmp_path / "memos.db")
+    store.upsert(Memo(audio_filename="a.m4a", route="asana", status="pending"))
+
+    service = InboxService(
+        inbox_dir="/inbox", store=store, transcriber=FakeTranscriber(),
+        bin_dir=tmp_path / "bin",
+        route=lambda memo: {"asana_url": "https://app.asana.com/0/0/9/f"},
+        clock=lambda: "2026-07-09T05:00",
+    )
+
+    assert service.submit("a.m4a") == ""
+
+
 def test_a_send_that_lands_but_cannot_bin_its_recording_is_not_resent_on_retry(tmp_path, monkeypatch):
     # The Asana duplicate, in full. Submitting is send-then-retire, and only the send
     # reaches out past this machine. Here the send lands (the task is created) but moving

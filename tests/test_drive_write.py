@@ -2,6 +2,12 @@
 Google Doc -- via the actual Drive API, authenticated as Douglas's own Google
 account rather than a service account (see drive_write.py's module docstring
 for why a service account can't own a file in a personal Drive)."""
+import pytest
+
+# The module is kept as well as its names: a reload (see conftest.reload_without,
+# used to import this on a machine without google-auth) mints a new exception class,
+# and a name bound at import time would be a stale one pytest.raises never matches.
+from highdeas import drive_write
 from highdeas.drive_write import (
     TOKEN_SCOPE, DriveDocFiler, DriveDocReconciler, _user_access_token,
 )
@@ -82,9 +88,13 @@ def test_file_doc_blank_without_a_subfolder_name_or_title():
     assert filer.file_doc("_2026_07_17_NOT_YET_PROCESSED_MUSIC", "", "<p>hi</p>") == ("", False)
 
 
-def test_file_doc_blank_when_the_token_cant_be_obtained():
+def test_file_doc_says_so_when_the_token_cant_be_obtained():
+    # Configured and still no doc: that is a fault, not a preference. Blank here used
+    # to be indistinguishable from "no token file", so the .docx fallback ran without
+    # a word and Douglas found out weeks later by noticing the wrong file format.
     filer = DriveDocFiler("token.json", "Highdeas Voice Memo Docs", token=lambda f: "")
-    assert filer.file_doc("_2026_07_17_NOT_YET_PROCESSED_MUSIC", "Title", "<p>hi</p>") == ("", False)
+    with pytest.raises(drive_write.DriveDocUnavailable, match="sign-in"):
+        filer.file_doc("_2026_07_17_NOT_YET_PROCESSED_MUSIC", "Title", "<p>hi</p>")
 
 
 def test_file_doc_creates_the_container_and_subfolder_when_neither_exists_yet():
@@ -139,20 +149,46 @@ def test_file_doc_reuses_the_container_and_subfolder_when_both_already_exist():
     assert len(post.calls) == 1  # no folder-create calls, only the doc upload
 
 
-def test_file_doc_blank_when_any_call_fails():
+def test_file_doc_says_so_when_any_call_fails():
     def blowing_up(*args, **kwargs):
         raise ConnectionError("offline")
 
     filer = DriveDocFiler("token.json", "Highdeas Voice Memo Docs", get=blowing_up, token=lambda f: "tok")
-    assert filer.file_doc("_2026_07_17_NOT_YET_PROCESSED_MUSIC", "Title", "<p>hi</p>") == ("", False)
+    with pytest.raises(drive_write.DriveDocUnavailable, match="offline"):
+        filer.file_doc("_2026_07_17_NOT_YET_PROCESSED_MUSIC", "Title", "<p>hi</p>")
 
 
-def test_file_doc_blank_when_the_token_cant_be_obtained_due_to_an_error():
+def test_file_doc_reports_googles_sentence_not_its_tuple():
+    # google-auth's RefreshError carries Google's JSON error body as a second arg, so
+    # str() of it is a tuple repr: ("invalid_grant: Token has been expired or revoked.",
+    # {'error': 'invalid_grant', ...}). This message ends up in a notice bar a person
+    # reads, so it takes the sentence and leaves the machinery.
+    class RefreshError(Exception):
+        pass
+
     def blowing_up(token_file):
-        raise OSError("bad token file")
+        raise RefreshError("invalid_grant: Token has been expired or revoked.",
+                           {"error": "invalid_grant"})
 
     filer = DriveDocFiler("token.json", "Highdeas Voice Memo Docs", token=blowing_up)
-    assert filer.file_doc("_2026_07_17_NOT_YET_PROCESSED_MUSIC", "Title", "<p>hi</p>") == ("", False)
+    with pytest.raises(drive_write.DriveDocUnavailable) as raised:
+        filer.file_doc("_2026_07_17_NOT_YET_PROCESSED_MUSIC", "Title", "<p>hi</p>")
+
+    said = str(raised.value)
+    assert "invalid_grant: Token has been expired or revoked." in said
+    assert "{" not in said
+
+
+def test_file_doc_says_which_error_stopped_the_token():
+    # The reason travels: an expired refresh token (Google's seven-day ceiling on a
+    # consent screen still in Testing) and a machine merely offline want different
+    # things done about them, and only the message can tell them apart.
+    def blowing_up(token_file):
+        raise OSError("invalid_grant: Token has been expired or revoked.")
+
+    filer = DriveDocFiler("token.json", "Highdeas Voice Memo Docs", token=blowing_up)
+    with pytest.raises(drive_write.DriveDocUnavailable, match="expired or revoked"):
+        filer.file_doc("_2026_07_17_NOT_YET_PROCESSED_MUSIC", "Title", "<p>hi</p>")
 
 
 def test_file_doc_moves_the_doc_beside_the_audio_when_the_folder_can_be_found():
