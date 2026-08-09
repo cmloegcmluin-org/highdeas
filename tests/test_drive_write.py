@@ -179,6 +179,44 @@ def test_file_doc_reports_googles_sentence_not_its_tuple():
     assert "{" not in said
 
 
+def test_file_doc_starts_a_fresh_sign_in_itself_when_the_token_has_lapsed():
+    # "Please make Highdeas just take care of that itself." It can't do the whole of
+    # it -- Google requires a human to click Allow, and no refresh token outlives that
+    # requirement -- but everything else is the app's to do: notice the lapse, open the
+    # consent screen, save the new token. All that is left for Douglas is the click,
+    # and a sentence telling him it is waiting for him.
+    asked = []
+
+    def blowing_up(token_file):
+        raise OSError("invalid_grant: Token has been expired or revoked.")
+
+    filer = DriveDocFiler("token.json", "Highdeas Voice Memo Docs", token=blowing_up,
+                          reauthorize=lambda: asked.append("go"))
+    with pytest.raises(drive_write.DriveDocUnavailable, match="browser") as raised:
+        filer.file_doc("_2026_07_17_NOT_YET_PROCESSED_MUSIC", "Title", "<p>hi</p>")
+
+    assert asked == ["go"]
+    # This submit still degrades to the .docx: the sign-in is not instant, and a click
+    # that hasn't happened yet cannot be waited on inside a click of his.
+    assert "Allow" in str(raised.value)
+
+
+def test_file_doc_does_not_start_a_sign_in_over_a_failure_that_is_not_the_token():
+    # Offline, or Drive itself refusing the create: a fresh consent fixes none of that,
+    # and a browser window opening over it would be noise.
+    asked = []
+
+    def blowing_up(*args, **kwargs):
+        raise ConnectionError("offline")
+
+    filer = DriveDocFiler("token.json", "Highdeas Voice Memo Docs", get=blowing_up,
+                          token=lambda f: "tok", reauthorize=lambda: asked.append("go"))
+    with pytest.raises(drive_write.DriveDocUnavailable):
+        filer.file_doc("_2026_07_17_NOT_YET_PROCESSED_MUSIC", "Title", "<p>hi</p>")
+
+    assert asked == []
+
+
 def test_file_doc_says_which_error_stopped_the_token():
     # The reason travels: an expired refresh token (Google's seven-day ceiling on a
     # consent screen still in Testing) and a machine merely offline want different

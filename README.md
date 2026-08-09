@@ -386,7 +386,13 @@ it always was before this was possible.
    A browser opens to Google's own sign-in and consent screen — sign in as the
    account you want Highdeas creating Docs as, and **Allow**. The script prints where
    it saved the token file once you do.
-6. Set `HIGHDEAS_GOOGLE_DOCS_TOKEN_FILE` in `.env` to the token path from step 5.
+6. Set `HIGHDEAS_GOOGLE_DOCS_TOKEN_FILE` in `.env` to the token path from step 5,
+   and `HIGHDEAS_GOOGLE_DOCS_CLIENT_FILE` to the file from step 4. The second one
+   is what lets Highdeas do step 5 for you from then on: when the saved sign-in
+   stops working, it opens Google's consent screen itself and saves the new token,
+   so all that's ever left to do is click **Allow**. The memo in your hand at that
+   moment still gets a `.docx` — the click hasn't happened yet — and every one
+   after it gets a Doc.
 7. Restart Highdeas.
 
 Repeat steps 3-6 (a new OAuth client and a new token, same project) on any other
@@ -496,6 +502,7 @@ Everything but the keys for the destinations you use is optional. Set these in `
 | `HIGHDEAS_DRIVE_FOLDER_URL` | — | That folder's own Drive link (Share -> Copy link), for the bin's Drive icon to open. Empty = the icon does nothing. Also the folder `HIGHDEAS_GOOGLE_SERVICE_ACCOUNT_FILE` below searches inside — required for per-memo links too, not just the fallback. |
 | `HIGHDEAS_GOOGLE_SERVICE_ACCOUNT_FILE` | — | Path to a Google Cloud service account key file, so the bin's Drive icon opens the memo's own dated subfolder instead of always the top-level folder, and a native Google Doc (see below) can be moved beside its audio instead of staying in its own container. Empty = the icon always opens the top-level folder, and a Doc always stays in its container. See "Google Drive per-memo folder links" below. |
 | `HIGHDEAS_GOOGLE_DOCS_TOKEN_FILE` | — | Path to the token file `scripts/authorize_google_docs.py` writes, so a music memo's transcript files as a real, native Google Doc instead of a local `.docx`. Empty = always the `.docx`. See "Google Drive native Doc filing" below. |
+| `HIGHDEAS_GOOGLE_DOCS_CLIENT_FILE` | — | Path to the OAuth client JSON from the Cloud console — the first argument that same script takes. Set it and Highdeas renews the sign-in itself when the token lapses: it opens Google's consent screen, and clicking **Allow** is all that's left. Empty = a lapsed token says so on the row and you re-run the script by hand. |
 | `HIGHDEAS_DRIVE_DOCS_FOLDER_NAME` | `Highdeas Voice Memo Docs` | Top-level Drive folder native Google Docs are filed into first (in a dated subfolder per day) — moved beside the audio afterward when `HIGHDEAS_GOOGLE_SERVICE_ACCOUNT_FILE` + `HIGHDEAS_DRIVE_FOLDER_URL` are configured too, otherwise its permanent home. Only read when `HIGHDEAS_GOOGLE_DOCS_TOKEN_FILE` above is set. |
 | `HIGHDEAS_BIN_DIR` | `Highdeas Bin` beside the inbox | Where retired recordings wait (recoverable for 90 days). |
 | `HIGHDEAS_LEXICON` | `lexicon.md` beside the state dir, else in this folder | Your own names and terms, one per line, that each transcript is corrected toward. |

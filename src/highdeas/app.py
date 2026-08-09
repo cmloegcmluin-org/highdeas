@@ -11,6 +11,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from highdeas import drive_auth
 from highdeas.drive_link import DriveFolderLinker, parent_id_from_folder_url
 from highdeas.drive_write import DriveDocFiler, DriveDocReconciler
 from highdeas.routers import (
@@ -299,6 +300,35 @@ def _deep_link_launcher():
 _DEFAULT_DRIVE_DOCS_FOLDER_NAME = "Highdeas Voice Memo Docs"
 
 
+def _drive_reauthorizer(client_file, token_file):
+    """A callable that starts a fresh Google sign-in and returns at once.
+
+    A refresh token is the only credential Google will renew unattended, and when one
+    stops working — revoked, or expired because the consent screen is still in Testing
+    — nothing but a person clicking Allow can mint another. So the app does everything
+    around that click itself: notices the lapse the moment a Doc won't file, opens the
+    consent screen, saves what comes back. What it cannot do is wait: this is called
+    from inside a submit, and blocking a click of his on a click he hasn't made yet
+    would hang the page. It runs on a daemon thread instead, the memo in hand takes
+    the .docx, and the memo after it gets its Doc.
+
+    One tab per lapse, not one per memo: every submit until he clicks hits the same
+    dead token, and a browser window per note would be its own kind of broken."""
+    running = threading.Lock()
+
+    def reauthorize():
+        if not running.acquire(blocking=False):
+            return  # a consent screen is already open, waiting on him
+        def sign_in():
+            try:
+                drive_auth.run(client_file, token_file)
+            finally:
+                running.release()
+        threading.Thread(target=sign_in, name="highdeas-drive-reauth", daemon=True).start()
+
+    return reauthorize
+
+
 def _build_drive_doc_filer():
     """The configured DriveDocFiler instance, or None when native-Doc filing isn't
     set up (see _drive_doc_filer). Split out so both _drive_doc_filer (the
@@ -313,7 +343,10 @@ def _build_drive_doc_filer():
     parent_id = parent_id_from_folder_url(os.environ.get("HIGHDEAS_DRIVE_FOLDER_URL", ""))
     find_folder_id = (DriveFolderLinker(service_account_file, parent_id).id_for
                       if service_account_file and parent_id else None)
-    return DriveDocFiler(token_file, container_name, find_folder_id=find_folder_id)
+    client_file = os.environ.get("HIGHDEAS_GOOGLE_DOCS_CLIENT_FILE", "")
+    reauthorize = _drive_reauthorizer(client_file, token_file) if client_file else None
+    return DriveDocFiler(token_file, container_name, find_folder_id=find_folder_id,
+                         reauthorize=reauthorize)
 
 
 def _drive_doc_filer():

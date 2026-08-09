@@ -325,6 +325,90 @@ def test_drive_doc_filer_wires_the_token_file_and_default_container_name_into_th
     assert doc_filer._container_name == "Highdeas Voice Memo Docs"
 
 
+def test_drive_doc_filer_can_sign_itself_back_in_when_the_client_file_is_configured(
+        monkeypatch, tmp_path):
+    # A refresh token is the only unattended credential Google offers, and when one
+    # stops working nothing but a human clicking Allow can mint another. Everything
+    # around that click is the app's job, so the filer is handed the means to start it.
+    import highdeas.app as app_mod
+    monkeypatch.setenv("HIGHDEAS_GOOGLE_DOCS_TOKEN_FILE", str(tmp_path / "token.json"))
+    monkeypatch.setenv("HIGHDEAS_GOOGLE_DOCS_CLIENT_FILE", str(tmp_path / "client.json"))
+
+    assert callable(app_mod._drive_doc_filer().__self__._reauthorize)
+
+
+def test_drive_doc_filer_cannot_sign_itself_back_in_without_the_client_file(
+        monkeypatch, tmp_path):
+    # The client file is what a consent screen is opened *with*; without it there is
+    # nothing to offer, so the row says what went wrong and stops there.
+    import highdeas.app as app_mod
+    monkeypatch.setenv("HIGHDEAS_GOOGLE_DOCS_TOKEN_FILE", str(tmp_path / "token.json"))
+    monkeypatch.delenv("HIGHDEAS_GOOGLE_DOCS_CLIENT_FILE", raising=False)
+
+    assert app_mod._drive_doc_filer().__self__._reauthorize is None
+
+
+def test_a_reauthorizer_runs_the_consent_flow_off_the_request(monkeypatch, tmp_path):
+    import highdeas.app as app_mod
+    started, threads = [], []
+
+    def fake_authorize(client_file, token_file):
+        started.append((client_file, token_file))
+        return True
+
+    monkeypatch.setattr(app_mod.drive_auth, "run", fake_authorize)
+    monkeypatch.setattr(app_mod.threading, "Thread",
+                        lambda **kwargs: threads.append(kwargs) or _RunNow(kwargs))
+
+    reauthorize = app_mod._drive_reauthorizer("client.json", "token.json")
+    reauthorize()
+
+    assert started == [("client.json", "token.json")]
+    # Off the request thread and not holding the process open: a submit answers the
+    # moment it has filed its .docx, and a consent nobody ever clicks doesn't keep
+    # Highdeas alive when its window closes.
+    assert threads[0]["daemon"] is True
+
+
+def test_a_reauthorizer_does_not_open_a_second_browser_window_over_the_first(
+        monkeypatch, tmp_path):
+    # Every submit while the sign-in is outstanding hits the same lapsed token. One
+    # consent tab per lapse, not one per memo.
+    import highdeas.app as app_mod
+    waiting = threading.Event()
+    started = []
+
+    def slow_authorize(client_file, token_file):
+        started.append(client_file)
+        waiting.wait(2)
+        return True
+
+    monkeypatch.setattr(app_mod.drive_auth, "run", slow_authorize)
+
+    reauthorize = app_mod._drive_reauthorizer("client.json", "token.json")
+    reauthorize()
+    for _ in range(50):
+        if started:
+            break
+        time.sleep(0.01)
+    reauthorize()
+    reauthorize()
+    waiting.set()
+
+    assert started == ["client.json"]
+
+
+class _RunNow:
+    """A Thread stand-in that runs its target where it stands, so a test can see the
+    flow's effects without waiting on a real thread."""
+
+    def __init__(self, kwargs):
+        self._target = kwargs["target"]
+
+    def start(self):
+        self._target()
+
+
 def test_drive_doc_filer_uses_a_configured_container_name(monkeypatch, tmp_path):
     import highdeas.app as app_mod
     monkeypatch.setenv("HIGHDEAS_GOOGLE_DOCS_TOKEN_FILE", str(tmp_path / "token.json"))
