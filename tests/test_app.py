@@ -616,6 +616,7 @@ def test_build_app_reads_blank_claude_settings_as_unset(tmp_path, monkeypatch):
 def test_build_app_reads_every_folder_from_the_environment(tmp_path, monkeypatch):
     inbox, bin_dir, drive = tmp_path / "inbox", tmp_path / "bin", tmp_path / "drive"
     inbox.mkdir()
+    drive.mkdir()  # Drive for Desktop's own folder; the router won't invent it
     # Not delenv: build_app() calls load_dotenv(), which repopulates any var that's
     # genuinely absent from os.environ from this checkout's real .env — on a machine
     # where HIGHDEAS_STATE_DIR is configured (as Douglas's now is), delenv here would

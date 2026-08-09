@@ -86,6 +86,17 @@ on both desks; act on a memo wherever you're sitting.
 - **Drive routing is PC-only today** (`G:\My Drive\...`). On the Mac, Drive for
   Desktop has a different mount; routing config is per-machine (`.env`), which is
   fine — it is one of the few things that legitimately differs by machine.
+  **Bit hard, 2026-08-08.** With Drive for Desktop not installed on the Mac at all
+  (`~/Library/CloudStorage` empty) and `HIGHDEAS_DRIVE_BASE` unset, the default
+  `~/Google Drive/voice memos (top level)` was a path that simply did not exist —
+  and `route()` created the whole thing, `parents=True`, so a music memo was filed
+  into a brand-new local folder that looks exactly like Drive and reported as sent.
+  Every dated folder actually in Drive was made by the PC; the newest predated the
+  Mac trip. The router now refuses a base it would have to invent. Two paths in the
+  Mac's `.env` were also missing their leading `/`, which is its own way of being
+  quietly unconfigured: the service account behind the bin's per-memo Drive links
+  and the token behind native Doc filing both resolved to nothing, and both fell
+  back silently, exactly as designed to.
 
 ## Working agreements (unchanged)
 

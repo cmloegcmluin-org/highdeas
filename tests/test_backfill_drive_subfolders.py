@@ -70,6 +70,7 @@ def test_computed_subfolder_matches_what_the_router_would_have_produced(tmp_path
     # (drive_subfolder_name/DATE_FORMAT in routers.py) is reused, not reimplemented.
     inbox = tmp_path / "inbox"
     inbox.mkdir()
+    (tmp_path / "drive").mkdir()  # Drive for Desktop's own folder; the router won't invent it
     (inbox / "v.m4a").write_bytes(b"AUDIO")
     router = DriveMusicRouter(inbox, tmp_path / "drive", today=lambda: "2026_07_07",
                               write_doc=lambda path, text: None)

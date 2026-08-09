@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -434,6 +435,26 @@ def test_drive_router_copies_audio_into_dated_folder_and_writes_doc(tmp_path):
     # The original stays in the inbox so the service also retires it to the local bin.
     assert (inbox / "voice-3.m4a").read_bytes() == b"AUDIO"
     assert docs == [(folder / "Korok Dance.docx", "la la la")]
+
+
+def test_drive_router_refuses_when_the_drive_folder_is_not_there(tmp_path):
+    # Drive for Desktop not installed, not signed in, or HIGHDEAS_DRIVE_BASE left at
+    # the other machine's path: the base is simply absent. Creating it would file the
+    # memo into a lookalike folder on the local disk that nothing will ever upload,
+    # and report the send as done -- which is how a memo goes missing while the app
+    # says it filed it. Say what is wrong instead; the submit route turns this into
+    # the notice bar's sentence and the row stays in the inbox.
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    drive = tmp_path / "nowhere"
+    (inbox / "voice-3.m4a").write_bytes(b"AUDIO")
+
+    router = DriveMusicRouter(inbox, drive, today=lambda: "2026_07_07")
+    # Escaped: `match` is a regex, and the PC's own paths are full of backslashes.
+    with pytest.raises(FileNotFoundError, match=re.escape(str(drive))):
+        router.route(Memo(audio_filename="voice-3.m4a", transcript="la la la"))
+
+    assert not drive.exists()
 
 
 def test_drive_router_files_a_native_google_doc_instead_of_docx_when_configured(tmp_path):

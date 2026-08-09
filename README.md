@@ -158,6 +158,13 @@ recording, or a subtask on an Asana task.
      below), landing right beside that same audio when "Google Drive per-memo folder
      links" is also set up; until the token file is configured, or if a submit can't
      reach Drive, a `.docx` alongside the audio is the fallback, exactly as before.
+
+     The dated folder is the app's to create; the Drive base above it is Drive's. If
+     that base isn't there — Drive for Desktop not installed or not signed in on this
+     machine, or `HIGHDEAS_DRIVE_BASE` still carrying the other machine's path — the
+     submit **refuses and says so**, and the memo stays in the inbox to be sent again.
+     It used to make the whole path instead, which filed the memo into a folder that
+     merely looked like Drive, on a disk nothing uploads from, and called it sent.
    - **Asana** — the transcript becomes a subtask of the parent task picked in the
      row's dropdown (the small set you configure via `ASANA_PARENT_TASKS`). A named
      memo carries its name as the task and its transcript as the notes; an unnamed one
@@ -469,7 +476,7 @@ Everything but the keys for the destinations you use is optional. Set these in `
 | `ASANA_ACCESS_TOKEN` | — | Personal access token for creating Asana subtasks. |
 | `ASANA_PARENT_TASKS` | — | `gid=Label` pairs (`;`-separated) the Asana dropdown offers; the first is the default. |
 | `HIGHDEAS_INBOX_DIR` | iCloud `Shortcuts/Highdeas` | Folder the iOS Shortcut drops recordings into. |
-| `HIGHDEAS_DRIVE_BASE` | `G:\My Drive\voice memos (top level)` | Where music-routed audio is filed. |
+| `HIGHDEAS_DRIVE_BASE` | PC `G:\My Drive\voice memos (top level)`, Mac `~/Google Drive/voice memos (top level)` | Where music-routed audio is filed. Must be a folder Drive for Desktop is actually mounting on *this* machine — a Drive submit refuses rather than filing into a path that isn't there, since a folder the app made itself is one nothing ever uploads. |
 | `HIGHDEAS_DRIVE_FOLDER_URL` | — | That folder's own Drive link (Share -> Copy link), for the bin's Drive icon to open. Empty = the icon does nothing. Also the folder `HIGHDEAS_GOOGLE_SERVICE_ACCOUNT_FILE` below searches inside — required for per-memo links too, not just the fallback. |
 | `HIGHDEAS_GOOGLE_SERVICE_ACCOUNT_FILE` | — | Path to a Google Cloud service account key file, so the bin's Drive icon opens the memo's own dated subfolder instead of always the top-level folder, and a native Google Doc (see below) can be moved beside its audio instead of staying in its own container. Empty = the icon always opens the top-level folder, and a Doc always stays in its container. See "Google Drive per-memo folder links" below. |
 | `HIGHDEAS_GOOGLE_DOCS_TOKEN_FILE` | — | Path to the token file `scripts/authorize_google_docs.py` writes, so a music memo's transcript files as a real, native Google Doc instead of a local `.docx`. Empty = always the `.docx`. See "Google Drive native Doc filing" below. |
