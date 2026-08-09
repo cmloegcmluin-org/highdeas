@@ -134,14 +134,39 @@ clients; fixing it would mean changing the fingerprint scheme itself.
   with a scrub slider (`AVAudioPlayer` + `Slider`).
 - Push: multipart POST with the token header; a `URLSession` background session with
   retry/backoff; mark sent and clear only on 2xx. Auto-push fires when recording stops.
-  Verified behavior (simulator, 2026-07-10): with the server down, the *system* session
-  holds the failed task and retries on its own schedule — the row shows "Uploading…"
-  rather than the app's own backoff countdown, and when the server returns the upload
-  delivers itself with no user action. That's the mission behavior (memos arrive on
-  their own); just don't expect the app-level retry states to narrate it.
+  **The backoff belongs to the session daemon, not to a timer in the app** — see below.
 - Settings: server URLs (one machine per line — the fan-out era) + token.
 - Tests: XCTest the pure logic (queue state machine, request building). The
   audio/hardware layer is verified on the device — don't fake-TDD it.
+
+### Who owns the wait between attempts (learned the hard way, 2026-08-08)
+
+The kickoff recorded a simulator observation from 2026-07-10: with the server
+down, the system session appeared to hold the failed task and retry it on its
+own, delivering with no user action once the server came back. **On the phone it
+does not go that way.** A transfer toward a machine that is asleep or off the
+network comes back as a completed task with an error, the app is woken to hear
+it, and from there the retry was the app's problem — a `notBefore` backoff that
+only a five-second `Timer` inside the app ever consulted. iOS suspends the app
+seconds later and that timer stops, so the next attempt waited for Douglas to
+open the app. Three notes sat on the phone from Aug 7 to Aug 8 and left within
+ten seconds of it being launched; they had sat through hours in which the Mac
+was awake with its listener up.
+
+So the wait is handed to the session daemon instead. Every queued entry is
+pushed straight away and its backoff travels with it as
+`URLSessionTask.earliestBeginDate`; the daemon starts the transfer at that
+moment whether or not the app is running, and relaunches it to deliver the
+outcome, which schedules the next attempt. The chain sustains itself with the
+app dead. `UploadQueue.next()` therefore hands over anything not already in
+flight — a backoff is no longer a reason to hold an entry back — and
+`flightBeginsAt` is *when it may start*, not when it did, so nothing measures
+silence against a transfer that has not begun.
+
+Verified on the device (2026-08-08, iPhone 16 Pro, iOS 26.5.2): pointed at a
+listener that was down, then killed the app outright (`devicectl process signal
+SIGKILL`), then brought the listener up. Both queued recordings arrived while
+`devicectl info processes` showed the app not running.
 
 ## Dev loop on the Mac
 

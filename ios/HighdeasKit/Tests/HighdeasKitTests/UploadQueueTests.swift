@@ -38,24 +38,27 @@ func machines(_ count: Int) -> [String] {
         #expect(queue.pending[0].attempts == 1)  // sync never resets bookkeeping
     }
 
-    @Test func nextSkipsInFlightAndBackedOff() {
+    @Test func nextSkipsOnlyWhatIsAlreadyInFlight() {
+        // A backoff is not a reason to hold an entry back: it travels with the
+        // entry as the moment its transfer may begin, for the system to honour
+        // while the app is asleep. Waiting it out in here would mean waiting
+        // for the user to open the app.
         var queue = UploadQueue()
         queue.enqueue("flying.m4a")
         queue.enqueue("waiting.m4a")
-        queue.enqueue("ready.m4a")
         queue.markInFlight("flying.m4a", toward: [pc])
         queue.retryLater("waiting.m4a", at: t0)
 
-        #expect(queue.next(at: t0)?.fileName == "ready.m4a")
-        // Once the backoff passes, the older entry is preferred again.
-        #expect(queue.next(at: t0.addingTimeInterval(600))?.fileName == "waiting.m4a")
+        let handed = queue.next()
+        #expect(handed?.fileName == "waiting.m4a")
+        #expect(handed?.notBefore == t0.addingTimeInterval(5))
     }
 
-    @Test func nextIsEmptyWhenEverythingWaits() {
+    @Test func nextIsEmptyWhenEverythingIsInFlight() {
         var queue = UploadQueue()
         queue.enqueue("a.m4a")
         queue.markInFlight("a.m4a", toward: [pc])
-        #expect(queue.next(at: t0) == nil)
+        #expect(queue.next() == nil)
     }
 
     @Test func confirmSentRemovesTheEntry() {
@@ -130,7 +133,7 @@ func machines(_ count: Int) -> [String] {
 
         // One dead machine must not unlock a re-push while the other's task
         // is still grinding in the system's background retry.
-        #expect(queue.next(at: .distantFuture) == nil)
+        #expect(queue.next() == nil)
         #expect(queue.pending.first?.inFlight == true)
     }
 
@@ -297,7 +300,33 @@ func machines(_ count: Int) -> [String] {
 
         queue.markInFlight("a.m4a", toward: machines(3), at: start)
 
-        #expect(queue.pending.first?.flightStartedAt == start)
+        #expect(queue.pending.first?.flightBeginsAt == start)
+    }
+
+    @Test func aRetryRemembersWhenTheSystemWillStartIt() {
+        // The transfers of a backed-off retry are handed over at once but told
+        // to begin later. The clock a flight is measured against is that later
+        // moment: nothing has gone quiet yet, because nothing has spoken yet.
+        var queue = UploadQueue()
+        queue.enqueue("a.m4a")
+        let due = start.addingTimeInterval(300)
+
+        queue.markInFlight("a.m4a", toward: machines(2), at: start, beginningAt: due)
+
+        #expect(queue.pending.first?.flightBeginsAt == due)
+    }
+
+    @Test func aFlightThatHasNotBegunIsNotStale() {
+        var queue = UploadQueue()
+        queue.enqueue("a.m4a")
+        queue.markInFlight("a.m4a", toward: machines(2), at: start,
+                           beginningAt: start.addingTimeInterval(300))
+
+        // Well past the staleness window measured from the hand-over, but the
+        // transfer has not started, so there is nothing to give up on yet.
+        #expect(queue.releaseStaleFlights(at: start.addingTimeInterval(200)).isEmpty)
+        #expect(queue.releaseStaleFlights(at: start.addingTimeInterval(421))
+                == ["a.m4a"])
     }
 
     @Test func resolvingClearsTheFlightClock() {
@@ -307,7 +336,7 @@ func machines(_ count: Int) -> [String] {
 
         queue.resolve("a.m4a", from: pc, .retriable, at: start.addingTimeInterval(5))
 
-        #expect(queue.pending.first?.flightStartedAt == nil)
+        #expect(queue.pending.first?.flightBeginsAt == nil)
     }
 }
 
@@ -363,6 +392,68 @@ func machines(_ count: Int) -> [String] {
 
         #expect(!entry(in: queue).awaitingMachine(at: start))
     }
+
+    @Test func aRetryTheSystemIsHoldingForLaterIsAwaitingAMachine() {
+        // Handed over but not started yet. "Uploading…" would be a lie about a
+        // transfer that has not begun, and the calm wait is the truth: a round
+        // already came back with nobody taking it.
+        var queue = UploadQueue()
+        queue.enqueue("a.m4a")
+        queue.markInFlight("a.m4a", toward: machines(2), at: start)
+        queue.resolve("a.m4a", from: pc, .retriable, at: start)
+        queue.resolve("a.m4a", from: mac, .retriable, at: start)
+        queue.markInFlight("a.m4a", toward: machines(2), at: start,
+                           beginningAt: start.addingTimeInterval(300))
+
+        #expect(entry(in: queue).awaitingMachine(at: start.addingTimeInterval(1)))
+    }
+
+    @Test func aRefusalHeldForLaterIsStillARefusal() {
+        // A blocked entry is re-handed over on the slowest cadence like any
+        // other, but what the row has to say is still the refusal — not the
+        // calm wait that means nobody answered.
+        var queue = UploadQueue()
+        queue.enqueue("a.m4a")
+        queue.block("a.m4a", reason: "Server refused (401).", at: start)
+        queue.markInFlight("a.m4a", toward: machines(1), at: start,
+                           beginningAt: start.addingTimeInterval(300))
+
+        #expect(!entry(in: queue).awaitingMachine(at: start.addingTimeInterval(1)))
+    }
+}
+
+// MARK: - Which flights are actually moving
+
+/// `inFlight` stopped meaning "moving now" once a backed-off retry began being
+/// handed over early and told to start later. These pin the difference, which
+/// is what the row's "Uploading…" hangs on.
+@Suite struct FlyingTests {
+    let start = Date(timeIntervalSince1970: 1_800_000_000)
+
+    @Test func aFlightThatHasBegunIsFlying() {
+        var queue = UploadQueue()
+        queue.enqueue("a.m4a")
+        queue.markInFlight("a.m4a", toward: machines(1), at: start)
+
+        #expect(queue.pending[0].isFlying(at: start))
+    }
+
+    @Test func aFlightHeldForLaterIsNotFlyingYet() {
+        var queue = UploadQueue()
+        queue.enqueue("a.m4a")
+        queue.markInFlight("a.m4a", toward: machines(1), at: start,
+                           beginningAt: start.addingTimeInterval(300))
+
+        #expect(!queue.pending[0].isFlying(at: start.addingTimeInterval(1)))
+        #expect(queue.pending[0].isFlying(at: start.addingTimeInterval(301)))
+    }
+
+    @Test func anEntryWithNoFlightIsNotFlying() {
+        var queue = UploadQueue()
+        queue.enqueue("a.m4a")
+
+        #expect(!queue.pending[0].isFlying(at: start))
+    }
 }
 
 // MARK: - Retrying now because the settings changed
@@ -376,9 +467,9 @@ func machines(_ count: Int) -> [String] {
         queue.markInFlight("a.m4a", toward: [pc], at: start)
         queue.resolve("a.m4a", from: pc, .retriable, at: start)  // backoff pushes notBefore out
 
-        queue.expedite()
+        _ = queue.expedite(at: start)
 
-        #expect(queue.next(at: start)?.fileName == "a.m4a")
+        #expect(queue.next()?.notBefore == .distantPast)
     }
 
     @Test func expediteKeepsABlockedReasonButRetriesAnyway() {
@@ -387,22 +478,39 @@ func machines(_ count: Int) -> [String] {
         queue.markInFlight("a.m4a", toward: [pc], at: start)
         queue.resolve("a.m4a", from: pc, .blocked("Server refused (401)."), at: start)
 
-        queue.expedite()
+        _ = queue.expedite(at: start)
 
         // Due now — a fixed token deserves an immediate answer — but the row
         // keeps saying why it was stuck until that answer arrives.
-        #expect(queue.next(at: start)?.fileName == "a.m4a")
+        #expect(queue.next()?.notBefore == .distantPast)
         #expect(queue.pending[0].blockedReason == "Server refused (401).")
     }
 
+    @Test func expediteTakesBackAFlightTheSystemHasNotStarted() {
+        // Its transfers are addressed to the machines the old settings named,
+        // and they have not run yet: waiting out five minutes to find out they
+        // point nowhere would read as "still broken". Named back so the caller
+        // can cancel them.
+        var queue = UploadQueue()
+        queue.enqueue("a.m4a")
+        queue.markInFlight("a.m4a", toward: [pc], at: start,
+                           beginningAt: start.addingTimeInterval(300))
+
+        #expect(queue.expedite(at: start) == ["a.m4a"])
+        #expect(queue.next()?.notBefore == .distantPast)
+        #expect(queue.pending[0].flightBeginsAt == nil)
+    }
+
     @Test func expediteLeavesALiveFlightAlone() {
+        // Already moving, and possibly toward a machine the new settings still
+        // name. Let it land; the staleness sweep collects it if it doesn't.
         var queue = UploadQueue()
         queue.enqueue("a.m4a")
         queue.markInFlight("a.m4a", toward: [pc], at: start)
 
-        queue.expedite()
+        #expect(queue.expedite(at: start).isEmpty)
 
-        #expect(queue.next(at: start) == nil)  // still in flight, not re-pushed
+        #expect(queue.next() == nil)  // still in flight, not re-pushed
     }
 }
 
@@ -433,7 +541,7 @@ func machines(_ count: Int) -> [String] {
         #expect(!entry.inFlight)
         #expect(entry.attempts == 1)
         #expect(entry.notBefore == start.addingTimeInterval(121 + 5))
-        #expect(queue.next(at: start.addingTimeInterval(130))?.fileName == "a.m4a")
+        #expect(queue.next()?.fileName == "a.m4a")
     }
 
     @Test func aWarmFlightIsLeftAlone() {
