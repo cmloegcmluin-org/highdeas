@@ -81,6 +81,7 @@ final class CaptureModel: ObservableObject {
         }
         adoptLeftovers()
         uploader.reconnect()  // collect outcomes that arrived while the app was gone
+        uploader.sweepStaleBodies()  // …and clear the staging of transfers that never will
         wake()
         nudgeLocalNetwork()
         // A slow heartbeat retries what backoff has released and refreshes
