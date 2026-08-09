@@ -175,7 +175,8 @@ class DriveDocFiler:
     and for how that move is possible at all under drive.file scope)."""
 
     def __init__(self, token_file, container_name, *, get=requests.get, post=requests.post,
-                 patch=requests.patch, token=_user_access_token, find_folder_id=None):
+                 patch=requests.patch, token=_user_access_token, find_folder_id=None,
+                 reauthorize=None):
         self._token_file = token_file
         self._container_name = container_name
         self._get = get
@@ -183,6 +184,23 @@ class DriveDocFiler:
         self._patch = patch
         self._token = token
         self._find_folder_id = find_folder_id
+        # Called, without arguments and without blocking, when the saved sign-in
+        # stops working: it opens Google's consent screen and saves whatever comes
+        # back (see app._drive_reauthorizer). It cannot be waited on -- the click
+        # it needs is a human's, and this is running inside one of his -- so the
+        # memo in hand still takes the .docx, and the memo after it gets a Doc.
+        self._reauthorize = reauthorize
+
+    def _renewing(self, problem):
+        """`problem` on its own, or `problem` plus what the app is doing about it —
+        a fresh sign-in, started here and now. Only a lapsed sign-in gets this: it is
+        the one failure a consent screen fixes, and opening a browser window over an
+        offline machine or a Drive outage would be noise, not help."""
+        if self._reauthorize is None:
+            return problem
+        self._reauthorize()
+        return (f"{problem} Highdeas is signing back in to Google Drive — click Allow "
+                f"in the browser window it just opened, and the next memo files a Doc.")
 
     def _find_folder(self, headers, name, parent_id):
         """The id of the folder named `name` directly inside `parent_id`
@@ -241,11 +259,11 @@ class DriveDocFiler:
         try:
             access_token = self._token(self._token_file)
         except Exception as exc:  # noqa: BLE001 — reported, not swallowed: see DriveDocUnavailable
-            raise DriveDocUnavailable(
-                f"Google would not renew the Docs sign-in ({_said(exc)})."
-            ) from exc
+            raise DriveDocUnavailable(self._renewing(
+                f"Google would not renew the Docs sign-in ({_said(exc)}).")) from exc
         if not access_token:
-            raise DriveDocUnavailable("The Docs sign-in returned no access token.")
+            raise DriveDocUnavailable(
+                self._renewing("The Docs sign-in returned no access token."))
         headers = {"Authorization": f"Bearer {access_token}"}
         try:
             container_id = self._folder_id(headers, self._container_name, "")
