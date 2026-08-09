@@ -168,6 +168,34 @@ listener that was down, then killed the app outright (`devicectl process signal
 SIGKILL`), then brought the listener up. Both queued recordings arrived while
 `devicectl info processes` showed the app not running.
 
+### The staging folder, and why a confirmation leaves its siblings flying (2026-08-08)
+
+Each push assembles its multipart body into a file under
+`Library/Caches/upload-bodies/` for the background session to stream from, and
+deletes it when that task calls back. Nine had collected on the phone by
+2026-08-08, the oldest ten days old, because some tasks never call back: a
+fan-out pushes to every machine at once, the first 2xx releases the recording
+(`mac-peer.md`, "Settled 2026-08-03") and takes the queue entry with it, and the
+transfers toward the machines that hadn't answered are then held by iOS
+indefinitely and silently, watched by nobody.
+
+**Those siblings are left flying on purpose.** Cancelling them on the first
+confirmation would tidy the folder at the cost of the delivery Douglas's rule
+takes for granted: with both machines up, the sibling transfer puts the note on
+the other desk in seconds, which beats waiting for the store to sync it. It still
+lands after the recording is deleted from the phone, because the body is a
+complete copy of it, written before the task started. Cancelling is a change to
+delivery behaviour, and that call is Douglas's — ask before making it.
+
+So the folder is swept instead, once at launch, for bodies older than a day —
+the shape `_sweep_stale_staging` uses on the server's own `.part` leftovers, at
+the phone's timescale. A *fresh* body is never touched: it belongs to a transfer
+under way, or to the instant in `push` between the body being written and the
+task existing to stream it. A day is far past the queue's own two-minute patience
+with a silent flight, so nothing that old is still expected to land.
+`Library/Caches` is purgeable by iOS, so this was untidiness rather than a risk
+to a recording — hence one sweep at launch and no running upkeep.
+
 ## Dev loop on the Mac
 
 - Python baseline first: `/opt/homebrew/bin/python3.14 -m venv .venv` (the Mac's bare

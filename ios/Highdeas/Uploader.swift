@@ -44,6 +44,31 @@ final class Uploader: NSObject, URLSessionDataDelegate {
             .appending(path: "upload-bodies", directoryHint: .isDirectory)
     }
 
+    /// Clear out the bodies of transfers that are never going to call back —
+    /// the ones iOS is still holding for a machine it can't reach, whose queue
+    /// entry left the moment another machine confirmed the recording, so
+    /// nothing is watching them any more. Left to itself the folder gains one
+    /// per fan-out toward a machine that is away.
+    ///
+    /// Once at launch is enough: this is untidiness in a purgeable cache, not a
+    /// risk to a recording. Which leftovers are stale, and why a fresh one is
+    /// untouchable, is `StagedBodies`' business.
+    func sweepStaleBodies() {
+        let leftovers = (try? FileManager.default.contentsOfDirectory(
+            at: bodiesDirectory,
+            includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        for name in StagedBodies.stale(among: leftovers.map(described), at: Date()) {
+            try? FileManager.default.removeItem(at: bodiesDirectory.appending(path: name))
+        }
+    }
+
+    private func described(_ leftover: URL) -> StagedBody {
+        StagedBody(
+            name: leftover.lastPathComponent,
+            modified: (try? leftover.resourceValues(forKeys: [.contentModificationDateKey]))?
+                .contentModificationDate)
+    }
+
     /// Hand one transfer to the session. `notBefore` in the future schedules it
     /// rather than starting it: the session daemon owns the wait, and starts the
     /// transfer at that moment whether or not this app is still running. That is
@@ -57,7 +82,8 @@ final class Uploader: NSObject, URLSessionDataDelegate {
                 at: bodiesDirectory, withIntermediateDirectories: true)
             // One body file per task: a fan-out pushes the same recording to
             // several machines at once, and they must not share staging.
-            let bodyName = recording.lastPathComponent + "." + UUID().uuidString + ".body"
+            let bodyName = recording.lastPathComponent + "." + UUID().uuidString
+                + StagedBodies.suffix
             let body = bodiesDirectory.appending(path: bodyName)
             try MultipartUpload.writeBody(of: recording, boundary: boundary, to: body)
             let task = session.uploadTask(
