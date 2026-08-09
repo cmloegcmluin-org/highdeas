@@ -13,6 +13,18 @@ step. Until that runs, a phone fix is not fixed, however green the suite is: say
 rather than reporting it landed. And if you need the phone, **ask for it** — Douglas
 would rather plug it in than have you verify around its absence on a simulator.
 
+**Copy before you clear, when you touch the phone's container.** Verifying on the
+device often means planting files with `devicectl device copy to` and taking them
+away after — and `--remove-existing-content` empties the whole *destination
+directory*, not only what you put there. So copy the subtree off first (`devicectl
+device copy from`), and prefer overwriting exactly what you planted to clearing a
+folder. `Library/Caches` is purgeable and forgives the mistake; `Library/Preferences`
+holds the server lines and the upload token, and `Documents/Recordings` holds memos
+that exist nowhere else yet. And an *empty* `Library/Preferences` listing is not
+evidence the settings are gone: iOS keeps them in `cfprefsd`'s memory and writes the
+plist out later, so reading the folder can show nothing while the app is working
+perfectly — check by copying the plist off once it exists, not by alarming Douglas.
+
 ## Land by opening a PR — the merge queue gates and merges it
 
 **Never merge into the primary checkout, and never push to `main`.** You push your
