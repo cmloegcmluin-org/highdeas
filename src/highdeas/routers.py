@@ -333,6 +333,19 @@ class DriveMusicRouter:
         self._copy = copy
 
     def route(self, memo):
+        # The dated subfolder is ours to create; the base underneath it is Drive's,
+        # and its absence means Drive is not here — not installed, not signed in, or
+        # HIGHDEAS_DRIVE_BASE still carrying the other machine's path. Making it
+        # would put the memo in a folder that merely looks like Drive, on a disk
+        # nothing uploads from, and report the send as done. Refuse instead: the
+        # submit route turns this into a sentence in the notice bar and the memo
+        # stays in the inbox, where it can be sent again once Drive is really there.
+        if not self._base.is_dir():
+            raise FileNotFoundError(
+                f"Google Drive folder not found: {self._base} — check that Drive for "
+                f"Desktop is running and that HIGHDEAS_DRIVE_BASE in .env names this "
+                f"machine's own Drive path."
+            )
         subfolder_name = drive_subfolder_name(self._today())
         folder = self._base / subfolder_name
         folder.mkdir(parents=True, exist_ok=True)
