@@ -435,7 +435,12 @@ home Wi-Fi — no iCloud mirror, no hours-late sync. One-time setup on the PC:
 
 Only `POST /upload` is reachable from the network — the inbox page and its
 submit/delete routes stay loopback-only. Recordings made away from home simply wait
-in the app's retry queue until the phone is back on the home Wi-Fi.
+in the app's retry queue until the phone is back on the home Wi-Fi — and they wait
+there **without the app being open**: each retry is scheduled on the system's own
+upload session, which starts it at its appointed moment whether or not Highdeas is
+running and wakes the app to schedule the next one. So a note recorded while both
+machines are asleep arrives on its own, minutes after one of them wakes, rather
+than the next time you happen to open the app.
 
 ### The app itself
 

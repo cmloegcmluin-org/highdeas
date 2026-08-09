@@ -44,7 +44,13 @@ final class Uploader: NSObject, URLSessionDataDelegate {
             .appending(path: "upload-bodies", directoryHint: .isDirectory)
     }
 
-    func push(_ recording: URL, to endpoint: UploadEndpoint) {
+    /// Hand one transfer to the session. `notBefore` in the future schedules it
+    /// rather than starting it: the session daemon owns the wait, and starts the
+    /// transfer at that moment whether or not this app is still running. That is
+    /// the whole of the backoff — a timer inside the app only ticks while the
+    /// app is awake, so a note that failed once would sit until the user next
+    /// opened it.
+    func push(_ recording: URL, to endpoint: UploadEndpoint, notBefore: Date) {
         let boundary = "highdeas-\(UUID().uuidString)"
         do {
             try FileManager.default.createDirectory(
@@ -60,6 +66,7 @@ final class Uploader: NSObject, URLSessionDataDelegate {
             // pipe: the first two are generated names, the third an address.
             task.taskDescription = [recording.lastPathComponent, endpoint.key, bodyName]
                 .joined(separator: "|")
+            if notBefore > Date() { task.earliestBeginDate = notBefore }
             task.resume()
         } catch {
             report(recording.lastPathComponent, endpoint.key, .retriable)

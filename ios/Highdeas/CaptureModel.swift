@@ -41,8 +41,8 @@ final class CaptureModel: ObservableObject {
     // A settings change means the old failures say nothing about the new
     // world: retry everything now rather than waiting out backoff timers
     // aimed at addresses (or a token) that no longer exist.
-    @AppStorage("serverURLs") var serverURLs: String = "" { didSet { queue.expedite(); wake() } }
-    @AppStorage("uploadToken") var uploadToken: String = "" { didSet { queue.expedite(); wake() } }
+    @AppStorage("serverURLs") var serverURLs: String = "" { didSet { expediteQueue() } }
+    @AppStorage("uploadToken") var uploadToken: String = "" { didSet { expediteQueue() } }
 
     let recorder = Recorder()
     let uploader = Uploader()
@@ -114,6 +114,15 @@ final class CaptureModel: ObservableObject {
         URLSession.shared.dataTask(with: request).resume()
     }
 
+    /// The settings changed, so every scheduled transfer is aimed at a machine
+    /// (or carries a token) that no longer applies: cancel those and start the
+    /// round again at once, rather than waiting out a five-minute schedule the
+    /// session daemon is holding against addresses that no longer exist.
+    private func expediteQueue() {
+        for released in queue.expedite(at: Date()) { uploader.abandon(released) }
+        wake()
+    }
+
     /// Sync with the disk and push whatever is ready. Safe to call often.
     func wake() {
         receipts.prune(at: Date())
@@ -181,10 +190,15 @@ final class CaptureModel: ObservableObject {
         }
         let peers = endpoints
         guard !peers.isEmpty else { return }
-        while let ready = queue.next(at: now) {
-            queue.markInFlight(ready.fileName, toward: peers.map(\.key), at: now)
+        // Everything queued goes over now, backoff and all: the wait belongs to
+        // the session daemon, which keeps it while the app is asleep. This is
+        // the only pump there is — nothing runs it once the app suspends.
+        while let ready = queue.next() {
+            queue.markInFlight(ready.fileName, toward: peers.map(\.key), at: now,
+                               beginningAt: ready.notBefore)
             for peer in peers {
-                uploader.push(recordingsDirectory.appending(path: ready.fileName), to: peer)
+                uploader.push(recordingsDirectory.appending(path: ready.fileName),
+                              to: peer, notBefore: ready.notBefore)
             }
         }
     }
@@ -250,11 +264,14 @@ final class CaptureModel: ObservableObject {
     }
 
     private func state(of entry: PendingUpload) -> RecordingItem.State {
-        // No machine around — a silent flight, or a round nobody confirmed —
-        // is an ordinary afternoon out, not an incident: one calm state
-        // instead of an alarm and a retry countdown. Refusals stay loud.
-        if entry.awaitingMachine(at: Date()) { return .awaitingMachine }
-        if entry.inFlight { return .uploading }
+        // No machine around — a silent flight, a round nobody confirmed, or a
+        // retry the system is holding for later — is an ordinary afternoon out,
+        // not an incident: one calm state instead of an alarm and a retry
+        // countdown. Refusals stay loud. "Uploading…" is reserved for a
+        // transfer actually moving, which a scheduled one is not.
+        let now = Date()
+        if entry.awaitingMachine(at: now) { return .awaitingMachine }
+        if entry.isFlying(at: now) { return .uploading }
         if let reason = entry.blockedReason { return .blocked(reason) }
         return .queued
     }

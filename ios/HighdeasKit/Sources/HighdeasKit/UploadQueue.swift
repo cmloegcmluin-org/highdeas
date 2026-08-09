@@ -16,36 +16,50 @@ public struct PendingUpload: Equatable, Identifiable, Sendable {
     public var blockedReason: String?
     /// Fan-out bookkeeping: which machines this flight went to and which have
     /// answered, the refusal to surface if the flight ends with no 2xx, and
-    /// when the flight began — so the UI can stop saying "Uploading…" about a
+    /// when the flight begins — so the UI can stop saying "Uploading…" about a
     /// flight nothing has answered in minutes.
+    ///
+    /// Begins, not began: a backed-off retry is handed to the system straight
+    /// away and told to start later, and until that moment its silence means
+    /// nothing. Everything that measures a flight measures from here.
     public var flightPeers: Set<String>
     public var answered: Set<String>
     public var refusalDuringFlight: String?
-    public var flightStartedAt: Date?
+    public var flightBeginsAt: Date?
 
     public var id: String { fileName }
 
     /// Whether the queue has, in effect, learned that no machine is taking
     /// uploads right now: the current flight has gone unanswered for
-    /// `silentFor` seconds, or a whole round already came back with nobody
-    /// confirming and the entry is waiting out its backoff. Being away from
-    /// every machine for an afternoon is the app working as designed, so the
-    /// row wants to say "will sync later" calmly rather than count retries —
-    /// and only this bookkeeping knows that from a flight that's still warm.
+    /// `silentFor` seconds, or has not been allowed to start yet, or a whole
+    /// round already came back with nobody confirming. Being away from every
+    /// machine for an afternoon is the app working as designed, so the row
+    /// wants to say "will sync later" calmly rather than count retries — and
+    /// only this bookkeeping knows that from a flight that's still warm.
     /// A refusal is neither: a machine answered, and what it said is a
     /// problem someone has to fix, so it stays a loud state of its own.
     public func awaitingMachine(at now: Date, silentFor: TimeInterval = 10) -> Bool {
-        if inFlight {
-            guard let started = flightStartedAt else { return false }
-            return now.timeIntervalSince(started) > silentFor
-        }
-        return blockedReason == nil && attempts > 0
+        guard blockedReason == nil else { return false }
+        guard inFlight else { return attempts > 0 }
+        guard let begins = flightBeginsAt else { return false }
+        // Handed over but not started: nobody has taken it and nobody has
+        // refused it, which is exactly the calm wait this state is for.
+        guard now >= begins else { return true }
+        return now.timeIntervalSince(begins) > silentFor
+    }
+
+    /// Whether this flight's transfers are actually moving, as opposed to
+    /// waiting on a start date the system was given. `inFlight` alone stopped
+    /// answering that once a backed-off retry began being handed over early.
+    public func isFlying(at now: Date) -> Bool {
+        guard inFlight, let begins = flightBeginsAt else { return false }
+        return now >= begins
     }
 
     public init(fileName: String, attempts: Int = 0, notBefore: Date = .distantPast,
                 inFlight: Bool = false, blockedReason: String? = nil,
                 flightPeers: Set<String> = [], answered: Set<String> = [],
-                refusalDuringFlight: String? = nil, flightStartedAt: Date? = nil) {
+                refusalDuringFlight: String? = nil, flightBeginsAt: Date? = nil) {
         self.fileName = fileName
         self.attempts = attempts
         self.notBefore = notBefore
@@ -54,7 +68,7 @@ public struct PendingUpload: Equatable, Identifiable, Sendable {
         self.flightPeers = flightPeers
         self.answered = answered
         self.refusalDuringFlight = refusalDuringFlight
-        self.flightStartedAt = flightStartedAt
+        self.flightBeginsAt = flightBeginsAt
     }
 }
 
@@ -83,24 +97,36 @@ public struct UploadQueue: Equatable, Sendable {
         for name in fileNames { enqueue(name) }
     }
 
-    /// The next upload worth attempting: not already in flight, past its
-    /// backoff. Oldest first, so the queue drains in recording order.
-    public func next(at now: Date) -> PendingUpload? {
-        pending.first { !$0.inFlight && $0.notBefore <= now }
+    /// The next upload worth handing over: anything not already in flight.
+    /// Oldest first, so the queue drains in recording order.
+    ///
+    /// A backoff does not hold an entry back here. It rides along on
+    /// `notBefore` as the moment the transfer may begin, for the system to
+    /// honour — because the app is asleep for most of any wait worth having,
+    /// and a backoff only this queue could see would expire unnoticed until
+    /// the user next opened the app.
+    public func next() -> PendingUpload? {
+        pending.first { !$0.inFlight }
     }
 
     /// A flight begins: the recording is being pushed to each of `peers` at
     /// once — every machine configured, since any one of them taking it is
     /// enough. Naming them (rather than counting them) is what lets a replayed
     /// answer from one machine not stand in for another that hasn't spoken.
+    ///
+    /// `beginsAt` is when those transfers may actually start: now for an
+    /// ordinary push, and the entry's backoff for a retry the system is
+    /// holding on the queue's behalf. Never earlier than now — a date already
+    /// past is a transfer starting immediately, not one overdue.
     public mutating func markInFlight(_ fileName: String, toward peers: [String],
-                                      at now: Date = Date()) {
+                                      at now: Date = Date(),
+                                      beginningAt beginsAt: Date? = nil) {
         update(fileName) {
             $0.inFlight = true
             $0.flightPeers = Set(peers)
             $0.answered = []
             $0.refusalDuringFlight = nil
-            $0.flightStartedAt = now
+            $0.flightBeginsAt = max(now, beginsAt ?? now)
         }
     }
 
@@ -147,15 +173,11 @@ public struct UploadQueue: Equatable, Sendable {
     public mutating func releaseStaleFlights(
             at now: Date, silentFor: TimeInterval = 120) -> [String] {
         var released: [String] = []
-        for index in pending.indices where pending[index].inFlight {
-            guard let started = pending[index].flightStartedAt,
-                  now.timeIntervalSince(started) > silentFor else { continue }
-            pending[index].inFlight = false
+        for index in pending.indices where pending[index].isFlying(at: now) {
+            guard let begins = pending[index].flightBeginsAt,
+                  now.timeIntervalSince(begins) > silentFor else { continue }
+            takeBackFlight(at: index)
             pending[index].attempts += 1
-            pending[index].flightStartedAt = nil
-            pending[index].flightPeers = []
-            pending[index].answered = []
-            pending[index].refusalDuringFlight = nil
             pending[index].notBefore = now.addingTimeInterval(
                 Self.backoff(afterAttempts: pending[index].attempts))
             released.append(pending[index].fileName)
@@ -176,7 +198,7 @@ public struct UploadQueue: Equatable, Sendable {
             $0.attempts += 1
             $0.inFlight = false
             $0.blockedReason = nil
-            $0.flightStartedAt = nil
+            $0.flightBeginsAt = nil
             $0.notBefore = now.addingTimeInterval(Self.backoff(afterAttempts: $0.attempts))
         }
     }
@@ -189,7 +211,7 @@ public struct UploadQueue: Equatable, Sendable {
             $0.attempts += 1
             $0.inFlight = false
             $0.blockedReason = reason
-            $0.flightStartedAt = nil
+            $0.flightBeginsAt = nil
             $0.notBefore = now.addingTimeInterval(Self.maximumBackoff)
         }
     }
@@ -199,10 +221,21 @@ public struct UploadQueue: Equatable, Sendable {
     /// changes out from under the backoff — a server URL corrected, a token
     /// fixed — and waiting out a five-minute timer against addresses that no
     /// longer exist would read as "still broken".
-    public mutating func expedite() {
-        for index in pending.indices where !pending[index].inFlight {
+    ///
+    /// A flight the system has yet to start is addressed to exactly those
+    /// stale machines, so it is taken back and named for the caller to cancel.
+    /// One already moving is left to land: it may well be aimed at a machine
+    /// the new settings still name, and the staleness sweep collects it if not.
+    public mutating func expedite(at now: Date) -> [String] {
+        var released: [String] = []
+        for index in pending.indices where !pending[index].isFlying(at: now) {
+            if pending[index].inFlight {  // scheduled, but not started yet
+                takeBackFlight(at: index)
+                released.append(pending[index].fileName)
+            }
             pending[index].notBefore = .distantPast
         }
+        return released
     }
 
     public static let maximumBackoff: TimeInterval = 300
@@ -214,6 +247,17 @@ public struct UploadQueue: Equatable, Sendable {
         guard attempts > 0 else { return 0 }
         let doubled = 5 * pow(2, Double(attempts - 1))
         return min(maximumBackoff, doubled)
+    }
+
+    /// Return an entry to the queue, forgetting the flight it was on: its
+    /// transfers are about to be cancelled, and a dead flight's echoes must
+    /// steer nothing. The caller decides what the entry's next attempt costs.
+    private mutating func takeBackFlight(at index: Int) {
+        pending[index].inFlight = false
+        pending[index].flightBeginsAt = nil
+        pending[index].flightPeers = []
+        pending[index].answered = []
+        pending[index].refusalDuringFlight = nil
     }
 
     private mutating func update(_ fileName: String, _ change: (inout PendingUpload) -> Void) {
