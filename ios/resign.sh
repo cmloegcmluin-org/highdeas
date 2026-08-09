@@ -33,4 +33,4 @@ if [[ -z "$DEVICE" ]]; then
 fi
 
 xcrun devicectl device install app --device "$DEVICE" "$APP"
-echo "Reinstalled onto $DEVICE — good for another 7 days."
+echo "Reinstalled onto $DEVICE — good until the provisioning profile expires, about a year."
