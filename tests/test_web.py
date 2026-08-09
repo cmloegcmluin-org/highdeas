@@ -28,6 +28,9 @@ class FakeService:
         self.refreshed = 0
         self.edits = []
         self.submitted = []
+        # What submit() reports about a send that landed in a lesser form than it
+        # should have; "" is the ordinary, whole send.
+        self.submit_warning = ""
         self.deleted = []
         self.restored = []
         self.purged = []
@@ -106,6 +109,7 @@ class FakeService:
 
     def submit(self, audio_filename):
         self.submitted.append(audio_filename)
+        return self.submit_warning
 
     def delete(self, audio_filename):
         self.deleted.append(audio_filename)
@@ -1944,6 +1948,22 @@ def test_submit_saves_edits_then_submits_and_returns_204(tmp_path):
     assert resp.status_code == 204
 
 
+def test_submit_answers_200_with_the_warning_when_the_send_landed_lesser(tmp_path):
+    # The send worked and the row goes, so this is not the 502 a failure gets. But it
+    # is not the silent 204 either: 200 with the sentence, which the page shows in the
+    # notice bar. A Docs sign-in that has lapsed used to cost nothing but a .docx
+    # nobody was told about.
+    service = FakeService()
+    service.submit_warning = "Filed the transcript as a .docx instead of a Google Doc: expired."
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    resp = client.post("/submit/a.m4a", data={"name": "X", "transcript": "Y", "route": "drive"})
+
+    assert resp.status_code == 200
+    assert resp.get_data(as_text=True) == service.submit_warning
+    assert service.submitted == ["a.m4a"]
+
+
 def test_submit_carries_the_claude_surface_and_model_the_row_chose(tmp_path):
     # Which Claude to open, and on which model, are per-note choices like the Asana
     # parent — so they ride the same save the rest of the row's fields do.
@@ -2149,6 +2169,7 @@ def test_submit_that_fails_to_route_keeps_the_memo_and_signals_the_client(tmp_pa
 
     # Failure is signalled, not a false 204.
     assert resp.status_code == 502
+    assert "401" in resp.get_data(as_text=True)
     # Nothing lost or half-processed: still pending, still in the inbox, not binned.
     assert [m.audio_filename for m in service.pending()] == ["a.m4a"]
     assert (inbox / "a.m4a").exists()
@@ -2913,6 +2934,23 @@ def test_a_refused_update_replaces_the_banner_with_the_reason(tmp_path):
     assert ".ok" in answered        # the answer is looked at at all…
     assert ".text()" in answered    # …and the server's sentence is read out of it
     assert "notify(" in answered    # …and put where the banner was
+
+
+def test_a_submit_that_landed_lesser_puts_the_servers_words_in_the_notice(tmp_path):
+    # A 200 carries a sentence about a send that worked but not in full — a Drive note
+    # filed as a .docx because the Google Docs sign-in lapsed. `ok` is true, so the row
+    # goes as it should; without reading the body, the words are dropped on the floor
+    # and the degradation stays invisible, which is exactly how it went unnoticed for
+    # weeks. The row leaves AND the notice says what happened.
+    client = create_app(FakeService(), inbox_dir=str(tmp_path),
+                        bin_dir=str(tmp_path / "bin")).test_client()
+
+    js = asset(client, "inbox.js")
+
+    retiring = js.split("function retireOnOk(")[1][:600]
+    assert ".text()" in retiring     # the body is read on the way through, not only on failure
+    submitting = js.split("function submitRow(")[1][:400]
+    assert "notify(" in submitting   # …and a submit puts it where the user reads notices
 
 
 def test_every_page_carries_the_in_page_find(tmp_path):

@@ -108,6 +108,27 @@ def _user_access_token(token_file, *, credentials=_authorized_user_credentials):
     return signed_in.token
 
 
+class DriveDocUnavailable(Exception):
+    """A native Doc was asked for, configured, and still didn't happen.
+
+    The .docx fallback that follows is right -- a transcript reaching some filed
+    doc beats a submit that fails -- but it must not be the whole story. Filing
+    quietly degraded for weeks here (Google expires a Testing-mode refresh token
+    after seven days, this one died in July, and every music memo since wrote the
+    old Word file without a word about it), which is why the reason now travels
+    up to whoever is watching the submit rather than being swallowed at the
+    bottom. Not raised when Docs simply aren't configured: that is a choice, and
+    the .docx is then the intended answer, not a degradation."""
+
+
+def _said(exc):
+    """What an exception says, without the machinery it says it with. google-auth's
+    RefreshError carries Google's JSON error body as a second argument, so str() of
+    it is a tuple repr -- and this message ends up in a notice bar a person reads."""
+    first = exc.args[0] if exc.args else ""
+    return first if isinstance(first, str) and first else str(exc)
+
+
 _DOC_MIME_TYPE = "application/vnd.google-apps.document"
 _FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
 # Arbitrary but fixed: it only has to not appear inside the parts it separates,
@@ -202,11 +223,13 @@ class DriveDocFiler:
         container_name/subfolder_name -- then, when find_folder_id was given,
         try once to move it beside the audio itself (see _move_beside_the_audio).
         Returns (link, needs_move): link is the doc's own Drive link, or ""
-        when it can't be filed at all -- not configured, the token can't be
-        obtained, or any call along the way fails -- the same fall-back-quiet
-        contract as DriveFolderLinker.link_for, so a Drive hiccup degrades to
-        the docx-in-a-local-folder fallback (routers.DriveMusicRouter) rather
-        than losing the memo's routing. Once a doc exists, though, that link
+        when Docs aren't configured here at all -- no token file, and nothing
+        was attempted. A configured attempt that fails raises
+        DriveDocUnavailable with the reason instead of coming back blank; the
+        caller still writes the docx (routers.DriveMusicRouter), so no memo
+        loses its routing, but the degradation is now something a person is
+        told about rather than something they find weeks later by noticing the
+        file format. Once a doc exists, though, that link
         is returned regardless of whether the move afterward found anywhere
         to go or worked -- the doc it names is real either way, just not
         always beside its audio yet. needs_move says which: True when a doc
@@ -217,10 +240,12 @@ class DriveDocFiler:
             return "", False
         try:
             access_token = self._token(self._token_file)
-        except Exception:  # noqa: BLE001 — a missing/invalid/revoked token must fall back quietly
-            return "", False
+        except Exception as exc:  # noqa: BLE001 — reported, not swallowed: see DriveDocUnavailable
+            raise DriveDocUnavailable(
+                f"Google would not renew the Docs sign-in ({_said(exc)})."
+            ) from exc
         if not access_token:
-            return "", False
+            raise DriveDocUnavailable("The Docs sign-in returned no access token.")
         headers = {"Authorization": f"Bearer {access_token}"}
         try:
             container_id = self._folder_id(headers, self._container_name, "")
@@ -237,8 +262,8 @@ class DriveDocFiler:
             )
             response.raise_for_status()
             doc_id = response.json()["id"]
-        except Exception:  # noqa: BLE001 — offline/misconfigured/revoked must fall back quietly, not 500
-            return "", False
+        except Exception as exc:  # noqa: BLE001 — reported, not swallowed: see DriveDocUnavailable
+            raise DriveDocUnavailable(f"Drive would not create the Doc ({_said(exc)}).") from exc
         needs_move = False
         if self._find_folder_id is not None:
             needs_move = self._move_beside_the_audio(headers, doc_id, subfolder_id, subfolder_name)

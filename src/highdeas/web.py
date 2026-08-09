@@ -192,13 +192,19 @@ def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=(), cl
     def submit(filename):
         service.edit(filename, **_submitted_fields())
         try:
-            service.submit(filename)
+            warning = service.submit(filename)
         except Exception as exc:  # noqa: BLE001 — any routing failure must reach the client
             # Routing failed (e.g. Notesnook rejected the key), so the memo is still
             # pending and its audio still in the inbox. Signal the failure instead of a
             # false 204 so the client keeps the row rather than hiding a note that never
             # sent — the "Submit all vanished everything but sent nothing" bug.
             return (f"Submit failed: {exc}", 502)
+        # A send can land and still be worth a word — the Drive route writing a .docx
+        # because the Google Docs sign-in lapsed. The row goes either way, so this is
+        # not the 502 a failure gets; 200 with the sentence, which the page reads into
+        # its notice bar. Silence here is what let filing quietly degrade for weeks.
+        if warning:
+            return (warning, 200)
         return ("", 204)
 
     @app.post("/reorder")
