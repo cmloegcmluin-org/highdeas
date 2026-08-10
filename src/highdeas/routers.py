@@ -337,13 +337,18 @@ class DriveMusicRouter:
     `drive_doc_needs_move` says whether that move is still pending."""
 
     def __init__(self, inbox_dir, drive_base, *, today=_today, write_doc=write_docx,
-                 file_doc=None, copy=shutil.copy2):
+                 file_doc=None, copy=shutil.copy2, wake_drive=None):
         self._inbox = Path(inbox_dir)
         self._base = Path(drive_base)
         self._today = today
         self._write_doc = write_doc
         self._file_doc = file_doc
         self._copy = copy
+        # Called with the base folder when it's missing, to start Drive for Desktop
+        # and wait briefly for the mount (app.py wires drive_mount.wake). Injected
+        # rather than defaulted, so that a router built in a test never launches a
+        # desktop app on the machine running the suite.
+        self._wake_drive = wake_drive
 
     def route(self, memo):
         # The dated subfolder is ours to create; the base underneath it is Drive's,
@@ -353,6 +358,14 @@ class DriveMusicRouter:
         # nothing uploads from, and report the send as done. Refuse instead: the
         # submit route turns this into a sentence in the notice bar and the memo
         # stays in the inbox, where it can be sent again once Drive is really there.
+        #
+        # One thing is worth trying before that refusal, though, because it is the
+        # commonest cause by far on a machine that does have Drive: Drive for Desktop
+        # not running. wake_drive starts it and waits a bounded few seconds — and
+        # then the folder is read again, so it, not the attempt, is still what says
+        # whether this memo may be filed.
+        if not self._base.is_dir() and self._wake_drive is not None:
+            self._wake_drive(self._base)
         if not self._base.is_dir():
             raise FileNotFoundError(
                 f"Google Drive folder not found: {self._base} — check that Drive for "

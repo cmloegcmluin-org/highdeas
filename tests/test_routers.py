@@ -458,6 +458,66 @@ def test_drive_router_refuses_when_the_drive_folder_is_not_there(tmp_path):
     assert not drive.exists()
 
 
+def test_drive_router_starts_drive_for_desktop_before_giving_up(tmp_path):
+    # The commonest reason the base is missing on a machine that has Drive installed
+    # is that Drive for Desktop simply is not running -- it stopped at a shutdown, or
+    # an update replaced it and it never came back. That is worth one attempt to fix
+    # before refusing a send he would otherwise have to fix by hand and repeat.
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    drive = tmp_path / "drive"
+    (inbox / "voice-3.m4a").write_bytes(b"AUDIO")
+
+    router = DriveMusicRouter(
+        inbox, drive, today=lambda: "2026_07_07",
+        write_doc=lambda path, text: None,
+        wake_drive=lambda base: Path(base).mkdir(),
+    )
+    outcome = router.route(Memo(audio_filename="voice-3.m4a", name="Korok Dance",
+                                transcript="la la la"))
+
+    assert outcome["drive_subfolder"] == "_2026_07_07_NOT_YET_PROCESSED_MUSIC"
+    folder = drive / "_2026_07_07_NOT_YET_PROCESSED_MUSIC"
+    assert (folder / "Korok Dance.m4a").read_bytes() == b"AUDIO"
+
+
+def test_drive_router_still_refuses_when_drive_could_not_be_started(tmp_path):
+    # Waking Drive is best-effort, and the folder itself stays the only authority:
+    # an attempt that changes nothing leaves the refusal exactly as it was, rather
+    # than letting the memo through on the strength of having tried.
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    drive = tmp_path / "nowhere"
+    (inbox / "voice-3.m4a").write_bytes(b"AUDIO")
+    woken = []
+
+    router = DriveMusicRouter(inbox, drive, today=lambda: "2026_07_07",
+                              wake_drive=woken.append)
+    with pytest.raises(FileNotFoundError, match=re.escape(str(drive))):
+        router.route(Memo(audio_filename="voice-3.m4a", transcript="la la la"))
+
+    assert woken == [drive]
+    assert not drive.exists()
+
+
+def test_drive_router_does_not_start_drive_when_the_folder_is_already_there(tmp_path):
+    # The normal case must cost nothing: no launch, and above all no wait, on the
+    # every-day submit where Drive is running exactly as it should be.
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    drive = tmp_path / "drive"
+    drive.mkdir()
+    (inbox / "voice-3.m4a").write_bytes(b"AUDIO")
+    woken = []
+
+    router = DriveMusicRouter(inbox, drive, today=lambda: "2026_07_07",
+                              write_doc=lambda path, text: None,
+                              wake_drive=woken.append)
+    router.route(Memo(audio_filename="voice-3.m4a", transcript="la la la"))
+
+    assert woken == []
+
+
 def test_drive_router_files_a_native_google_doc_instead_of_docx_when_configured(tmp_path):
     inbox = tmp_path / "inbox"
     inbox.mkdir()

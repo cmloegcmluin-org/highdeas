@@ -734,6 +734,34 @@ def test_build_app_reads_every_folder_from_the_environment(tmp_path, monkeypatch
     assert MemoStore(db_path).get("voice-3.m4a").status == "processed"
 
 
+def test_build_app_lets_a_drive_memo_start_drive_for_desktop(tmp_path, monkeypatch):
+    # The router only ever tries this because build_app hands it the way to: without
+    # that one wiring, a PC whose Drive simply isn't running refuses every music memo
+    # until someone starts it by hand, which is what happened on 2026-08-10.
+    import highdeas.drive_mount as drive_mount
+
+    inbox, bin_dir, drive = tmp_path / "inbox", tmp_path / "bin", tmp_path / "drive"
+    inbox.mkdir()  # drive is deliberately absent: Drive for Desktop is "not running"
+    monkeypatch.setenv("HIGHDEAS_STATE_DIR", "")  # see the folders test above
+    db_path = tmp_path / "memos.db"
+    monkeypatch.setenv("HIGHDEAS_INBOX_DIR", str(inbox))
+    monkeypatch.setenv("HIGHDEAS_BIN_DIR", str(bin_dir))
+    monkeypatch.setenv("HIGHDEAS_DB", str(db_path))
+    monkeypatch.setenv("HIGHDEAS_DRIVE_BASE", str(drive))
+    (inbox / "voice-3.m4a").write_bytes(b"AUDIO")
+    monkeypatch.setattr(drive_mount, "wake", lambda base: Path(base).mkdir())
+
+    app, _ = build_app()
+    MemoStore(db_path).upsert(Memo(audio_filename="voice-3.m4a", route="drive"))
+    response = app.test_client().post(
+        "/submit/voice-3.m4a", data={"name": "Korok", "transcript": "", "route": "drive"}
+    )
+
+    assert response.status_code == 204
+    today = datetime.now().strftime("%Y_%m_%d")
+    assert (drive / f"_{today}_NOT_YET_PROCESSED_MUSIC" / "Korok.m4a").read_bytes() == b"AUDIO"
+
+
 class FakeUploadService:
     """The two things the upload app asks of the inbox service."""
 

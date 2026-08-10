@@ -11,7 +11,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from highdeas import drive_auth
+from highdeas import drive_auth, drive_mount
 from highdeas.drive_link import DriveFolderLinker, parent_id_from_folder_url
 from highdeas.drive_write import DriveDocFiler, DriveDocReconciler
 from highdeas.routers import (
@@ -189,7 +189,8 @@ def build_app():
     store = _build_store(db_path)
     drive_base = os.environ.get("HIGHDEAS_DRIVE_BASE", platform_defaults().drive_base)
     notesnook = NotesnookRouter(os.environ.get("NOTESNOOK_INBOX_API_KEY", ""))
-    drive = DriveMusicRouter(inbox_dir, drive_base, file_doc=_drive_doc_filer())
+    drive = DriveMusicRouter(inbox_dir, drive_base, file_doc=_drive_doc_filer(),
+                             wake_drive=drive_mount.wake)
     asana_parents = parse_choices(os.environ.get("ASANA_PARENT_TASKS", ""))
     asana = AsanaRouter(
         read_asana_tokens(asana_parents, os.environ),
