@@ -169,6 +169,15 @@ recording, or a subtask on an Asana task.
      submit **refuses and says so**, and the memo stays in the inbox to be sent again.
      It used to make the whole path instead, which filed the memo into a folder that
      merely looked like Drive, on a disk nothing uploads from, and called it sent.
+
+     One thing is tried before that refusal, since it is much the commonest cause on
+     a machine that does have Drive: **Highdeas starts Drive for Desktop itself** and
+     waits up to 20 seconds for the mount, then reads the folder again. On Windows it
+     starts it exactly as the login item does (the `GoogleDriveFS` entry under
+     `HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run`, which Drive's own installer
+     keeps pointing at the installed version); on macOS, `open -a "Google Drive"`. A
+     machine with no Drive installed waits for nothing and is refused immediately, and
+     the wait is only ever paid by a submit that was already about to be refused.
    - **Asana** — the transcript becomes a subtask of the parent task picked in the
      row's dropdown (the small set you configure via `ASANA_PARENT_TASKS`). A named
      memo carries its name as the task and its transcript as the notes; an unnamed one

@@ -97,6 +97,14 @@ on both desks; act on a memo wherever you're sitting.
   quietly unconfigured: the service account behind the bin's per-memo Drive links
   and the token behind native Doc filing both resolved to nothing, and both fell
   back silently, exactly as designed to.
+  **Bit again, differently, 2026-08-10.** Same refusal, opposite cause: on the PC,
+  where Drive is installed and the base path was right all along, Drive for Desktop
+  was simply not running. The machine had booted the day before at 12:51 and Google's
+  updater replaced the app at 12:53; Drive never started, wrote no log that day, and
+  every music memo was refused until it was started by hand. The router now tries
+  starting it — `open -a "Google Drive"` on the Mac, the `GoogleDriveFS` login-item
+  command on the PC — and waits briefly for the mount before refusing. The refusal
+  itself is unchanged: the folder, not the attempt, still decides.
 
 ## Working agreements (unchanged)
 
