@@ -448,14 +448,16 @@
     }, []);
   }
 
-  // Fold the picked notes together. Founding a fresh group from two-or-more named notes,
-  // the group can take only one name, so ask which before posting. Growing an existing
-  // group keeps the name it already has, and founding from a single name has nothing to
-  // choose between — both let the server settle the name, unasked.
+  // Fold the picked notes together. When the picks carry more than one name — several
+  // named notes founded into a group, or two named groups being combined — the group can
+  // take only one, so ask which before posting. The one case that never asks is growing a
+  // single existing group with notes: that group keeps the name it already has. One name,
+  // or none, has nothing to choose between and posts unasked.
   function groupPicked(picks) {
     var files = picks.map(function (memo) { return memo.dataset.file; });
     var names = namesAmong(picks);
-    if (!picks.some(isGroup) && names.length > 1 && window.HighdeasNameGroup) {
+    var groups = picks.filter(isGroup).length;
+    if (groups !== 1 && names.length > 1 && window.HighdeasNameGroup) {
       window.HighdeasNameGroup(names).then(function (name) {
         if (name != null) groupFiles(files, name);
       });

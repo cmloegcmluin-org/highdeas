@@ -104,11 +104,22 @@ recording, or a subtask on an Asana task.
    whichever you pick (or type fresh) at the ask that pops up. Whichever name rose to the
    group reads plain in its bullet; a named note whose name did not rise keeps it, reading
    `- Name: transcript`. Drop a note onto an existing group and it merges in, keeping the
-   group's name. Any row joins any other — drop a group onto a group and they combine too:
-   the topmost group survives and keeps its name, the other's bullets and recording folding
-   in whole. Undo hands an absorbed group back as a group, not as loose notes. The group
-   badge that ends each group's row — the one that breaks it back into its notes — is what
-   marks which rows are groups.
+   group's name.
+
+   When one note already reads as a **numbered list** — its transcript is `1. Buy milk`,
+   `2. Call dentist`, a line each — dropping another note onto it appends *that note's
+   transcript* as the next item (`3. …`), rather than folding the two into bullets. The
+   list stays a list and just grows: its existing lines are left exactly as written and
+   each note added takes the number after the last. The list is spotted from the transcript,
+   not from any name, so naming works exactly as it does for every other group.
+
+   Any row joins any other — drop a group onto a group and they combine too:
+   the topmost group survives, and its bullets (or, into a numbered list, its items) and
+   recording fold in whole. When the two groups carry different names the app asks which to
+   keep, the way founding a group from two named notes does; combine same-named groups, or a
+   note into a group, and the name stands unasked. Undo hands an absorbed group back as a
+   group, not as loose notes. The group badge that ends each group's row — the one that
+   breaks it back into its notes — is what marks which rows are groups.
 
    A group is a memo the app makes, not a note promoted out of the pile. It stands where
    the topmost note stood, bound for the same destination, and it **plays all of their
