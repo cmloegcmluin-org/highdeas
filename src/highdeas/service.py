@@ -3,6 +3,7 @@
 The inbox is the app's main view — the list of pending memos awaiting a Notesnook
 or Drive decision; the bin holds what's been retired."""
 import json
+import re
 import shutil
 import threading
 import time
@@ -132,6 +133,19 @@ def _sole_name(memos):
     return next(iter(named)) if len(named) == 1 else ""
 
 
+# A numbered list line: a run of digits, a "." or ")", a space, then the item's words.
+# "1. Buy milk" and "2) Call dentist" match; a sentence that merely opens with a number
+# ("3 apples", "3.5 litres") does not — the marker has to be a real list marker.
+_NUMBERED = re.compile(r"^\s*(\d+)[.)]\s+(.*)$")
+
+
+def _numbered(line):
+    """A numbered list line split into (number, item text), or None when `line` is not one.
+    "3. Buy milk" → (3, "Buy milk")."""
+    match = _NUMBERED.match(line)
+    return (int(match.group(1)), match.group(2).rstrip()) if match else None
+
+
 def _bullet(memo, group_name=""):
     """One consolidated note as a bullet: its name, colon, then its transcript.
 
@@ -144,6 +158,60 @@ def _bullet(memo, group_name=""):
     if name and text:
         return f"- {name}: {text}"
     return f"- {name or text}"
+
+
+def _ordered(transcript):
+    """Whether a transcript reads as a numbered list — every non-empty line a numbered item,
+    a line each of "1. Buy milk" and "2. Call dentist". An empty transcript is no list."""
+    lines = [line for line in transcript.splitlines() if line.strip()]
+    return bool(lines) and all(_numbered(line) is not None for line in lines)
+
+
+def _numbered_spine(members):
+    """The one member whose transcript already reads as a numbered list — the list the
+    others are appended to. None when none does, or when several do: with no single spine
+    to grow, the ordinary bulleted consolidation is used instead."""
+    lists = [memo for memo in members if _ordered(memo.transcript)]
+    return lists[0] if len(lists) == 1 else None
+
+
+def _one_line(text):
+    """A transcript flattened so it can stand as one item of a numbered list: its inner
+    line breaks and runs of whitespace each become a single space."""
+    return " ".join(text.split())
+
+
+# A bulleted list line, so a bulleted group absorbed into a numbered one contributes its
+# items rather than its markers. Mirrors notes.js and routers.py's own bullet grammar.
+_BULLET = re.compile(r"^\s*[-*•]\s+(.*)$")
+
+
+def _list_items(transcript):
+    """The items a transcript carries as a list — the text of each numbered or bulleted line
+    — or the whole transcript as a single item when it is neither. This is what lets a list
+    absorbed into a numbered list contribute its items one by one, rather than as one line."""
+    lines = [line for line in transcript.splitlines() if line.strip()]
+    numbered = [_numbered(line) for line in lines]
+    if lines and all(numbered):
+        return [text for _, text in numbered]
+    bulleted = [_BULLET.match(line) for line in lines]
+    if lines and all(bulleted):
+        return [match.group(1).rstrip() for match in bulleted]
+    return [_one_line(transcript)]
+
+
+def _append_numbered(base, transcripts):
+    """`base` (a numbered-list transcript) with `transcripts` added as further items,
+    numbered on from the list's last. A plain transcript becomes one item; a transcript that
+    is itself a list contributes each of its own items, so combining two numbered lists
+    continues the sequence rather than folding a whole list onto a single line. The existing
+    lines are left exactly as written."""
+    numbers = [pair[0] for pair in map(_numbered, base.splitlines()) if pair]
+    last = numbers[-1] if numbers else 0
+    items = [item for transcript in transcripts
+             for item in _list_items(transcript) if item.strip()]
+    added = [f"{last + 1 + offset}. {item}" for offset, item in enumerate(items)]
+    return "\n".join([base.rstrip(), *added])
 
 
 def _fold(memo, group_name=""):
@@ -388,11 +456,18 @@ class InboxService:
         name the group did not take keeps it as a "- Name: transcript" prefix on its
         bullet; the one whose name rose reads as its transcript alone.
 
+        A note whose transcript already reads as a numbered list is the exception: dropping
+        others onto it appends their transcripts as the next-numbered items, so the list
+        grows rather than folding into bullets (see _found_group and _grown_transcript).
+
         With a group among the picks the topmost one survives and everything else folds
-        into it — other groups included. An absorbed group brings its bullets and its
-        recording across whole, and the survivor's name is left alone. Each fold joins the
-        survivor's trail, so it can be walked back on its own later: an absorbed group is
-        one step on that trail, handed back whole rather than broken into its notes."""
+        into it — other groups included. An absorbed group brings its bullets (or, into a
+        numbered list, its items) and its recording across whole. Growing a single group
+        with notes keeps its name; combining two groups whose names differ, the page asks
+        which to keep and passes it as `name`, so the survivor is renamed to the pick — else
+        its own name stands. Each fold joins the survivor's trail, so it can be walked back
+        on its own later: an absorbed group is one step on that trail, handed back whole
+        rather than broken into its notes."""
         chosen = [m for m in self.pending() if m.audio_filename in set(audio_filenames)]
         if len(chosen) < 2:
             raise ValueError("Grouping needs at least two notes still in the inbox.")
@@ -404,8 +479,20 @@ class InboxService:
             return self._found_group(chosen, name)
         spoken = _spoken_order(absorbed)
         trail = _merges(survivor) + [_step(spoken, survivor)]
-        return self._rejoin(survivor, trail, name=survivor.name, transcript="\n".join(
-            [survivor.transcript.rstrip(), *(_fold(memo, survivor.name) for memo in spoken)]))
+        return self._rejoin(survivor, trail, name=name or survivor.name,
+                            transcript=self._grown_transcript(survivor, spoken))
+
+    def _grown_transcript(self, survivor, spoken):
+        """The survivor group's transcript with the absorbed notes folded on the end.
+
+        A group whose transcript already reads as a numbered list stays one: each absorbed
+        note's transcript is added as the next-numbered item (see _append_numbered). Anything
+        else keeps the older behavior — a bullet per note, or an absorbed group's bullets
+        brought across whole — added to what the survivor already holds."""
+        if _ordered(survivor.transcript):
+            return _append_numbered(survivor.transcript, [memo.transcript for memo in spoken])
+        return "\n".join([survivor.transcript.rstrip(),
+                          *(_fold(memo, survivor.name) for memo in spoken)])
 
     def _found_group(self, members, name=None):
         """Make the memo that stands in the place of the notes it was folded from.
@@ -414,14 +501,25 @@ class InboxService:
         none when they are all nameless or several are named without a pick).
 
         `members` arrives in inbox order, so its first is the topmost note — the slot the
-        group takes. What it says runs the other way, from the first thing spoken."""
+        group takes. What it says runs the other way, from the first thing spoken.
+
+        When exactly one member's transcript already reads as a numbered list, that list is
+        the spine: the others' transcripts are appended to it as further numbered items,
+        rather than everything folding into bullets (see _append_numbered). Naming is
+        untouched either way — the spine is chosen from transcripts, not names."""
         group_name = _sole_name(members) if name is None else name
         lead, spoken = members[0], _spoken_order(members)
+        spine = _numbered_spine(members)
+        if spine is not None:
+            others = [memo for memo in spoken if memo is not spine]
+            transcript = _append_numbered(spine.transcript, [memo.transcript for memo in others])
+        else:
+            transcript = "\n".join(_bullet(memo, group_name) for memo in spoken)
         trail = [_step(spoken)]
         joined = self._join_members(trail, Path(lead.audio_filename).suffix)
         self._store.upsert(Memo(
             audio_filename=joined,
-            transcript="\n".join(_bullet(memo, group_name) for memo in spoken),
+            transcript=transcript,
             name=group_name,
             kind="group",
             route=lead.route,

@@ -1072,6 +1072,95 @@ def test_group_does_not_leave_a_blank_line_when_the_group_text_ends_in_a_newline
     assert grown.transcript == "- one\n- two\n- three"
 
 
+def test_grouping_a_plain_note_onto_a_numbered_list_transcript_appends_it_as_the_next_item(tmp_path):
+    # A note whose TRANSCRIPT already reads as a numbered list is a spine: dragging a plain
+    # note onto it adds that note's transcript as the next-numbered item, instead of folding
+    # the two into bullets. The list is spotted from the transcript, not from any name.
+    inbox, store = _two_notes(tmp_path)
+    store.update("a.m4a", transcript="1. Buy milk\n2. Call dentist")
+    store.update("b.m4a", transcript="Fix sink")
+    service = service_with_fake_audio(inbox, store, tmp_path / "bin", clock=lambda: "T")
+
+    group = service.group(["a.m4a", "b.m4a"])
+
+    assert group.transcript == "1. Buy milk\n2. Call dentist\n3. Fix sink"
+
+
+def test_the_appended_item_is_the_dragged_notes_transcript_not_its_name(tmp_path):
+    # The item added is the note's transcript; its name plays no part in the item. The
+    # group's title is left to the ordinary naming flow — here a passed pick, as the page's
+    # namer sends when two notes carry different names.
+    inbox, store = _two_notes(tmp_path)
+    store.update("a.m4a", transcript="1. Buy milk\n2. Call dentist", name="Shopping")
+    store.update("b.m4a", transcript="Fix sink", name="Errand")
+    service = service_with_fake_audio(inbox, store, tmp_path / "bin", clock=lambda: "T")
+
+    group = service.group(["a.m4a", "b.m4a"], name="Shopping")
+
+    assert group.name == "Shopping"
+    assert group.transcript == "1. Buy milk\n2. Call dentist\n3. Fix sink"
+
+
+def test_appending_continues_from_the_lists_last_number_and_leaves_it_untouched(tmp_path):
+    # The new item takes the number after the list's last, and the existing lines are left
+    # exactly as written — a gap in the numbering is the user's to keep, not smoothed away.
+    inbox, store = _two_notes(tmp_path)
+    store.update("a.m4a", transcript="1. Buy milk\n5. Call dentist")
+    store.update("b.m4a", transcript="Fix sink")
+    service = service_with_fake_audio(inbox, store, tmp_path / "bin", clock=lambda: "T")
+
+    group = service.group(["a.m4a", "b.m4a"])
+
+    assert group.transcript == "1. Buy milk\n5. Call dentist\n6. Fix sink"
+
+
+def test_growing_a_numbered_list_group_appends_the_next_item(tmp_path):
+    # The spine can be a group as much as a loose note: found a numbered list, then drop a
+    # further plain note onto it and it lands as the next item too.
+    inbox, store = _two_notes(tmp_path)
+    (inbox / "c.m4a").write_bytes(b"C")
+    store.upsert(Memo(audio_filename="c.m4a", transcript="Water plants",
+                      recorded_at="2026-07-10T03:00"))
+    store.update("a.m4a", transcript="1. Buy milk\n2. Call dentist")
+    store.update("b.m4a", transcript="Fix sink")
+    service = service_with_fake_audio(inbox, store, tmp_path / "bin", clock=lambda: "T")
+    first = service.group(["a.m4a", "b.m4a"])   # -> 1. Buy milk / 2. Call dentist / 3. Fix sink
+
+    grown = service.group([first.audio_filename, "c.m4a"])
+
+    assert grown.transcript == "1. Buy milk\n2. Call dentist\n3. Fix sink\n4. Water plants"
+
+
+def test_two_plain_notes_with_no_list_still_group_into_bullets(tmp_path):
+    # Nothing to continue when neither note is a numbered list, so the group is the ordinary
+    # bulleted consolidation — the transcript-append never disturbs the everyday grouping.
+    inbox, store = _two_notes(tmp_path)
+    service = service_with_fake_audio(inbox, store, tmp_path / "bin", clock=lambda: "T")
+
+    group = service.group(["a.m4a", "b.m4a"])
+
+    assert group.transcript == "- one\n- two"
+
+
+def test_unmerging_a_numbered_list_grow_restores_the_shorter_list(tmp_path):
+    # Undo walks the last item back out: the note returns to the inbox and the group reads
+    # as the numbered list it was before it grew.
+    inbox, store = _two_notes(tmp_path)
+    (inbox / "c.m4a").write_bytes(b"C")
+    store.upsert(Memo(audio_filename="c.m4a", transcript="Water plants",
+                      recorded_at="2026-07-10T03:00"))
+    store.update("a.m4a", transcript="1. Buy milk\n2. Call dentist")
+    store.update("b.m4a", transcript="Fix sink")
+    service = service_with_fake_audio(inbox, store, tmp_path / "bin", clock=lambda: "T")
+    first = service.group(["a.m4a", "b.m4a"])
+    grown = service.group([first.audio_filename, "c.m4a"])
+
+    back = service.unmerge(grown.audio_filename)
+
+    assert store.get(back).transcript == "1. Buy milk\n2. Call dentist\n3. Fix sink"
+    assert store.get("c.m4a").status == "pending"
+
+
 def _two_named_groups(tmp_path, top_title="Song ideas", bottom_title="Song ideas"):
     """Two founded groups sitting in the inbox — `top` (newest) above `bottom` — each
     folded from two notes, so both carry a real merge trail and a joined recording. A
@@ -1112,10 +1201,10 @@ def test_grouping_two_same_named_groups_folds_them_into_one(tmp_path):
     assert (inbox / combined.audio_filename).read_bytes() == b"AAABBCCCDDDD"
 
 
-def test_grouping_two_differently_named_groups_keeps_the_surviving_group_s_name(tmp_path):
-    # No name to ask about when a group is in the pick — the topmost group survives and
-    # keeps its name, exactly as folding a note into a group already does. The absorbed
-    # group's bullets come across as they read.
+def test_combining_groups_falls_back_to_the_survivors_name_when_none_is_chosen(tmp_path):
+    # With no name passed — two same-named groups, or a direct call — the topmost group
+    # survives and its name stands. The page passes a name only when the two names differ
+    # (see the next test); this is the fallback the server keeps for when it doesn't.
     service, store, inbox, top, bottom = _two_named_groups(
         tmp_path, top_title="Trip ideas", bottom_title="Vacation plans")
 
@@ -1123,6 +1212,43 @@ def test_grouping_two_differently_named_groups_keeps_the_surviving_group_s_name(
 
     assert combined.name == "Trip ideas"
     assert combined.transcript == "- one\n- two\n- three\n- four"
+
+
+def test_combining_two_differently_named_groups_takes_the_chosen_name(tmp_path):
+    # Two groups with different names: the page asks which to keep and passes it, and the
+    # combine wears that name rather than silently keeping the survivor's ("Trip ideas").
+    service, store, inbox, top, bottom = _two_named_groups(
+        tmp_path, top_title="Trip ideas", bottom_title="Vacation plans")
+
+    combined = service.group([top.audio_filename, bottom.audio_filename], name="Vacation plans")
+
+    assert combined.name == "Vacation plans"
+    assert combined.transcript == "- one\n- two\n- three\n- four"
+
+
+def test_combining_two_numbered_list_groups_continues_the_sequence(tmp_path):
+    # Two groups that are each a numbered list combine into one continuing list: the absorbed
+    # list's items renumber on from the survivor's last, instead of its whole transcript
+    # being crushed into one garbled item ("4. 1. verse 2. chorus ...").
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    store = MemoStore(tmp_path / "memos.db")
+    for name, text, at, audio in [
+        ("a.m4a", "1. hook\n2. beat",     "2026-07-08T11:00", b"A"),      # top group's list note
+        ("b.m4a", "outro",                "2026-07-08T11:30", b"BB"),     # top group's plain note
+        ("c.m4a", "1. verse\n2. chorus",  "2026-07-08T09:00", b"CCC"),    # bottom group's list note
+        ("d.m4a", "bridge",               "2026-07-08T09:30", b"DDDD"),   # bottom group's plain note
+    ]:
+        (inbox / name).write_bytes(audio)
+        store.upsert(Memo(audio_filename=name, transcript=text, recorded_at=at))
+    service = service_with_fake_audio(inbox, store, tmp_path / "bin", clock=lambda: "T")
+    top = service.group(["a.m4a", "b.m4a"], name="Beats")     # newest note -> survives the combine
+    bottom = service.group(["c.m4a", "d.m4a"], name="Songs")
+
+    combined = service.group([top.audio_filename, bottom.audio_filename], name="Songs")
+
+    assert combined.name == "Songs"
+    assert combined.transcript == "1. hook\n2. beat\n3. outro\n4. verse\n5. chorus\n6. bridge"
 
 
 def test_unmerging_a_group_combine_hands_the_absorbed_group_back_whole(tmp_path):
