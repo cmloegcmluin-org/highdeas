@@ -683,6 +683,20 @@ def test_the_live_poll_leaves_alone_the_row_whose_editor_is_open(tmp_path):
     assert "memo === editing" in js.split("function busy(memo)")[1].split("\n  }")[0]
 
 
+def test_the_live_poll_leaves_alone_a_row_whose_submit_is_in_flight(tmp_path):
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    js = asset(client, "inbox.js")
+
+    # A submit marks its row .sending and disables the row's buttons — which pulls focus off
+    # the pressed button and out of the row, so none of the other busy signals hold while the
+    # POST is in flight. That left the poll free to repaint the row from the server (which
+    # still lists the memo as pending until the submit lands), throwing away the spinner
+    # mid-send and re-enabling the buttons, so a press part-way through looked like it had
+    # done nothing. The row stays busy until its own request resolves and retires it.
+    assert "classList.contains('sending')" in js.split("function busy(memo)")[1].split("\n  }")[0]
+
+
 def test_the_poll_keeps_the_outlines_above_the_rows_and_the_empty_list_honest(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 

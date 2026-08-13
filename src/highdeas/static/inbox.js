@@ -915,6 +915,7 @@
   function busy(memo) {
     if (memo._timer) return true;  // an edit is waiting on the auto-save timer
     if (memo === editing) return true;  // its editor is open, and edits into it
+    if (memo.classList.contains('sending')) return true;  // a submit/trash is in flight
     if (memo.contains(document.activeElement)) return true;
     var audio = memo.querySelector('audio');
     return !!(audio && !audio.paused);
