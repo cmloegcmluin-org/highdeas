@@ -1518,11 +1518,12 @@ def test_a_note_is_grabbed_anywhere_along_its_body_not_only_the_thin_grip(tmp_pa
     assert 'class="grip" draggable' not in body
     assert 'class="when" draggable' not in body
     assert "grid-template-columns: subgrid" in asset(client, "app.css")
-    # The handlers hang off the row, and a press on a control that needs the gesture for
-    # itself — the audio scrubber, the name field — is left to that control, not stolen to
-    # move the note.
+    # The handlers hang off the row, and a press on a light-DOM control that needs the
+    # gesture for itself — the name field, the buttons — is left to that control, not stolen
+    # to move the note; the audio scrubber, hidden from this guard inside its shadow DOM, is
+    # freed by its own hover guard instead.
     assert "memo.addEventListener('dragstart'" in js
-    assert "closest('input, select, audio, button, a')" in js
+    assert "closest('input, select, button, a')" in js
 
 
 def test_a_press_on_a_rows_own_control_selects_or_scrubs_rather_than_dragging(tmp_path):
@@ -1532,15 +1533,16 @@ def test_a_press_on_a_rows_own_control_selects_or_scrubs_rather_than_dragging(tm
     js = asset(client, "inbox.js")
 
     # The whole row is draggable, but a click-drag begun in the name field must select the
-    # text, and one on the audio scrubber must scrub — not lift the note. Chromium fires
-    # dragstart on the draggable source node (the row), NEVER on the control the press
-    # landed on, so a guard reading dragstart's target only ever sees the row and can't
-    # tell a press meant for a control from one meant to move the note — the drag wins over
-    # the selection. The press is where the two are still distinguishable, so the row drops
-    # its draggability the moment a press lands on one of its own controls, letting that
-    # press select or scrub, and takes it back when the press ends.
+    # text — not lift the note. Chromium fires dragstart on the draggable source node (the
+    # row), NEVER on the control the press landed on, so a guard reading dragstart's target
+    # only ever sees the row and can't tell a press meant for a control from one meant to
+    # move the note — the drag wins over the selection. The press is where the two are still
+    # distinguishable, so the row drops its draggability the moment a press lands on one of
+    # its own light-DOM controls, letting that press select, and takes it back when the press
+    # ends. (The native audio scrubber sits in a shadow DOM that swallows this pointerdown,
+    # so it can't ride here — it gets its own guard, covered by the next test.)
     press = js.split("addEventListener('pointerdown', function", 1)[1]
-    assert "closest('input, select, audio, button, a')" in press
+    assert "closest('input, select, button, a')" in press
     assert "draggable = false" in press
     assert "addEventListener('pointerup'" in press
     assert "draggable = true" in press
@@ -1549,6 +1551,28 @@ def test_a_press_on_a_rows_own_control_selects_or_scrubs_rather_than_dragging(tm
     dragstart = js.split("addEventListener('dragstart', function", 1)[1].split(
         "addEventListener('dragend'", 1)[0]
     assert "preventDefault" not in dragstart
+
+
+def test_dragging_the_audio_scrubber_seeks_instead_of_lifting_the_note(tmp_path):
+    service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hi", name="groceries")])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    js = asset(client, "inbox.js")
+
+    # The pointerdown guard above catches the light-DOM controls (the name field, the
+    # buttons), but not the native <audio> scrubber: the player's controls sit in its UA
+    # shadow DOM, which swallows the pointerdown so it never reaches the row. The guard
+    # can't fire for a press on the scrubber, the row stays draggable, and dragging the
+    # playhead starts a row drag-and-drop instead of seeking. Hover events DO cross out to
+    # the audio host, so the row gives up its draggability while the pointer is over the
+    # player — letting the scrubber's own drag win — and takes it back as the pointer leaves.
+    scrubber = js.split("querySelector('audio')", 1)[1]
+    assert "addEventListener('pointerenter'" in scrubber
+    assert "addEventListener('pointerleave'" in scrubber
+    enter = scrubber.split("addEventListener('pointerenter', function () {", 1)[1].split("}", 1)[0]
+    assert "draggable = false" in enter
+    leave = scrubber.split("addEventListener('pointerleave', function () {", 1)[1].split("}", 1)[0]
+    assert "draggable = true" in leave
 
 
 def test_dragging_a_row_carries_a_picture_of_the_whole_row(tmp_path):

@@ -768,15 +768,16 @@
     // The whole row is draggable (rows.html marks the .memo), so the note is picked up
     // anywhere along it — the grip, the timestamp, the transcript, the space between. But a
     // press that lands on one of the row's own controls belongs to that control: a click-drag
-    // in the name field selects the text, one on the audio scrubber scrubs. Chromium fires
+    // in the name field selects the text rather than lifting the note. Chromium fires
     // dragstart on the draggable source node — the row — never on the control the press
     // landed on, so the dragstart handler can't tell those presses apart (event.target is
     // always the row). pointerdown can: its target IS the control under the pointer. So a
-    // press on a control drops the row's draggability for that one gesture — the browser then
-    // selects or scrubs instead of lifting the note — and it is handed back when the press
-    // ends, wherever that happens.
+    // press on a light-DOM control drops the row's draggability for that one gesture — the
+    // browser then selects instead of lifting the note — and it is handed back when the press
+    // ends, wherever that happens. (The native audio scrubber's controls sit in a shadow DOM
+    // that swallows this pointerdown, so it gets its own guard just below.)
     memo.addEventListener('pointerdown', function (event) {
-      if (!event.target.closest('input, select, audio, button, a')) return;
+      if (!event.target.closest('input, select, button, a')) return;
       memo.draggable = false;
       function restore() {
         memo.draggable = true;
@@ -786,6 +787,19 @@
       document.addEventListener('pointerup', restore);
       document.addEventListener('pointercancel', restore);
     });
+    // That pointerdown guard can't see a press on the native <audio> scrubber: the player's
+    // controls live in its UA shadow DOM, which swallows the pointerdown before it reaches
+    // the row, so the press can't drop the row's draggability and dragging the playhead
+    // lifts the note instead of seeking. Hover events do cross out to the audio host, so the
+    // row gives up its draggability the whole time the pointer is over the player — letting
+    // the scrubber's own drag win — and takes it back as the pointer leaves. (The drag
+    // source is fixed when the press begins, so flipping this back mid-scrub, as the pointer
+    // leaves the player while the thumb is dragged, can't start a row drag.)
+    var scrubber = memo.querySelector('audio');
+    if (scrubber) {
+      scrubber.addEventListener('pointerenter', function () { memo.draggable = false; });
+      scrubber.addEventListener('pointerleave', function () { memo.draggable = true; });
+    }
     memo.addEventListener('dragstart', function (event) {
       dragged = memo;
       orderBefore = orderOf();
