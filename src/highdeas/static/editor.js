@@ -837,14 +837,15 @@
   });
 
   // Whether a note plays itself the moment it opens. The reader sets it with the Auto-play
-  // box; the choice rides in localStorage so it holds across reloads and every future note,
-  // not just this one reused dialog. A webview that refuses to store it just leaves autoplay
-  // on — the default the box ships ticked for.
-  var AUTOPLAY_KEY = 'highdeas.autoplay';
-  try { autoplayEl.checked = localStorage.getItem(AUTOPLAY_KEY) !== 'off'; } catch (err) { /* keep the ticked default */ }
+  // box; its initial state is server-rendered from the saved choice (see preferences.py), and
+  // every flip posts the new choice back — so it holds across restarts and every future note,
+  // on every platform. The desktop window can't lean on the browser's own storage for this: it
+  // opens on a fresh port each launch (a new origin) and runs its webview private, so
+  // localStorage never survives to the next open.
   autoplayEl.addEventListener('change', function () {
-    try { localStorage.setItem(AUTOPLAY_KEY, autoplayEl.checked ? 'on' : 'off'); }
-    catch (err) { /* a webview that won't store it forgets across reloads; no worse than before */ }
+    var choice = new URLSearchParams({ autoplay: autoplayEl.checked ? 'on' : 'off' });
+    fetch('/preferences/autoplay', { method: 'POST', body: choice })
+      .catch(function () { /* the choice won't outlive this run; no worse than before */ });
   });
 
   playBtn.addEventListener('click', function () { if (audio.paused) audio.play(); else audio.pause(); });
