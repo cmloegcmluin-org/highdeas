@@ -1,7 +1,7 @@
 """Remember the native window's size, position, and maximized state across launches."""
-import json
-from dataclasses import asdict, dataclass, fields, replace
-from pathlib import Path
+from dataclasses import asdict, dataclass, replace
+
+from highdeas.state_file import load_state, save_state
 
 
 @dataclass(frozen=True)
@@ -43,23 +43,12 @@ def _covers(screen, x, y):
 
 def load_geometry(path):
     """The last saved geometry, or the maximized default if nothing usable is saved."""
-    try:
-        saved = json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return WindowGeometry()
-    if not isinstance(saved, dict):
-        return WindowGeometry()
-    known = {f.name for f in fields(WindowGeometry)}
-    return WindowGeometry(**{k: v for k, v in saved.items() if k in known})
+    return load_state(path, WindowGeometry)
 
 
 def save_geometry(path, geometry):
     """Write the geometry, replacing the file atomically."""
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(asdict(geometry), indent=2), encoding="utf-8")
-    tmp.replace(path)
+    save_state(path, geometry)
 
 
 def _window_state_of(window):
