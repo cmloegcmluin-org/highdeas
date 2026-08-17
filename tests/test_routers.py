@@ -741,16 +741,15 @@ def test_date_format_matches_what_today_produces():
     assert datetime(2026, 7, 7).strftime(DATE_FORMAT) == "2026_07_07"
 
 
-def test_a_group_routes_each_item_as_its_own_asana_task():
-    # "instead of creating on the other end one new item with that group name and just like
-    # the literal text with the bullets or numbers, it should create each item in the group as
-    # a separate Asana task." A group's transcript is its bulleted consolidation; each bullet
-    # becomes one subtask - "Name: text" bullets split into task name and notes, bare ones are
-    # all name.
+def test_a_nameless_group_routes_each_item_as_its_own_asana_task():
+    # A group with no name of its own has nothing to preserve, so its bulleted consolidation
+    # would otherwise become one task named after the literal bullets — instead each bullet
+    # becomes its own subtask. "Name: text" bullets split into task name and notes; bare ones
+    # are all name. (A NAMED group stays one task — see test_a_named_group_stays_one_task.)
     create = FakeCreate()
     router = AsanaRouter({"": "PAT"}, default_parent="111", create=create)
 
-    outcome = router.route(Memo(audio_filename="g.m4a", kind="group", name="Groceries",
+    outcome = router.route(Memo(audio_filename="g.m4a", kind="group",
                                 transcript="- milk\n- eggs: two dozen\n- bread",
                                 route="asana", asana_parent="222"))
 
@@ -785,3 +784,32 @@ def test_a_plain_note_still_routes_as_one_task_even_with_bullets_in_it():
              route="asana"))
 
     assert create.calls == [("PAT", "1", "Packing", "- socks\n- charger")]
+
+
+def test_a_named_group_stays_one_task_with_its_items_as_notes():
+    # A group the user named must not be split into a task per bullet — that silently throws
+    # the name away. It becomes ONE task named after the group, its bulleted consolidation
+    # riding along as the task's notes, exactly as a named note carries its transcript.
+    create = FakeCreate()
+    router = AsanaRouter({"": "PAT"}, default_parent="111", create=create)
+
+    outcome = router.route(Memo(audio_filename="g.m4a", kind="group", name="Groceries",
+                                transcript="- milk\n- eggs: two dozen\n- bread",
+                                route="asana", asana_parent="222"))
+
+    assert create.calls == [
+        ("PAT", "222", "Groceries", "- milk\n- eggs: two dozen\n- bread")]
+    assert outcome == {"asana_url": "https://app.asana.com/0/0/42/f"}
+
+
+def test_a_named_numbered_group_keeps_its_numbered_items_as_notes():
+    # "or numbered items if it was that kind of grouped note, of course" — a named group whose
+    # transcript reads as a numbered list keeps that list intact in the one task's notes.
+    create = FakeCreate()
+
+    AsanaRouter({"": "PAT"}, default_parent="1", create=create).route(
+        Memo(audio_filename="g.m4a", kind="group", name="Release steps",
+             transcript="1. tag the commit\n2. push the branch", route="asana"))
+
+    assert create.calls == [
+        ("PAT", "1", "Release steps", "1. tag the commit\n2. push the branch")]

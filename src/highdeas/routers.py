@@ -194,18 +194,19 @@ class AsanaRouter:
         if not token:
             raise RuntimeError("Asana access token not set — put "
                                f"{_asana_token_variable(account)} in .env.")
-        # A group fans out: its transcript is the bulleted consolidation of its notes, and
-        # sending that as one task made a task named after the group holding the literal
-        # bullets — so each item becomes its own subtask instead, and the group's name stays
-        # in the inbox where it already did its job.
-        if memo.kind == "group":
+        # A NAMELESS group fans out: it has no name to preserve, so its bulleted consolidation
+        # would otherwise become one task named after the literal bullets — each item becomes
+        # its own subtask instead. A NAMED group must NOT fan out: splitting throws the name
+        # away, so it falls through to the single-task path below, where the group's name
+        # becomes the task and its bullets (or numbered items) ride along as the task's notes.
+        if memo.kind == "group" and not memo.name:
             first = ""
             for name, notes in _group_items(memo.transcript):
                 created = self._create(gid, token, name, notes)
                 first = first or created
             return {"asana_url": first}
-        # A named memo keeps its transcript as the task's notes. An unnamed one has
-        # only its transcript, so that becomes the name — a readable task rather than
+        # A named memo — note or group — keeps its transcript as the task's notes. An unnamed
+        # one has only its transcript, so that becomes the name — a readable task rather than
         # a generic date title — and the notes are left empty rather than repeating it.
         if memo.name:
             name, notes = memo.name, memo.transcript
