@@ -1,6 +1,7 @@
 import time
 from datetime import datetime
 
+from highdeas.preferences import PreferenceStore
 from highdeas.service import Incoming
 from highdeas.store import Memo
 from highdeas.transcribe import Transcript
@@ -1297,13 +1298,49 @@ def test_the_editor_autoplays_only_when_the_box_is_ticked_and_remembers_it(tmp_p
     assert "audio.play()" in opening
     assert opening.index("autoplayEl.checked") < opening.index("audio.play()")
 
-    # The choice rides in localStorage, so it holds across reloads and every future note —
-    # not just this one reused dialog. The box is set from the stored choice on load, and
-    # every flip of it writes the choice back.
-    assert "'highdeas.autoplay'" in js
-    assert "autoplayEl.checked =" in js          # restored from storage on load
-    assert "localStorage.getItem" in js
-    assert "localStorage.setItem" in js
+    # The choice is remembered on the server, not the browser's own storage — every flip
+    # posts it back, and the box's initial state is server-rendered (see the render test
+    # below). The desktop window opens on a fresh port each launch and runs its webview
+    # private, so localStorage would not survive to the next open; that's why the choice
+    # was forgotten on Windows every reopen.
+    assert "fetch('/preferences/autoplay'" in js
+    assert "autoplayEl.checked ? 'on' : 'off'" in js
+    assert "localStorage.getItem" not in js and "localStorage.setItem" not in js
+
+
+def _autoplay_input(body):
+    """The editor's Auto-play <input> element, sliced out of the rendered page — whether
+    it carries `checked` is what the saved choice decides."""
+    return body.split('id="editor-autoplay"', 1)[1].split(">", 1)[0]
+
+
+def test_the_editor_checkbox_is_rendered_from_the_saved_autoplay_choice(tmp_path):
+    # The box's initial state comes from the server, not the browser — that's how the
+    # choice is remembered across restarts even though the desktop window's own storage
+    # can't be. Ticked by default; unticked once the reader has turned it off.
+    fresh = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin"),
+                       preferences=PreferenceStore(tmp_path / "fresh.json")).test_client()
+    assert "checked" in _autoplay_input(fresh.get("/").data.decode())
+
+    turned_off = PreferenceStore(tmp_path / "off.json")
+    turned_off.set_autoplay(False)
+    reopened = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin"),
+                          preferences=turned_off).test_client()
+    assert "checked" not in _autoplay_input(reopened.get("/").data.decode())
+
+
+def test_the_autoplay_choice_posts_to_the_server_and_survives_a_restart(tmp_path):
+    # Flipping the box posts the choice; a fresh store — what a relaunched app builds —
+    # reads it back. This is the whole fix: the choice outlives the run now.
+    path = tmp_path / "preferences.json"
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin"),
+                        preferences=PreferenceStore(path)).test_client()
+
+    assert client.post("/preferences/autoplay", data={"autoplay": "off"}).status_code == 204
+    assert PreferenceStore(path).load().autoplay is False
+
+    client.post("/preferences/autoplay", data={"autoplay": "on"})
+    assert PreferenceStore(path).load().autoplay is True
 
 
 def test_the_autoplay_toggle_is_pushed_to_the_far_right_of_the_player_bar(tmp_path):

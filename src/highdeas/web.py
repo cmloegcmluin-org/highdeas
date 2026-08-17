@@ -10,6 +10,8 @@ from urllib.parse import quote
 from flask import Flask, redirect, render_template, request, send_from_directory
 from werkzeug.exceptions import HTTPException
 
+from highdeas.preferences import PreferenceStore
+
 
 def _format_when(iso):
     """A stored ISO timestamp as a scannable "Jul 7, 2:23 PM".
@@ -63,12 +65,16 @@ def _submitted_fields():
 
 def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=(), claude_models=(),
                drive_folder_url="", drive_link_for=None, now=datetime.now, updates=None,
-               update_respawn_delay=0.7, rescan=None):
+               update_respawn_delay=0.7, rescan=None, preferences=None):
     app = Flask(__name__)
     app.jinja_env.filters["when"] = _format_when
     app.jinja_env.filters["playable"] = _audio_url
     # The bin's ages are read against the wall clock, so the clock is injectable.
     app.jinja_env.filters["days_in_bin"] = lambda iso: _days_since(iso, now)
+    # The reader's Auto-play choice, remembered across launches. A pathless default keeps
+    # the shipped default and persists nothing, for the tests that don't wire one in;
+    # build_app hands in a store backed by a file beside the window state.
+    preferences = preferences or PreferenceStore()
 
     def rows_now():
         """Everything it takes to draw the inbox: the memos in it, the recordings still
@@ -107,7 +113,7 @@ def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=(), cl
         # No rescan here: the page must paint instantly from what's already stored.
         # The app's background scan transcribes waiting recordings and the /pending
         # poll streams them in, so the first frame never waits on the model.
-        return render_template("inbox.html", **rows_now())
+        return render_template("inbox.html", autoplay=preferences.load().autoplay, **rows_now())
 
     @app.get("/pending")
     def pending():
@@ -133,6 +139,15 @@ def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=(), cl
         finds streams in through the next poll."""
         if rescan is not None:
             rescan()
+        return ("", 204)
+
+    @app.post("/preferences/autoplay")
+    def set_autoplay():
+        """Remember whether a note plays itself the moment it opens. The editor's
+        Auto-play box posts here on every flip; kept on the server, the choice holds
+        across restarts on every platform — the desktop window's own storage can't
+        (a fresh loopback port each launch, and a webview that runs private)."""
+        preferences.set_autoplay(request.form.get("autoplay") == "on")
         return ("", 204)
 
     @app.get("/version")
