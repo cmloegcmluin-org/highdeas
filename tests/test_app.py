@@ -148,6 +148,35 @@ def test_open_window_tracks_the_window_so_the_next_launch_reopens_maximized(tmp_
     assert load_geometry(path).maximized is True
 
 
+def test_the_preferences_file_sits_beside_the_window_state():
+    # Both are small bits of per-machine state remembered beside the checkout, and both
+    # are gitignored — pinning the location keeps that .gitignore entry honest.
+    from highdeas.app import PREFERENCES_STATE, WINDOW_STATE
+
+    assert PREFERENCES_STATE == WINDOW_STATE.parent / "preferences.json"
+
+
+def test_build_app_remembers_the_autoplay_choice_across_a_restart(tmp_path, monkeypatch):
+    # Wired into the app, the Auto-play choice persists to that file, so a relaunch reads
+    # it back — the whole point of moving it off the browser's own storage.
+    import highdeas.app as app_mod
+    from highdeas.preferences import PreferenceStore
+
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    monkeypatch.setenv("HIGHDEAS_STATE_DIR", "")  # SQLite mode; see the folders test below
+    monkeypatch.setenv("HIGHDEAS_INBOX_DIR", str(inbox))
+    monkeypatch.setenv("HIGHDEAS_BIN_DIR", str(tmp_path / "bin"))
+    monkeypatch.setenv("HIGHDEAS_DB", str(tmp_path / "memos.db"))
+    monkeypatch.setattr(app_mod, "PREFERENCES_STATE", tmp_path / "preferences.json")
+
+    app, _ = build_app()
+    app.test_client().post("/preferences/autoplay", data={"autoplay": "off"})
+
+    # A relaunched app builds a fresh store on the same file and reads the choice back.
+    assert PreferenceStore(tmp_path / "preferences.json").load().autoplay is False
+
+
 def test_ingest_continuously_keeps_rescanning_the_inbox_off_the_calling_thread():
     stop, done, threads = threading.Event(), threading.Event(), []
 

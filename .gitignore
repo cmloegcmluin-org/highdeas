@@ -24,10 +24,11 @@ highdeas-drive-reader.json
 highdeas-drive-docs-client.json
 highdeas-drive-docs-token.json
 
-# Local database, the processed-audio bin, and the remembered window geometry
+# Local database, the processed-audio bin, and the remembered window geometry and preferences
 memos.db
 bin/
 window.json
+preferences.json
 
 # Generated, machine-specific taskbar shortcut (rebuild with "Create Highdeas Shortcut.bat")
 /Highdeas.lnk
