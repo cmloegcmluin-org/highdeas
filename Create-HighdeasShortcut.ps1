@@ -20,6 +20,18 @@ if (-not $ShortcutPath) { $ShortcutPath = Join-Path $Root 'Highdeas.lnk' }
 
 $AppUserModelId = 'Douglas.Highdeas'   # must match highdeas.app.APP_ID
 $Pythonw = Join-Path $Root '.venv\Scripts\pythonw.exe'
+# Prefer the copy that describes itself. Windows takes what it shows about a
+# process -- the task list's name, its description, the icon beside it -- from
+# the file it was started from, so a shortcut aimed at a bare interpreter leaves
+# Highdeas as one more anonymous "Python" row. The app makes that copy on every
+# run (highdeas.app._name_this_process); this asks it to make one NOW, so the
+# shortcut can point at something that already exists. A venv that will not take
+# the copy costs the name and nothing else.
+$Named = Join-Path $Root '.venv\Scripts\Highdeas-Highdeas.exe'
+if (Test-Path -LiteralPath $Pythonw) {
+  & $Pythonw -c "import sys; sys.path.insert(0, r'$Root\src'); from app_support.process_identity import ProcessNamer; ProcessNamer('Highdeas', icon=r'$Root\highdeas.ico').prepare_launcher('Highdeas')" 2>$null
+}
+if (Test-Path -LiteralPath $Named) { $Pythonw = $Named }
 $Script  = Join-Path $Root 'run_highdeas.py'
 $Icon    = Join-Path $Root 'highdeas.ico'
 

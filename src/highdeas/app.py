@@ -414,8 +414,34 @@ def _become_current(checker=None):
     checker.respawn()
 
 
+def _name_this_process() -> None:
+    """Leave the shortcut an interpreter that says "Highdeas" next time.
+
+    Windows takes what it shows about a process from the file it was started
+    from -- the Details tab's name, the Processes tab's description, the icon
+    beside it -- so a plain ``pythonw.exe`` puts Highdeas in the task list as one
+    more anonymous "Python".  That costs nothing until something strands a
+    process, and then the task list is the only way back and cannot say which
+    row is safe to end.
+
+    Naming this process on the way in is the one thing that cannot be done:
+    writing the copy takes the very interpreter being named.  So each run makes
+    it for the run after, and ``Create-HighdeasShortcut.ps1`` points at it once it exists.
+    """
+    try:
+        from pathlib import Path as _Path
+
+        from app_support.process_identity import ProcessNamer
+
+        icon = _Path(__file__).resolve().parent.parent.parent / "highdeas.ico"
+        ProcessNamer("Highdeas", icon=icon).prepare_launcher("Highdeas")
+    except Exception:
+        pass  # Cosmetic: costs a name in the task list, never a launch.
+
+
 def main():
     _set_windows_app_id()
+    _name_this_process()
     app, service = build_app()
     _ingest_continuously(service)
     _reconcile_drive_docs_continuously(_drive_doc_reconciler(service.store))
