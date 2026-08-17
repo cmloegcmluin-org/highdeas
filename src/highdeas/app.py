@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 from highdeas import drive_auth, drive_mount
 from highdeas.drive_link import DriveFolderLinker, parent_id_from_folder_url
 from highdeas.drive_write import DriveDocFiler, DriveDocReconciler
+from highdeas.preferences import PreferenceStore
 from highdeas.routers import (
     AsanaRouter, ClaudeRouter, DriveMusicRouter, NotesnookRouter, Router, parse_choices,
     read_asana_tokens,
@@ -80,6 +81,8 @@ APP_ID = "Douglas.Highdeas"
 APP_ICON = PROJECT_ROOT / "highdeas.ico"
 # Where the window's size, position, and maximized state are remembered between launches.
 WINDOW_STATE = PROJECT_ROOT / "window.json"
+# Where the reader's Auto-play choice is remembered between launches, beside it.
+PREFERENCES_STATE = PROJECT_ROOT / "preferences.json"
 
 # Shown instantly in the native window for the brief moment before the local server
 # accepts connections, so the user never stares at a blank frame. Painted with the
@@ -220,6 +223,7 @@ def build_app():
                      drive_folder_url=drive_folder_url,
                      drive_link_for=_drive_link_resolver(drive_folder_url),
                      updates=UpdateChecker(PROJECT_ROOT),
+                     preferences=PreferenceStore(PREFERENCES_STATE),
                      rescan=lambda: _refresh_when_free(service))
     return app, service
 
