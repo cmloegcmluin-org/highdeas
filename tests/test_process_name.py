@@ -16,10 +16,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app_support.process_identity import ProcessNamer
-
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 APP_NAME = "Highdeas"
+# Nothing here imports app_support: this suite runs on macOS too, where
+# naming a Windows process means nothing, and everything checked below is
+# in the source it reads.  What the rule itself produces -- the file name,
+# the description -- is app_support's own suite to check.
 ROLE = "Highdeas"
 
 ENTRY_POINT = (PROJECT_DIR / "src/highdeas/app.py").read_text(encoding="utf-8")
@@ -28,10 +30,6 @@ ENTRY_POINT = (PROJECT_DIR / "src/highdeas/app.py").read_text(encoding="utf-8")
 def test_the_app_prepares_the_copy_for_next_time():
     assert 'ProcessNamer("Highdeas", icon=icon).prepare_launcher("Highdeas")' in ENTRY_POINT
 
-
-def test_the_row_reads_as_the_app_and_nothing_more():
-    # One app with one window, so the row is its name, not its name twice.
-    assert ProcessNamer(APP_NAME).description(ROLE) == APP_NAME
 
 
 def test_it_stamps_its_own_mark():
