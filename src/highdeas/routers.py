@@ -19,6 +19,7 @@ from asana_client import create_subtask
 # A name bound here at import time would then be a stale class this `except`
 # quietly stops matching. Looked up at raise time, both sides always agree.
 from highdeas import drive_write
+from highdeas.nonspeech import UNCLEAR
 
 
 # A note is stored as plain text, so a list is just its Markdown line — which is
@@ -318,6 +319,22 @@ def write_docx(path, text):
     document.save(str(path))
 
 
+def _says_nothing(transcript):
+    """Whether a transcript has no words of its own to file: blank, or nothing but the
+    "[unclear]" the transcriber writes where it heard no speech at all (nonspeech.py) —
+    a single line of it, or, for a group of takes it could read none of, one per bullet
+    (service._bullet). A doc of those says nothing the memo itself does not already say.
+
+    A bullet that names its item ("- Chorus: [unclear]") does say something, and is not
+    this — the name is content the doc is the only place to keep."""
+    for line in transcript.splitlines():
+        item, _tag = _list_item(line)
+        text = (item if item is not None else line).strip()
+        if text and text != UNCLEAR:
+            return False
+    return True
+
+
 class DriveMusicRouter:
     """Copy a music memo into a dated folder under the Drive base, with an optional doc.
 
@@ -335,7 +352,10 @@ class DriveMusicRouter:
     for why), then moves beside the audio itself when `file_doc` can resolve it —
     immediately, most of the time, or later via DriveDocReconciler when it can't yet.
     `drive_doc_link` on the returned outcome is the way back to the doc either way;
-    `drive_doc_needs_move` says whether that move is still pending."""
+    `drive_doc_needs_move` says whether that move is still pending.
+
+    Neither runs for a transcript with nothing of its own to say (see `_says_nothing`):
+    the audio is filed alone rather than beside a doc reading only "[unclear]"."""
 
     def __init__(self, inbox_dir, drive_base, *, today=_today, write_doc=write_docx,
                  file_doc=None, copy=shutil.copy2, wake_drive=None):
@@ -380,7 +400,7 @@ class DriveMusicRouter:
         base = _sanitize_filename(memo.name or Path(memo.audio_filename).stem)
         self._copy(str(source), str(folder / (base + source.suffix)))
         doc_link, needs_move, warning = "", False, ""
-        if memo.transcript.strip():
+        if not _says_nothing(memo.transcript):
             if self._file_doc is not None:
                 title = memo.name or _default_title(memo)
                 try:

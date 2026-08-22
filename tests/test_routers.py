@@ -671,26 +671,95 @@ def test_drive_router_never_calls_doc_filing_when_transcript_is_blank(tmp_path):
     assert doc_calls == []
     assert docs == []
     assert outcome["drive_doc_link"] == ""
+    folder = drive / "_2026_07_07_NOT_YET_PROCESSED_MUSIC"
+    assert (folder / "Song.m4a").read_bytes() == b"AUDIO"
 
 
-def _drive_router(inbox, drive, **kwargs):
+def test_drive_router_never_files_a_doc_that_would_only_say_unclear(tmp_path):
+    # The transcriber writes "[unclear]" where it heard no speech at all (nonspeech.py).
+    # A Doc holding that one word says nothing the memo does not already say, so a hummed
+    # melody the model could not read should file its audio and no doc beside it.
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    drive = tmp_path / "drive"
+    drive.mkdir()
+    (inbox / "voice-7.m4a").write_bytes(b"AUDIO")
+    doc_calls, docs = [], []
+
+    router = DriveMusicRouter(
+        inbox, drive,
+        today=lambda: "2026_07_07",
+        write_doc=lambda path, text: docs.append(path),
+        file_doc=lambda *a: doc_calls.append(a),
+    )
+
+    outcome = router.route(
+        Memo(audio_filename="voice-7.m4a", name="Song", transcript="[unclear]"))
+
+    assert doc_calls == []
+    assert docs == []
+    assert outcome["drive_doc_link"] == ""
+    folder = drive / "_2026_07_07_NOT_YET_PROCESSED_MUSIC"
+    assert (folder / "Song.m4a").read_bytes() == b"AUDIO"
+
+
+def test_drive_router_never_files_a_doc_of_nothing_but_unclear_bullets(tmp_path):
+    # A group consolidates its members one bullet each (service._bullet), so a session of
+    # hummed takes the model could not read reads as "[unclear]" per line. That is the same
+    # empty doc as a single note's, spread over several lines.
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    drive = tmp_path / "drive"
+    drive.mkdir()
+    (inbox / "voice-8.m4a").write_bytes(b"AUDIO")
+    doc_calls, docs = [], []
+
+    router = DriveMusicRouter(
+        inbox, drive,
+        today=lambda: "2026_07_07",
+        write_doc=lambda path, text: docs.append(path),
+        file_doc=lambda *a: doc_calls.append(a),
+    )
+
+    outcome = router.route(Memo(
+        audio_filename="voice-8.m4a", name="Takes", kind="group",
+        transcript="- [unclear]\n- [unclear]\n- [unclear]"))
+
+    assert doc_calls == []
+    assert docs == []
+    assert outcome["drive_doc_link"] == ""
+
+
+def test_drive_router_still_files_a_doc_when_one_bullet_among_the_unclear_has_words(tmp_path):
+    # Only a doc that would say nothing is skipped. One item the model did read -- or a
+    # named item, whose name is content the doc is the only place keeping -- is a doc worth
+    # filing, however many "[unclear]" lines it sits among.
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    drive = tmp_path / "drive"
+    drive.mkdir()
+    (inbox / "voice-9.m4a").write_bytes(b"AUDIO")
+    filed = []
+
+    router = DriveMusicRouter(
+        inbox, drive,
+        today=lambda: "2026_07_07",
+        file_doc=lambda subfolder_name, title, html: (filed.append(html), ("link", False))[1],
+    )
+
+    outcome = router.route(Memo(
+        audio_filename="voice-9.m4a", name="Takes", kind="group",
+        transcript="- [unclear]\n- Chorus: [unclear]"))
+
+    assert filed == ["<ul><li>[unclear]</li><li>Chorus: [unclear]</li></ul>"]
+    assert outcome["drive_doc_link"] == "link"
+
+
+def _drive_router(inbox, drive):
     inbox.mkdir(exist_ok=True)
     drive.mkdir(exist_ok=True)
     return DriveMusicRouter(inbox, drive, today=lambda: "2026_07_07",
-                            write_doc=kwargs.get("write_doc", lambda path, text: None))
-
-
-def test_drive_router_skips_doc_when_transcript_is_blank(tmp_path):
-    (tmp_path / "inbox").mkdir()
-    (tmp_path / "inbox" / "v.m4a").write_bytes(b"A")
-    docs = []
-    router = _drive_router(tmp_path / "inbox", tmp_path / "drive",
-                           write_doc=lambda path, text: docs.append(path))
-
-    router.route(Memo(audio_filename="v.m4a", name="Song", transcript="   "))
-
-    assert docs == []
-    assert (tmp_path / "drive" / "_2026_07_07_NOT_YET_PROCESSED_MUSIC" / "Song.m4a").exists()
+                            write_doc=lambda path, text: None)
 
 
 def test_drive_router_reports_which_subfolder_it_filed_the_memo_into(tmp_path):
