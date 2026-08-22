@@ -163,16 +163,19 @@ recording, or a subtask on an Asana task.
      the way Notesnook names untitled notes (`Note <date> <time>`).
    - **Google Drive (music)** — the audio is copied into a dated
      `_YYYY_MM_DD_NOT_YET_PROCESSED_MUSIC` folder under your Drive base, renamed from the
-     memo's name. Its transcript, if there is one, is filed as a real, native Google
-     Doc through the actual Drive API — not a file that merely opens like one — once
-     `HIGHDEAS_GOOGLE_DOCS_TOKEN_FILE` is set up (see "Google Drive native Doc filing"
-     below), landing right beside that same audio when "Google Drive per-memo folder
-     links" is also set up; until the token file is configured, or if a submit can't
+     memo's name. Its transcript, if it has any words of its own, is filed as a real,
+     native Google Doc through the actual Drive API — not a file that merely opens like
+     one — once `HIGHDEAS_GOOGLE_DOCS_TOKEN_FILE` is set up (see "Google Drive native
+     Doc filing" below), landing right beside that same audio when "Google Drive
+     per-memo folder links" is also set up; until the token file is configured, or if a submit can't
      reach Drive, a `.docx` alongside the audio is the fallback, exactly as before —
      **and when Docs were configured and the Doc still didn't happen, the submit says
      so**, in the notice bar, naming what Google refused. The row leaves the inbox
      either way, because the send did land; what it lands as is the thing worth
-     hearing about. Silence there once hid a lapsed sign-in for weeks.
+     hearing about. Silence there once hid a lapsed sign-in for weeks. A transcript
+     that reads only `[unclear]` — or only `[unclear]` on every bullet of a group of
+     takes the model could read none of — files no doc at all: it would say nothing
+     the memo doesn't already, so the audio lands alone.
 
      The dated folder is the app's to create; the Drive base above it is Drive's. If
      that base isn't there — Drive for Desktop not installed or not signed in on this
