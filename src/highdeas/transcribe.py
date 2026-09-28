@@ -47,6 +47,40 @@ HEARABLE_SECONDS = 360.0
 # at the end of one piece and again at the start of the next.
 _PAUSE_HUNT_SECONDS = 45.0
 _PAUSE_SECONDS = 0.25
+# The model goes wrong on a knife edge nothing in the audio explains. Across a long
+# silence inside a recording it has written words that were never said, all on the
+# instant speech resumed, and then read none of the speech that followed; and handed a
+# stretch of loud, clear speech it has returned nothing at all, or every word of it,
+# depending on a quarter-second's difference in where the stretch began. Nothing marks
+# either from the inside, but both leave sound with no words on it. So the words are held
+# against the sound: where a gap of LONG_PAUSE_SECONDS between two words it did hear says
+# a long pause, the recording is heard again in the stretches of speech between its long
+# pauses, and any stretch that still leaves loud sound with no word on it is heard again
+# from a different start until its words cover the sound. The re-heard reading replaces
+# the first only when it covers more of the recording's sound, so a recording the first
+# reading already covered is left as it was.
+LONG_PAUSE_SECONDS = 3.0
+_PAUSE_MARGIN_SECONDS = 1.5
+_WORD_SECONDS = 0.5
+# Sound is a moment at _SOUND_LEVEL of the recording's own speech level (the median
+# loudness where its words start) or louder; a word reaches from _WORD_LAG_SECONDS before
+# it starts to _WORD_REACH_SECONDS after; and an uncovered run this long is worth hearing
+# again. _SOUND_FLOOR is what a recording with no words at all is held against, as a
+# fraction of full scale: room tone on his phone peaks near 0.01, his softest speech near
+# 0.03.
+_SOUND_LEVEL = 0.5
+_SOUND_SECONDS = 1.5
+_WORD_LAG_SECONDS = 0.6
+_WORD_REACH_SECONDS = 1.5
+_SOUND_FLOOR = 0.03
+# Where each new hearing of a stretch begins, relative to the stretch, and how much
+# silence is put in front of it: the model's answer changes with either.
+_REHEAR_STARTS = ((0.0, 0.0), (-0.5, 0.0), (0.0, 0.5), (0.25, 0.0), (-1.0, 0.0), (0.0, 1.0))
+# Past this many stretches the recording is not speech with a few pauses in it but
+# something the model read only in scattered scraps -- music, noise -- which has no
+# dropped speech to recover and is relabelled downstream. Cutting it up only burns the
+# model, so it is left as the first reading heard it.
+_MOST_STRETCHES = 8
 
 
 @dataclass(frozen=True)
@@ -67,13 +101,20 @@ class Recognition:
 
 
 def _read_wav(path):
-    """A decoded recording as float32 in [-1, 1], with its sample rate — what onnx-asr
+    """A decoded recording as float32 in [-1, 1], with its sample rate -- what onnx-asr
     would read off the file itself, read here so a long one can be handed over a piece
     at a time. `decode_to_wav` is the only writer of these, and it writes 16-bit mono."""
     with wave.open(str(path), "rb") as recording:
         rate = recording.getframerate()
         frames = recording.readframes(recording.getnframes())
     return numpy.frombuffer(frames, dtype="<i2").astype(numpy.float32) / 32768.0, rate
+
+
+def _peaks(samples, rate):
+    """How loud each `_PAUSE_SECONDS` of the recording gets, first to last."""
+    width = int(_PAUSE_SECONDS * rate)
+    whole = len(samples) - len(samples) % width
+    return numpy.abs(samples[:whole]).reshape(-1, width).max(axis=1)
 
 
 def _quietest(samples, first, last, width):
@@ -83,42 +124,111 @@ def _quietest(samples, first, last, width):
     return at + width // 2
 
 
-def _seams(samples, rate):
-    """Where to cut a recording the model can't hear in one go, as sample offsets.
-
-    Each piece runs as near the ceiling as it can while still ending on a pause, so
-    every piece is hearable and no seam falls through the middle of a word."""
+def _hearable(samples, rate, start, end):
+    """`samples[start:end]` in stretches the model can take, as (start, end) sample
+    offsets, each running as near the ceiling as it can while still ending on a pause,
+    so every stretch is hearable and no seam falls through the middle of a word."""
     span, hunt, pause = (int(seconds * rate) for seconds in
                          (HEARABLE_SECONDS, _PAUSE_HUNT_SECONDS, _PAUSE_SECONDS))
-    seams, at = [], 0
-    while len(samples) - at > span:
-        at = _quietest(samples, at + span - hunt, at + span, pause)
-        seams.append(at)
-    return seams
+    edges = [start]
+    while end - edges[-1] > span:
+        edges.append(_quietest(samples, edges[-1] + span - hunt, edges[-1] + span, pause))
+    edges.append(end)
+    return list(zip(edges, edges[1:]))
 
 
-def _pieces(samples, rate):
-    """A recording in stretches the model can take, each paired with the second it
-    starts at. One stretch — the whole recording — when it already fits."""
-    edges = [0, *_seams(samples, rate), len(samples)]
-    return [(at / rate, samples[at:until]) for at, until in zip(edges, edges[1:])]
+def _between_long_pauses(samples, rate, starts):
+    """The recording in stretches of speech, as (start, end) sample offsets, cut apart
+    wherever `starts` -- the seconds the words heard so far began on -- leave a gap of
+    `LONG_PAUSE_SECONDS` or more. Nothing when they leave no such gap.
+
+    Each stretch keeps no more than a margin of the quiet either side of its words, cut
+    at the quietest moment inside that margin, past the word the stretch ends on."""
+    margin, word, pause = (int(seconds * rate) for seconds in
+                           (_PAUSE_MARGIN_SECONDS, _WORD_SECONDS, _PAUSE_SECONDS))
+    stretches, at = [], 0
+    for before, after in zip(starts, starts[1:]):
+        if after - before < LONG_PAUSE_SECONDS:
+            continue
+        before, after = int(before * rate), int(after * rate)
+        middle = (before + after) // 2
+        stretches.append((at, _quietest(samples, before + word, min(before + margin, middle), pause)))
+        at = _quietest(samples, max(after - margin, middle), after, pause)
+    if stretches:
+        stretches.append((at, len(samples)))
+    return stretches
+
+
+def _sound_level(peaks, starts):
+    """How loud the recording is where its words start -- the level its speech is at --
+    or the floor, when it has no words to measure."""
+    if not starts:
+        return _SOUND_FLOOR
+    at = [peaks[min(int(start / _PAUSE_SECONDS), len(peaks) - 1)] for start in starts]
+    return max(_SOUND_LEVEL * float(numpy.median(at)), _SOUND_FLOOR)
+
+
+def _unheard(peaks, starts, level, first=0.0, last=None):
+    """The stretches of sound between `first` and `last` seconds that no word reaches,
+    as (begin, end) seconds: sound is a moment at `level` or louder, and a word reaches
+    from `_WORD_LAG_SECONDS` before it starts to `_WORD_REACH_SECONDS` after."""
+    starts = numpy.asarray(sorted(starts), dtype=float)
+    last = len(peaks) * _PAUSE_SECONDS if last is None else last
+    stretches, since = [], None
+    for index in range(int(first / _PAUSE_SECONDS), int(numpy.ceil(last / _PAUSE_SECONDS)) + 1):
+        moment = index * _PAUSE_SECONDS
+        sound = index < len(peaks) and moment < last and peaks[index] >= level
+        reached = (numpy.searchsorted(starts, moment - _WORD_REACH_SECONDS)
+                   < numpy.searchsorted(starts, moment + _WORD_LAG_SECONDS, side="right"))
+        if sound and not reached:
+            since = moment if since is None else since
+        elif since is not None:
+            stretches.append((since, moment))
+            since = None
+    return stretches
+
+
+def _uncovered(peaks, said, level, first, last):
+    """The seconds of sound between `first` and `last` that `said`'s words leave with no
+    word on them -- how much of a stretch's speech a hearing failed to reach."""
+    starts = [word.start for word in _to_words(said.tokens, said.timestamps)]
+    return sum(end - begin for begin, end in _unheard(peaks, starts, level, first, last))
+
+
+def _joined(parts):
+    """Several stretch hearings put back together as one, in the order they were heard.
+    Each already carries its timings in the recording's own seconds, so the words stay
+    where they were spoken."""
+    return Recognition(
+        text=" ".join(part.text for part in parts if part.text),
+        tokens=tuple(token for part in parts for token in part.tokens),
+        timestamps=tuple(stamp for part in parts for stamp in part.timestamps),
+    )
 
 
 class HearsAnyLength:
-    """The ASR model, able to take a recording of any length.
+    """The ASR model, able to take a recording of any length, and held to hearing all of
+    it.
 
     Past `HEARABLE_SECONDS` the model refuses a recording rather than shortening its
-    answer, so a long one is heard in pieces and the pieces put back together — each
-    piece's word timings slid to where in the recording that piece starts.
+    answer, so a long one is heard in pieces and the pieces put back together -- each
+    piece's word timings slid to where in the recording that piece starts. And the model
+    goes wrong across a long pause and on a knife-edge start offset, either way leaving
+    sound with no words on it, so its words are held against the sound: a recording whose
+    first reading leaves loud sound uncovered is heard again in the stretches between its
+    long pauses, each stretch re-heard from a different start until its words cover the
+    sound, and the re-reading kept only when it covers more of the recording than the
+    first (see LONG_PAUSE_SECONDS, _REHEAR_STARTS).
 
     Hearing one in pieces is also the only honest place to count how far along it is,
     which is what `progress` is called with after each: the fraction of the recording
-    read so far, so the page has a real number to show rather than a guess at the
-    clock. A recording that fits says so once, when it is read.
+    read so far, so the page has a real number to show rather than a guess at the clock.
+    A recording that fits says so once, when it is read, and each stretch re-heard says
+    the whole of it has been read.
 
     It is the only word the caller gets in mid-read, so it is also how a read is called
     off: raise out of `progress` and the rest of the recording goes unread. That is what
-    throwing a recording away from its row does (service.Abandoned) — the minutes a long
+    throwing a recording away from its row does (service.Abandoned) -- the minutes a long
     one costs are the reason it can be thrown away before it is read at all."""
 
     def __init__(self, model):
@@ -126,15 +236,54 @@ class HearsAnyLength:
 
     def recognize(self, wav, progress=None):
         samples, rate = _read_wav(wav)
+        heard = self._hear(samples, rate, _hearable(samples, rate, 0, len(samples)), progress)
+        peaks, span = _peaks(samples, rate), len(samples) / rate
+        starts = [word.start for word in _to_words(heard.tokens, heard.timestamps)]
+        level = _sound_level(peaks, starts)
+        if _uncovered(peaks, heard, level, 0.0, span) < _SOUND_SECONDS:
+            return heard  # the words already cover the sound
+        stretches = _between_long_pauses(samples, rate, starts)
+        if not stretches or len(stretches) > _MOST_STRETCHES:
+            return heard
+        report = None if progress is None else (lambda _: progress(1.0))
+        stitched = _joined([self._cover(samples, rate, peaks, level, start, end, report)
+                            for start, end in stretches])
+        if _uncovered(peaks, stitched, level, 0.0, span) < _uncovered(peaks, heard, level, 0.0, span):
+            return stitched
+        return heard
+
+    def _cover(self, samples, rate, peaks, level, start, end, progress):
+        """The stretch `samples[start:end]`, heard from the starting points of
+        `_REHEAR_STARTS` and kept at the one whose words cover the most of its sound."""
+        best = self._hear(samples, rate, _hearable(samples, rate, start, end), None)
+        gap = _uncovered(peaks, best, level, start / rate, end / rate)
+        for shift, silence in _REHEAR_STARTS[1:]:
+            if gap <= 0:
+                break
+            first = max(0, round(start + shift * rate))
+            if (end - first) / rate > HEARABLE_SECONDS and silence:
+                continue
+            piece = numpy.concatenate([numpy.zeros(round(silence * rate), dtype=numpy.float32),
+                                       samples[first:end]])
+            said = self._hear(piece, rate, _hearable(piece, rate, 0, len(piece)), None,
+                              at=first / rate - silence)
+            reached = _uncovered(peaks, said, level, start / rate, end / rate)
+            if reached < gap:
+                best, gap = said, reached
+        if progress is not None:
+            progress(1.0)
+        return best
+
+    def _hear(self, samples, rate, stretches, progress, at=0.0):
         heard = []
-        for at, piece in _pieces(samples, rate):
-            heard.append((at, self._model.recognize(piece, sample_rate=rate)))
+        for start, end in stretches:
+            heard.append((at + start / rate, self._model.recognize(samples[start:end], sample_rate=rate)))
             if progress is not None:
-                progress((at * rate + len(piece)) / len(samples))
+                progress(end / len(samples))
         return Recognition(
             text=" ".join(said.text for _, said in heard if said.text),
             tokens=tuple(token for _, said in heard for token in said.tokens or ()),
-            timestamps=tuple(round(at + stamp, 3) for at, said in heard
+            timestamps=tuple(round(begins + stamp, 3) for begins, said in heard
                              for stamp in said.timestamps or ()),
         )
 

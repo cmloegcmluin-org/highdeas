@@ -4,9 +4,12 @@ from array import array
 
 import pytest
 
+import numpy
+
 from highdeas.transcribe import (
-    HEARABLE_SECONDS, AudioDecodeError, HearsAnyLength, Recognition, Transcriber,
-    _load_parakeet, decode_to_wav,
+    HEARABLE_SECONDS, LONG_PAUSE_SECONDS, AudioDecodeError, HearsAnyLength, Recognition,
+    Transcriber, _between_long_pauses, _load_parakeet, _peaks, _read_wav, _sound_level,
+    _to_words, _uncovered, decode_to_wav,
 )
 
 
@@ -115,6 +118,199 @@ def test_a_piece_ends_on_a_pause_rather_than_through_a_word(tmp_path):
     assert pause.start <= len(model.recognized[0]) <= pause.stop
 
 
+_LOUD = 0.02  # the float amplitude (3000 of full 16-bit scale) the Ear counts as sound
+
+
+def _sound(rate, spans, seconds):
+    """A recording `seconds` long, silent but for a 3000-amplitude sound over each of
+    the (from, to) `spans`, in seconds."""
+    samples = [0] * int(seconds * rate)
+    for start, end in spans:
+        samples[int(start * rate):int(end * rate)] = [3000] * (int(end * rate) - int(start * rate))
+    return samples
+
+
+def _loud_runs(waveform, rate):
+    loud = numpy.abs(numpy.asarray(waveform, dtype=float)) >= _LOUD
+    runs, since = [], None
+    for index, on in enumerate([*loud, False]):
+        if on and since is None:
+            since = index
+        elif not on and since is not None:
+            runs.append((since, index))
+            since = None
+    return runs
+
+
+class Ear:
+    """A stand-in for the real model's two pathologies. Handed a waveform with a silent
+    gap of LONG_PAUSE_SECONDS or more between two loud runs, it writes ' word' for each
+    half second of sound up to the gap, two ' ghost' words at the instant sound resumes,
+    and nothing after -- the deaf-across-a-pause failure that wrote words never said.
+    With deaf_onset, a waveform whose sound starts in its very first moment comes back
+    empty -- the knife-edge that a lead-in of quiet, or an earlier start, cures.
+    Otherwise it hears every loud run, one ' word' per half second."""
+
+    def __init__(self, deaf_onset=False):
+        self.deaf_onset = deaf_onset
+        self.heard = []
+
+    def recognize(self, waveform, sample_rate=None):
+        self.heard.append(numpy.asarray(waveform, dtype=float))
+        runs = _loud_runs(waveform, sample_rate)
+        if not runs:
+            return Recognition("")
+        if self.deaf_onset and runs[0][0] < int(0.05 * sample_rate):
+            return Recognition("")
+        step, tokens, stamps, prev = int(0.5 * sample_rate), [], [], None
+        for first, last in runs:
+            if prev is not None and (first - prev) / sample_rate >= LONG_PAUSE_SECONDS:
+                tokens += [" ghost", " ghost"]
+                stamps += [first / sample_rate, first / sample_rate]
+                break
+            for at in range(first, last, step):
+                tokens.append(" word")
+                stamps.append(at / sample_rate)
+            prev = last
+        return Recognition(" ".join(t.strip() for t in tokens),
+                           tuple(tokens), tuple(round(x, 3) for x in stamps))
+
+
+class ByLength:
+    """Hears one scripted reading for the whole recording and nothing for any shorter
+    piece -- a model that reads the recording in one go but comes back empty from every
+    cut stretch, so the re-hearing can only cover less than the first reading did."""
+
+    def __init__(self, whole_samples, reading):
+        self._whole = whole_samples
+        self._reading = reading
+        self.heard = []
+
+    def recognize(self, waveform, sample_rate=None):
+        self.heard.append(len(waveform))
+        return self._reading if len(waveform) == self._whole else Recognition("")
+
+
+def test_between_long_pauses_cuts_inside_a_gap_and_is_nothing_without_one():
+    rate = 100
+    samples = numpy.array(_sound(rate, [(0.5, 2.5), (9.0, 12.0)], 12.5), dtype=numpy.float32) / 32768
+
+    across = _between_long_pauses(samples, rate, [0.6, 1.1, 1.6, 2.1, 9.1, 9.6, 10.1])
+    none = _between_long_pauses(samples, rate, [0.6, 1.1, 1.6, 2.1, 2.6, 3.1])
+
+    assert none == []
+    assert len(across) == 2
+    (first_start, first_end), (second_start, second_end) = across
+    assert first_start == 0 and second_end == len(samples)
+    assert 2.1 * rate <= first_end <= (2.1 + 1.5) * rate      # ends just past the last word before the gap
+    assert (9.1 - 1.5) * rate <= second_start <= 9.1 * rate   # begins just before the word after it
+
+
+def test_uncovered_is_the_loud_sound_no_word_reaches():
+    rate = 100
+    samples = numpy.array(_sound(rate, [(0.5, 6.5)], 7.0), dtype=numpy.float32) / 32768
+    peaks = _peaks(samples, rate)
+    level = _sound_level(peaks, [1.0, 2.0])
+
+    reached = _uncovered(peaks, Recognition("", (" a", " b"), (1.0, 2.0)), level, 0.0, 7.0)
+    silent = _uncovered(peaks, Recognition("", (" a",), (1.0,)), level, 0.0, 1.5)
+
+    assert reached >= 2.5          # the sound from ~3.5s to 6.5s has no word on it
+    assert silent == 0.0           # a stretch a word covers reports nothing uncovered
+
+
+def test_words_that_leave_a_long_gap_are_reheard_in_stretches_and_phantom_words_dropped(tmp_path):
+    # The failed note: heard whole, the model wrote the first words, two words that were
+    # never said at the instant sound resumed after the pause, and none of the speech
+    # after. Cut at the gap and heard as two stretches, both come back clean, and the
+    # re-reading is kept because it covers the speech the first reading left silent.
+    rate = 100
+    recording = _sound(rate, [(0.5, 3.0), (7.0, 11.0)], seconds=11.5)
+    ear = Ear()
+
+    heard = HearsAnyLength(ear).recognize(_wav(tmp_path / "paused.wav", recording, rate))
+
+    assert " ghost" not in heard.tokens
+    assert heard.tokens.count(" word") == 13          # 5 before the pause + 8 after, all real
+    assert heard.timestamps == tuple(sorted(heard.timestamps))
+    assert max(heard.timestamps) >= 10.0              # the speech after the pause was reached
+
+
+def test_a_recording_whose_words_cover_its_sound_is_heard_once(tmp_path):
+    # A silent gap between two runs of speech leaves a long word-gap, but the one-go
+    # reading already covers every loud moment, so nothing is heard again -- the wait
+    # and the model are not spent re-reading a recording that came back whole.
+    rate = 100
+    recording = _sound(rate, [(0.5, 3.0), (8.0, 11.0)], seconds=11.5)
+    samples, _ = _read_wav(_wav(tmp_path / "covered.wav", recording, rate))
+    reading = Recognition("word " * 11, (" word",) * 11,
+                          (0.5, 1.0, 1.5, 2.0, 2.5, 8.0, 8.5, 9.0, 9.5, 10.0, 10.5))
+    model = ByLength(len(samples), reading)
+
+    HearsAnyLength(model).recognize(_wav(tmp_path / "covered.wav", recording, rate))
+
+    assert len(model.heard) == 1
+
+
+def test_a_stretch_that_starts_on_speech_is_reheard_from_an_earlier_start(tmp_path):
+    # A stretch cut so its speech begins in its first moment comes back empty; heard
+    # again from earlier, with the quiet before the speech, it reads.
+    rate = 100
+    recording = _sound(rate, [(0.5, 5.5)], seconds=5.5)
+    samples, _ = _read_wav(_wav(tmp_path / "onset.wav", recording, rate))
+    peaks = _peaks(samples, rate)
+    ear = Ear(deaf_onset=True)
+
+    covered = HearsAnyLength(ear)._cover(
+        samples, rate, peaks, _sound_level(peaks, [1.0]), int(0.5 * rate), len(samples), None)
+
+    assert covered.text                               # not the empty deaf reading
+    assert len(ear.heard) >= 2                         # the first hearing was empty, a later one read it
+
+
+def test_the_first_reading_is_kept_when_re_hearing_would_cover_less(tmp_path):
+    # The reading that covers the most sound wins: when cutting at the gap and re-hearing
+    # the stretches covers less than the one-go reading, the one-go reading stands.
+    rate = 100
+    recording = _sound(rate, [(0.5, 11.5)], seconds=12.0)
+    samples, _ = _read_wav(_wav(tmp_path / "outlier.wav", recording, rate))
+    reading = Recognition("word " * 7, (" word",) * 7, (0.5, 1.0, 1.5, 2.0, 6.0, 6.5, 7.0))
+    model = ByLength(len(samples), reading)
+
+    heard = HearsAnyLength(model).recognize(_wav(tmp_path / "outlier.wav", recording, rate))
+
+    assert len(model.heard) > 1                        # it did try cutting and re-hearing
+    assert heard.timestamps == reading.timestamps      # and kept the fuller one-go reading
+
+
+def test_scattered_scraps_are_left_as_one_reading(tmp_path):
+    # A recording the model reads only in scraps far apart -- music, noise -- is not
+    # sliced into a stretch per scrap; it is left as the one reading, to be relabelled.
+    rate = 100
+    recording = _sound(rate, [(0.5, 40.0)], seconds=40.5)
+    samples, _ = _read_wav(_wav(tmp_path / "music.wav", recording, rate))
+    scraps = tuple(0.5 + 4.0 * n for n in range(10))   # ten words, nine gaps of four seconds
+    reading = Recognition("word " * 10, (" word",) * 10, scraps)
+    model = ByLength(len(samples), reading)
+
+    heard = HearsAnyLength(model).recognize(_wav(tmp_path / "music.wav", recording, rate))
+
+    assert len(model.heard) == 1                        # never cut into eleven stretches
+    assert heard.timestamps == reading.timestamps
+
+
+def test_re_hearing_reports_progress_that_never_runs_backward_and_ends_at_one(tmp_path):
+    rate = 100
+    recording = _sound(rate, [(0.5, 3.0), (7.0, 11.0)], seconds=11.5)
+    reported = []
+
+    HearsAnyLength(Ear()).recognize(_wav(tmp_path / "paused.wav", recording, rate),
+                                    progress=reported.append)
+
+    assert reported == sorted(reported)
+    assert reported[-1] == pytest.approx(1.0)
+
+
 def test_it_says_how_much_of_a_recording_it_has_heard_as_it_goes(tmp_path):
     # A long recording is a minute of nothing visibly happening, so the row standing in
     # for it says how far along it is. This is what it counts, and it is a real count
@@ -147,8 +343,9 @@ def test_the_pieces_are_put_back_together_with_their_timings_slid_into_place(tmp
     # recording's, or the editor lights up the wrong word once the audio runs past
     # the first seam.
     rate = 100
+    seam = HEARABLE_SECONDS - 46  # spoken right up to the seam, so no gap reads as a long pause
     model = FakeModel(
-        Recognition("First bit.", tokens=[" First", " bit", "."], timestamps=[1.0, 2.0, 3.0]),
+        Recognition("First bit.", tokens=[" First", " bit", "."], timestamps=[seam - 2, seam - 1, seam]),
         Recognition("Second bit.", tokens=[" Second", " bit", "."], timestamps=[0.5, 1.5, 2.5]),
     )
 
@@ -159,7 +356,7 @@ def test_the_pieces_are_put_back_together_with_their_timings_slid_into_place(tmp
     assert said.text == "First bit. Second bit."
     assert said.tokens == (" First", " bit", ".", " Second", " bit", ".")
     assert said.timestamps == pytest.approx(
-        [1.0, 2.0, 3.0, started + 0.5, started + 1.5, started + 2.5])
+        [seam - 2, seam - 1, seam, started + 0.5, started + 1.5, started + 2.5])
     assert model.rates == [rate, rate]  # the model is told what it is listening to
 
 
