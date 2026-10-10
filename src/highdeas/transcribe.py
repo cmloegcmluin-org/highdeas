@@ -49,18 +49,14 @@ _PAUSE_HUNT_SECONDS = 45.0
 _PAUSE_SECONDS = 0.25
 # The model goes wrong on a knife edge nothing in the audio explains. Across a long
 # silence inside a recording it has written words that were never said, all on the
-# instant speech resumed, and then read none of the speech that followed; and handed a
-# stretch of loud, clear speech it has returned nothing at all, or every word of it,
-# depending on a quarter-second's difference in where the stretch began. Nothing marks
-# either from the inside, but both leave sound with no words on it. So the words are held
-# against the sound: where a gap of LONG_PAUSE_SECONDS between two words it did hear says
-# a long pause, the recording is heard again in the stretches of speech between its long
-# pauses, and any stretch that still leaves loud sound with no word on it is heard again
-# from a different start until its words cover the sound. The re-heard reading replaces
-# the first only when it covers more of the recording's sound, so a recording the first
-# reading already covered is left as it was.
-LONG_PAUSE_SECONDS = 3.0
-_PAUSE_MARGIN_SECONDS = 1.5
+# instant speech resumed, and then read none of the speech that followed; it has skipped
+# a whole sentence spoken between two words it did hear, leaving eight seconds with no
+# word in them; and handed a stretch of loud, clear speech it has returned nothing at
+# all, or every word of it, depending on a quarter-second's difference in where the
+# stretch began. Nothing marks any of these from the inside, but each leaves sound with
+# no word on it.
+LONG_GAP_SECONDS = 3.0
+_GAP_MARGIN_SECONDS = 1.5
 _WORD_SECONDS = 0.5
 # Sound is a moment at _SOUND_LEVEL of the recording's own speech level (the median
 # loudness where its words start) or louder; a word reaches from _WORD_LAG_SECONDS before
@@ -137,18 +133,12 @@ def _hearable(samples, rate, start, end):
     return list(zip(edges, edges[1:]))
 
 
-def _between_long_pauses(samples, rate, starts):
-    """The recording in stretches of speech, as (start, end) sample offsets, cut apart
-    wherever `starts` -- the seconds the words heard so far began on -- leave a gap of
-    `LONG_PAUSE_SECONDS` or more. Nothing when they leave no such gap.
-
-    Each stretch keeps no more than a margin of the quiet either side of its words, cut
-    at the quietest moment inside that margin, past the word the stretch ends on."""
+def _between_long_gaps(samples, rate, starts):
     margin, word, pause = (int(seconds * rate) for seconds in
-                           (_PAUSE_MARGIN_SECONDS, _WORD_SECONDS, _PAUSE_SECONDS))
+                           (_GAP_MARGIN_SECONDS, _WORD_SECONDS, _PAUSE_SECONDS))
     stretches, at = [], 0
     for before, after in zip(starts, starts[1:]):
-        if after - before < LONG_PAUSE_SECONDS:
+        if after - before < LONG_GAP_SECONDS:
             continue
         before, after = int(before * rate), int(after * rate)
         middle = (before + after) // 2
@@ -212,13 +202,7 @@ class HearsAnyLength:
 
     Past `HEARABLE_SECONDS` the model refuses a recording rather than shortening its
     answer, so a long one is heard in pieces and the pieces put back together -- each
-    piece's word timings slid to where in the recording that piece starts. And the model
-    goes wrong across a long pause and on a knife-edge start offset, either way leaving
-    sound with no words on it, so its words are held against the sound: a recording whose
-    first reading leaves loud sound uncovered is heard again in the stretches between its
-    long pauses, each stretch re-heard from a different start until its words cover the
-    sound, and the re-reading kept only when it covers more of the recording than the
-    first (see LONG_PAUSE_SECONDS, _REHEAR_STARTS).
+    piece's word timings slid to where in the recording that piece starts.
 
     Hearing one in pieces is also the only honest place to count how far along it is,
     which is what `progress` is called with after each: the fraction of the recording
@@ -240,25 +224,27 @@ class HearsAnyLength:
         peaks, span = _peaks(samples, rate), len(samples) / rate
         starts = [word.start for word in _to_words(heard.tokens, heard.timestamps)]
         level = _sound_level(peaks, starts)
-        if _uncovered(peaks, heard, level, 0.0, span) < _SOUND_SECONDS:
-            return heard  # the words already cover the sound
-        stretches = _between_long_pauses(samples, rate, starts)
+        missed = _uncovered(peaks, heard, level, 0.0, span)
+        if missed < _SOUND_SECONDS:
+            return heard
+        stretches = _between_long_gaps(samples, rate, starts)
         if not stretches or len(stretches) > _MOST_STRETCHES:
             return heard
+        gaps_holding_sound = [
+            (end, start) for (_, end), (start, _) in zip(stretches, stretches[1:])
+            if _uncovered(peaks, heard, level, end / rate, start / rate)]
         report = None if progress is None else (lambda _: progress(1.0))
         stitched = _joined([self._cover(samples, rate, peaks, level, start, end, report)
-                            for start, end in stretches])
-        if _uncovered(peaks, stitched, level, 0.0, span) < _uncovered(peaks, heard, level, 0.0, span):
-            return stitched
-        return heard
+                            for start, end in sorted(stretches + gaps_holding_sound)])
+        return stitched if _uncovered(peaks, stitched, level, 0.0, span) < missed else heard
 
     def _cover(self, samples, rate, peaks, level, start, end, progress):
         """The stretch `samples[start:end]`, heard from the starting points of
         `_REHEAR_STARTS` and kept at the one whose words cover the most of its sound."""
         best = self._hear(samples, rate, _hearable(samples, rate, start, end), None)
-        gap = _uncovered(peaks, best, level, start / rate, end / rate)
+        best_missed = _uncovered(peaks, best, level, start / rate, end / rate)
         for shift, silence in _REHEAR_STARTS[1:]:
-            if gap <= 0:
+            if best_missed <= 0:
                 break
             first = max(0, round(start + shift * rate))
             if (end - first) / rate > HEARABLE_SECONDS and silence:
@@ -267,9 +253,9 @@ class HearsAnyLength:
                                        samples[first:end]])
             said = self._hear(piece, rate, _hearable(piece, rate, 0, len(piece)), None,
                               at=first / rate - silence)
-            reached = _uncovered(peaks, said, level, start / rate, end / rate)
-            if reached < gap:
-                best, gap = said, reached
+            missed = _uncovered(peaks, said, level, start / rate, end / rate)
+            if missed < best_missed:
+                best, best_missed = said, missed
         if progress is not None:
             progress(1.0)
         return best

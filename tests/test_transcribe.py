@@ -7,8 +7,8 @@ import pytest
 import numpy
 
 from highdeas.transcribe import (
-    HEARABLE_SECONDS, LONG_PAUSE_SECONDS, AudioDecodeError, HearsAnyLength, Recognition,
-    Transcriber, _between_long_pauses, _load_parakeet, _peaks, _read_wav, _sound_level,
+    HEARABLE_SECONDS, LONG_GAP_SECONDS, AudioDecodeError, HearsAnyLength, Recognition,
+    Transcriber, _between_long_gaps, _load_parakeet, _peaks, _read_wav, _sound_level,
     _to_words, _uncovered, decode_to_wav,
 )
 
@@ -144,7 +144,7 @@ def _loud_runs(waveform, rate):
 
 class Ear:
     """A stand-in for the real model's two pathologies. Handed a waveform with a silent
-    gap of LONG_PAUSE_SECONDS or more between two loud runs, it writes ' word' for each
+    gap of LONG_GAP_SECONDS or more between two loud runs, it writes ' word' for each
     half second of sound up to the gap, two ' ghost' words at the instant sound resumes,
     and nothing after -- the deaf-across-a-pause failure that wrote words never said.
     With deaf_onset, a waveform whose sound starts in its very first moment comes back
@@ -164,7 +164,7 @@ class Ear:
             return Recognition("")
         step, tokens, stamps, prev = int(0.5 * sample_rate), [], [], None
         for first, last in runs:
-            if prev is not None and (first - prev) / sample_rate >= LONG_PAUSE_SECONDS:
+            if prev is not None and (first - prev) / sample_rate >= LONG_GAP_SECONDS:
                 tokens += [" ghost", " ghost"]
                 stamps += [first / sample_rate, first / sample_rate]
                 break
@@ -191,12 +191,24 @@ class ByLength:
         return self._reading if len(waveform) == self._whole else Recognition("")
 
 
-def test_between_long_pauses_cuts_inside_a_gap_and_is_nothing_without_one():
+class SkipsWhenHeardWhole:
+    def __init__(self, whole_samples, reading):
+        self._whole = whole_samples
+        self._reading = reading
+        self._ear = Ear()
+
+    def recognize(self, waveform, sample_rate=None):
+        if len(waveform) == self._whole:
+            return self._reading
+        return self._ear.recognize(waveform, sample_rate)
+
+
+def test_between_long_gaps_cuts_inside_a_gap_and_is_nothing_without_one():
     rate = 100
     samples = numpy.array(_sound(rate, [(0.5, 2.5), (9.0, 12.0)], 12.5), dtype=numpy.float32) / 32768
 
-    across = _between_long_pauses(samples, rate, [0.6, 1.1, 1.6, 2.1, 9.1, 9.6, 10.1])
-    none = _between_long_pauses(samples, rate, [0.6, 1.1, 1.6, 2.1, 2.6, 3.1])
+    across = _between_long_gaps(samples, rate, [0.6, 1.1, 1.6, 2.1, 9.1, 9.6, 10.1])
+    none = _between_long_gaps(samples, rate, [0.6, 1.1, 1.6, 2.1, 2.6, 3.1])
 
     assert none == []
     assert len(across) == 2
@@ -234,6 +246,21 @@ def test_words_that_leave_a_long_gap_are_reheard_in_stretches_and_phantom_words_
     assert heard.tokens.count(" word") == 13          # 5 before the pause + 8 after, all real
     assert heard.timestamps == tuple(sorted(heard.timestamps))
     assert max(heard.timestamps) >= 10.0              # the speech after the pause was reached
+
+
+def test_a_passage_skipped_between_the_words_either_side_of_it_is_heard_again(tmp_path):
+    rate = 100
+    recording = _sound(rate, [(0.5, 3.0), (5.0, 7.0), (10.0, 12.5)], seconds=13.0)
+    samples, _ = _read_wav(_wav(tmp_path / "skipped.wav", recording, rate))
+    words_either_side = (0.5, 1.0, 1.5, 2.0, 2.5, 10.0, 10.5, 11.0, 11.5, 12.0)
+    model = SkipsWhenHeardWhole(len(samples), Recognition(
+        "word " * 10, (" word",) * 10, words_either_side))
+
+    heard = HearsAnyLength(model).recognize(_wav(tmp_path / "skipped.wav", recording, rate))
+
+    assert [stamp for stamp in heard.timestamps if 5.0 <= stamp < 7.0]
+    assert heard.tokens.count(" word") == 5 + 4 + 5
+    assert heard.timestamps == tuple(sorted(heard.timestamps))
 
 
 def test_a_recording_whose_words_cover_its_sound_is_heard_once(tmp_path):
