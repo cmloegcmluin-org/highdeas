@@ -31,19 +31,22 @@ recording, or a subtask on an Asana task.
    The model's words are then held against the sound, because it goes wrong on a knife
    edge nothing in the audio explains. Across a long pause inside a recording it wrote
    five words that were never said, all on the instant speech resumed, then read none of
-   the four seconds of speech after them; and handed a stretch of loud, clear speech it
-   returned nothing at all, or every word of it, on a quarter-second's difference in
-   where the stretch began. Nothing marks either from the inside, but both leave sound
-   with no words on it. So when the one-go reading leaves loud sound uncovered and its
-   words fall either side of a gap of three seconds or more, the recording is read again
-   in the stretches of speech between its long pauses -- each stretch on its own, so the
-   model never meets the pause it goes wrong across, and each re-read from a few
-   different starting points until its words cover its sound. The fuller reading wins:
-   the re-reading is kept only where it covers more of the recording than the one-go
-   reading did, so a note the first reading already covered, and a note the model can
-   only make scattered scraps of (music, noise), are both left as they were. The one
-   visible trace is at a seam, where the model opens each stretch as a new recording: a
-   word that resumed a sentence after a long pause comes back capitalized.
+   the four seconds of speech after them; it skipped a whole sentence spoken between two
+   words it did hear, leaving eight seconds with no word in them; and handed a stretch
+   of loud, clear speech it returned nothing at all, or every word of it, on a
+   quarter-second's difference in where the stretch began. Nothing marks any of these
+   from the inside, but each leaves sound with no words on it. So when the one-go reading
+   leaves loud sound uncovered and its words fall either side of a gap of three seconds
+   or more, the recording is read again in the stretches of speech either side of its
+   long gaps -- each stretch on its own, so the model never meets the pause it goes wrong
+   across -- and any gap that held sound is read again too, since that sound may be
+   speech the model skipped. Each is re-read from a few different starting points until
+   its words cover its sound. The fuller reading wins: the re-reading is kept only where
+   it covers more of the recording than the one-go reading did, so a note the first
+   reading already covered, and a note the model can only make scattered scraps of
+   (music, noise), are both left as they were. The one visible trace is at a seam, where
+   the model opens each stretch as a new recording: a word that resumed a sentence after
+   a long pause comes back capitalized.
 
    The model also rarely returns nothing when it heard no speech — humming comes back as
    filler ("Mm-hmm"), noise as a confident hallucination (sometimes in another script).
