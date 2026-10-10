@@ -113,6 +113,13 @@ detaches the running app's HEAD, which silently swallows every later merge and b
 the app's own `git pull` self-update. This has already eaten a merge here. Inspect
 other branches read-only from your own worktree (`git -C <primary> show/diff/log`).
 
+**That includes pulling it after your PR merges**, whatever the global landing steps
+and the behind-origin hook ask for. The app pulls for itself: at launch, and from the
+inbox page while he is idle, which also relaunches it onto the new code. It decides by
+counting `HEAD..origin/main`, so a pull by hand makes the running app read as current
+and it goes on running the old code, with no "Update & restart", until he quits it.
+Agents did pull it by hand within a minute of two of the last four merges.
+
 ## Never run a build inside the primary checkout
 
 `tools/make_mac_app.sh` and `ios/resign.sh` write into the tree they are run from.
