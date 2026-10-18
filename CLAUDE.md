@@ -186,8 +186,16 @@ worktree holds it. So when they want to *see* a change before it lands, run the 
 from your worktree and hand them the URL:
 
 ```bash
-HIGHDEAS_PORT=<port> <venv-python> run_highdeas.py    # 5200+ ; never 5000, never 5155
+HIGHDEAS_PORT=<port> HIGHDEAS_DESKTOP=0 HIGHDEAS_OPEN_BROWSER=0 \
+HIGHDEAS_INBOX_DIR=<its own> HIGHDEAS_BIN_DIR=<its own> HIGHDEAS_STATE_DIR=<its own> \
+<venv-python> run_highdeas.py    # 5200+ ; never 5000, never 5155
 ```
+
+Left to its defaults it opens its own window and a browser tab on his screen, so it
+runs with neither and he opens the URL himself. And it gets folders of its own, with
+copies in them of what the change needs: a worktree has no `.env`, so without them it
+scans the old iCloud inbox and renames the recordings it finds there, and it must
+never adopt a recording from his real inbox either.
 
 **5000 is the user's app** (`HIGHDEAS_PORT`'s default) and **5155 is the upload
 listener the phone pushes to** — taking either breaks something they are using. Pick a
