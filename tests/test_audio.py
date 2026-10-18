@@ -1,8 +1,11 @@
+from datetime import datetime
 from types import SimpleNamespace
 
 import pytest
 
-from highdeas.audio import AudioError, cut, duration, join
+from audio_files import left_unstopped, tone
+from highdeas.audio import AudioError, cut, duration, finish, join
+from highdeas.mp4 import creation_time
 
 
 def _runner(returncode=0, stderr=""):
@@ -63,6 +66,26 @@ def test_join_raises_when_even_re_encoding_fails(tmp_path):
 
     with pytest.raises(AudioError):
         join([tmp_path / "a.m4a"], tmp_path / "out.m4a", ffmpeg_exe="ff", runner=runner)
+
+
+def test_a_recording_the_phone_never_stopped_plays_all_its_sound_once_finished(tmp_path):
+    whole = tone(tmp_path / "whole.m4a", seconds=3)
+    unstopped = tmp_path / "memo-2026-10-17-044651.m4a"
+    unstopped.write_bytes(left_unstopped(whole.read_bytes()))
+
+    finish(unstopped, tmp_path / "finished.m4a")
+
+    assert duration(tmp_path / "finished.m4a") == pytest.approx(duration(whole), abs=0.1)
+
+
+def test_a_finished_recording_is_dated_the_moment_its_sound_ran_out(tmp_path):
+    whole = tone(tmp_path / "whole.m4a", seconds=3)
+    unstopped = tmp_path / "memo-2026-10-17-044651.m4a"
+    unstopped.write_bytes(left_unstopped(whole.read_bytes()))
+
+    finished = finish(unstopped, tmp_path / "finished.m4a", started=datetime(2026, 10, 17, 4, 46, 51))
+
+    assert creation_time(finished) == datetime(2026, 10, 17, 4, 46, 54)
 
 
 def test_cut_keeps_everything_outside_the_span_and_closes_the_gap(tmp_path):
