@@ -8,7 +8,7 @@ import pytest
 from highdeas.ingest import NewRecording, recording_key
 from highdeas.service import InboxService, RecordingBusy
 from highdeas.store import Memo, MemoStore
-from highdeas.transcribe import TimedWord, Transcript
+from highdeas.transcribe import AudioDecodeError, TimedWord, Transcript
 
 
 class FakeTranscriber:
@@ -769,6 +769,28 @@ def test_a_recording_no_one_has_started_reading_reports_no_progress(tmp_path):
                            bin_dir=tmp_path / "bin")
 
     assert [r.progress for r in service.incoming()] == [0.0]
+
+
+def test_a_recording_the_scan_cannot_transcribe_says_why_instead_of_waiting_forever(tmp_path):
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    (inbox / "voice.m4a").write_bytes(b"A")
+    store = MemoStore(tmp_path / "memos.db")
+
+    class CannotDecode:
+        def transcribe(self, path, progress=None):
+            raise AudioDecodeError(
+                "ffmpeg failed to decode voice.m4a: ffmpeg version 7.1 Copyright (c) 2000-2024\n"
+                "[mov,mp4,m4a,3gp,3g2,mj2 @ 000001c3d95d6dc0] moov atom not found\n"
+                "Error opening input files: Invalid data found when processing input\n")
+
+    service = InboxService(inbox_dir=inbox, store=store, transcriber=CannotDecode(),
+                           bin_dir=tmp_path / "bin")
+
+    service.refresh()
+
+    assert [r.problem for r in service.incoming()] == [
+        "Error opening input files: Invalid data found when processing input"]
 
 
 def test_discard_bins_a_recording_before_it_is_ever_transcribed(tmp_path):

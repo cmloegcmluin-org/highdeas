@@ -110,6 +110,10 @@ recording, or a subtask on an Asana task.
    Beside the player, the place the transcript will go fills up as the model reads: a
    percentage and a bar, counting the seconds of the recording actually heard rather than
    guessing at the clock, so a long one is visibly working rather than visibly hung.
+   And when an attempt to transcribe a recording fails — a file nothing can open, most
+   often — that place says so, in red: "Couldn't transcribe this recording." and what
+   went wrong, rather than reading "Transcribing…" for good. Highdeas keeps trying it,
+   in case what was wrong is put right, and its bin is still beside it.
 
    A **find** box sits in the title bar between the count and the buttons — its magnifier
    there from the start, **Ctrl+F** just putting the cursor in it: type and the list

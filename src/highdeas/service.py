@@ -49,10 +49,20 @@ class Incoming:
 
     `progress` is how much of it the model has heard, 0 until the scan reaches it: a long
     recording is a minute of nothing visibly happening, and this is the number that says
-    otherwise."""
+    otherwise. `problem` is what stopped the last attempt to transcribe it, if one failed:
+    the scan goes on trying, but a recording it cannot read must say so rather than sit
+    at "Transcribing…" for good."""
     name: str
     source: str
     progress: float = 0.0
+    problem: str = ""
+
+
+def _last_line(exc):
+    """The line of a failure that says what went wrong: ffmpeg's, for one, opens with its
+    whole banner and closes on the reason."""
+    return next((line.strip() for line in reversed(str(exc).splitlines()) if line.strip()),
+                type(exc).__name__)
 
 
 def _no_router(memo):
@@ -252,6 +262,7 @@ class InboxService:
         # ever being read; and a plain tuple, swapped whole, so the poll thread reading
         # it can only ever see one scan's pair of answers, never half of two.
         self._reading = ("", 0.0)
+        self._problems = {}
 
     @property
     def store(self):
@@ -326,6 +337,7 @@ class InboxService:
             try:
                 adopted = self._adopt(recording)
                 spoken = self._transcriber.transcribe(adopted, progress=self._reads(recording))
+                self._problems.pop(recording.name, None)
                 # Transcription is slow, and the store can gain a memo for this very
                 # recording while it runs — the row emptied by hand (see discard), or
                 # the other desk's memo syncing in. What the scan is holding is then
@@ -348,12 +360,14 @@ class InboxService:
                 # decoded. Skip it and press on; the next refresh retries it (its content
                 # key still isn't in the store, so nothing is lost).
                 print(f"Highdeas: skipping {recording.name} this pass ({exc}).")
+                self._problems[recording.name] = _last_line(exc)
             finally:
                 self._reading = ("", 0.0)
         # A stranger whose state file arrived stops being offered by find_new;
         # its wait-count would otherwise linger forever.
         self._deferred_scans = {name: count for name, count in self._deferred_scans.items()
                                 if name in offered}
+        self._problems = {name: why for name, why in self._problems.items() if name in offered}
 
     def pending(self):
         return self._store.list_pending()
@@ -387,7 +401,8 @@ class InboxService:
         request path."""
         reading, done = self._reading
         return [Incoming(name=recording.name, source=Path(recording.source).name,
-                         progress=done if recording.name == reading else 0.0)
+                         progress=done if recording.name == reading else 0.0,
+                         problem=self._problems.get(recording.name, ""))
                 for recording in self._find_new(self._inbox_dir,
                                                 self._store.known_filenames())]
 

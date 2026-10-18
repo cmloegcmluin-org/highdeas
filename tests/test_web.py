@@ -1766,6 +1766,17 @@ def test_an_outline_says_how_far_the_reading_of_it_has_got(tmp_path):
     assert "--done: 41%" in body
 
 
+def test_a_recording_that_could_not_be_transcribed_says_so_in_place_of_transcribing(tmp_path):
+    why = "Error opening input files: Invalid data found when processing input"
+    service = FakeService(incoming=[Incoming(name="a.m4a", source="a.m4a", problem=why)])
+    client = create_app(service, inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    for body in (client.get("/").data.decode(), client.get("/pending").data.decode()):
+        note = body.split('class="transcribing-note')[1].split("</div>")[0]
+        assert "Couldn’t transcribe this recording." in note and why in note
+        assert "Transcribing…" not in body
+
+
 def test_an_outline_claims_no_progress_before_there_is_any_to_claim(tmp_path):
     # Warming the model costs fifteen seconds on a cold start and the decode a few more,
     # all before the first piece is read. A bar pinned at nought through that reads as
