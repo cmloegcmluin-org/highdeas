@@ -8,6 +8,10 @@ from pathlib import Path
 
 AUDIO_EXTENSIONS = {".m4a", ".mp3", ".wav", ".aac", ".caf", ".aiff"}
 
+# Syncthing's mark on the losing copy of a file both desks wrote before either heard of
+# the other's: <name>.sync-conflict-<date>-<time>-<device>.<ext>.
+_SET_ASIDE_BY_SYNCTHING = ".sync-conflict-"
+
 # Windows file attributes. The first three mark a file the sync engine is holding in
 # the cloud: its name is on this PC, its bytes are not. The last two are the pin state
 # Explorer's "Always keep on this device" / "Free up space" write.
@@ -82,7 +86,7 @@ def find_new_recordings(inbox_dir, known_names, *, still_in_cloud=is_cloud_place
         return []
     found = []
     for entry in sorted(inbox.iterdir(), key=lambda p: p.name):
-        if not (entry.is_file() and entry.suffix.lower() in AUDIO_EXTENSIONS):
+        if not _is_recording(entry):
             continue
         if still_in_cloud(entry):
             request_download(entry)
@@ -91,6 +95,11 @@ def find_new_recordings(inbox_dir, known_names, *, still_in_cloud=is_cloud_place
         if name not in known_names:
             found.append(NewRecording(entry, name))
     return found
+
+
+def _is_recording(entry):
+    return (entry.is_file() and entry.suffix.lower() in AUDIO_EXTENSIONS
+            and _SET_ASIDE_BY_SYNCTHING not in entry.name)
 
 
 def recording_key(path, name=None):

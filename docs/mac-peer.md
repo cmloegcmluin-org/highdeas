@@ -70,7 +70,9 @@ on both desks; act on a memo wherever you're sitting.
 - **Sync conflicts**: Syncthing renames the loser to a `.sync-conflict-*` file
   rather than merging. Per-memo granularity makes conflicts rare and small, but
   ingest must ignore (or better, surface) conflict files rather than adopt them
-  as new recordings.
+  as new recordings. Guarded (2026-10-17): ingest skips a recording's conflict
+  copy, which before then became a second note. The state store already skipped
+  a memo's.
 - **Audio syncing in ahead of its state file** — sharper than first thought:
   the receiving machine would adopt the already-keyed audio as a brand-new
   memo, and its default re-transcription then *wins the sync conflict* over
