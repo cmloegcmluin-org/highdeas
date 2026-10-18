@@ -158,6 +158,14 @@ body:has(#empty-bin:not(:disabled):hover) .row .purge:not(:disabled) { border-co
                              width: var(--done, 0); background: rgba(59,130,246,.3);
                              transition: width .5s ease-out; }
 .transcribing-note > span { position: relative; }
+/* The last try at it failed: no longer the system working, so it stops breathing and
+   says what stopped it, in the notice's red. The scan keeps trying, and a try that gets
+   anywhere draws its progress again. */
+.transcribing:has(.transcribing-note.failed) :is(.transcribing-note, .transcribing-mark) {
+  animation: none; }
+.transcribing-note.failed { opacity: 1; font-style: normal; color: #e5484d;
+                            background: rgba(229,72,77,.12); }
+.transcribing-note .why { display: block; margin-top: 4px; font-size: .8rem; opacity: .85; }
 .transcribing-mark { height: 34px; }
 .transcribing-mark.short { height: 12px; margin-top: 6px; }
 /* The page's own find: a search box in the title bar, centred between the count and the

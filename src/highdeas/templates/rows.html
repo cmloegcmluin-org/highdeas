@@ -37,7 +37,9 @@
     <div></div>
     <div class="transcribing-mark short"></div>
     <audio controls src="{{ url_for('audio', filename=r.source) }}"></audio>
-    <div class="transcribing-note"{% if done %} style="--done: {{ done }}%"{% endif %}><span>Transcribing…{% if done %} {{ done }}%{% endif %}</span></div>
+    <div class="transcribing-note{% if r.problem and not done %} failed{% endif %}"{% if done %} style="--done: {{ done }}%"{% endif %}>
+      {%- if r.problem and not done %}<span>Couldn’t transcribe this recording.</span><span class="why">{{ r.problem }}</span>
+      {%- else %}<span>Transcribing…{% if done %} {{ done }}%{% endif %}</span>{% endif %}</div>
     <div></div>
     <div class="transcribing-mark"></div>
     <div class="transcribing-mark short"></div>
