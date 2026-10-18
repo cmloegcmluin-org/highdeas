@@ -181,6 +181,18 @@ def test_recording_key_distinguishes_a_reused_name_with_new_content(tmp_path):
     assert recording_key(second).endswith(".m4a")
 
 
+def test_recording_key_of_a_recording_with_no_time_in_it_ignores_when_each_copy_was_written(tmp_path):
+    copies = []
+    for folder, written in (("first", 1_700_000_000), ("resent", 1_700_000_094)):
+        copy = tmp_path / folder / "memo-2026-10-17-044651.m4a"
+        copy.parent.mkdir()
+        copy.write_bytes(_box(b"ftyp", b"M4A ") + b"\x00" * 64 + b"the sound itself")
+        os.utime(copy, (written, written))
+        copies.append(copy)
+
+    assert recording_key(copies[0]) == recording_key(copies[1])
+
+
 def test_recording_key_can_key_a_staged_file_under_its_intended_name(tmp_path):
     # An upload is staged under a temp name ingest ignores (.part); its key must
     # be built from the filename the client intended, not the staging name.
