@@ -49,6 +49,15 @@ def test_find_new_ingests_a_recycled_inbox_name_whose_content_is_new(tmp_path):
     assert result[0].name == recording_key(arrival) != "voice-8.m4a"
 
 
+def test_find_new_leaves_out_the_copy_syncthing_sets_aside_when_both_desks_wrote_a_recording(tmp_path):
+    kept = tmp_path / "memo-2026-10-17-044651-c00cff33d98c.m4a"
+    kept.write_bytes(_mp4(1_700_000_000))
+    (tmp_path / "memo-2026-10-17-044651-c00cff33d98c.sync-conflict-20261017-175712-Q3KYWMW.m4a"
+     ).write_bytes(_mp4(1_700_000_001))
+
+    assert [r.source.name for r in find_new_recordings(tmp_path, known_names=set())] == [kept.name]
+
+
 def test_find_new_asks_icloud_for_a_recording_it_has_not_downloaded_yet(tmp_path):
     # Reading a cloud-only recording makes Windows recall it on Highdeas' behalf and
     # announce that with a toast named after python, the process that asked. Leave the
