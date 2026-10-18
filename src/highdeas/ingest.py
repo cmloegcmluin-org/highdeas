@@ -99,9 +99,9 @@ def recording_key(path, name=None):
     The iOS Shortcut recycles inbox names — every new recording lands as
     voice-8.m4a once the inbox has been cleared — so a name alone can't tell a
     fresh recording apart from one already processed or deleted. Folding a
-    fingerprint of the file's size and embedded recording time into the name
-    gives every distinct recording its own stable key: unique in the store and
-    on disk, in both the inbox and the bin.
+    fingerprint of the recording into the name — its size and embedded recording
+    time, or its bytes when it carries no time — gives every distinct recording its
+    own stable key: unique in the store and on disk, in both the inbox and the bin.
 
     Only Highdeas writes a key into a name, so a name that already carries one is
     taken at its word: re-keying is idempotent, and — since opening a file is what
@@ -114,9 +114,16 @@ def recording_key(path, name=None):
     named = Path(name) if name else path
     if _KEY_SUFFIX.search(named.stem):
         return named.name
-    fingerprint = f"{path.stat().st_size}:{recording_time(path)}"
-    digest = hashlib.sha256(fingerprint.encode()).hexdigest()[:12]
-    return f"{named.stem}-{digest}{named.suffix}"
+    return f"{named.stem}-{_fingerprint(path)}{named.suffix}"
+
+
+def _fingerprint(path):
+    made = _mp4_creation_time(path)
+    if made is None:
+        with open(path, "rb") as recording:
+            return hashlib.file_digest(recording, "sha256").hexdigest()[:12]
+    stamp = f"{path.stat().st_size}:{made.isoformat(timespec='seconds')}"
+    return hashlib.sha256(stamp.encode()).hexdigest()[:12]
 
 
 def recording_time(path):
