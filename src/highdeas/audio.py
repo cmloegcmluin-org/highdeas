@@ -1,13 +1,11 @@
-"""Read and join recordings with ffmpeg.
-
-A group of notes plays one recording made of its members', end to end. Joining them —
-and measuring them, so each member's word timings can be slid to where they land in the
-joined file — is all this module does.
-"""
+"""Measure, join, cut and finish recordings with ffmpeg."""
 import re
 import subprocess
 import tempfile
+from datetime import timedelta, timezone
 from pathlib import Path
+
+from highdeas import mp4
 
 # Keep ffmpeg from flashing a console window on Windows; a no-op (0) elsewhere.
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -85,6 +83,35 @@ def cut(source, dest, start, end, *, ffmpeg_exe=None, runner=subprocess.run,
     if result.returncode != 0:
         raise AudioError(f"ffmpeg could not cut {Path(source).name}: {result.stderr}")
     return Path(dest)
+
+
+def finish(source, dest, *, started=None, ffmpeg_exe=None, runner=subprocess.run,
+           locate=locate_ffmpeg):
+    """Write to `dest` a recording that plays everywhere, made from `source`, a recording
+    the phone never got to stop. Its sound is heard through an index rebuilt for it and
+    encoded afresh, as a cut recording already is. Given when it `started`, it is dated
+    the way a stopped one is: the moment its sound ends."""
+    ffmpeg_exe = ffmpeg_exe or locate()
+
+    def ffmpeg(*args):
+        result = _run([ffmpeg_exe, "-y", "-hide_banner", *map(str, args)], runner)
+        if result.returncode != 0:
+            raise AudioError(f"ffmpeg could not finish {Path(source).name}: {result.stderr}")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        indexed, encoded = Path(tmp) / "indexed.m4a", Path(tmp) / "encoded.m4a"
+        indexed.write_bytes(mp4.indexed_for_decoding(source))
+        ffmpeg("-i", indexed, "-c:a", "aac", "-b:a", "96k", "-f", "ipod", encoded)
+        dated = [] if started is None else ["-metadata", "creation_time=" + _ended(
+            started, duration(encoded, ffmpeg_exe=ffmpeg_exe, runner=runner))]
+        ffmpeg("-i", encoded, "-c", "copy", *dated, "-movflags", "+faststart", "-f", "ipod", dest)
+    return Path(dest)
+
+
+def _ended(started, seconds):
+    """ffmpeg's creation_time for a recording that ran `seconds` from local `started`."""
+    ended = (started + timedelta(seconds=seconds)).astimezone(timezone.utc)
+    return f"{ended:%Y-%m-%dT%H:%M:%S}Z"
 
 
 def _quote(source):

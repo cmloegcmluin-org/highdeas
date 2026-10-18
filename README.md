@@ -514,6 +514,16 @@ running and wakes the app to schedule the next one. So a note recorded while bot
 machines are asleep arrives on its own, minutes after one of them wakes, rather
 than the next time you happen to open the app.
 
+A recording the phone never got to stop — its battery died mid-note, or the app was
+closed while it was recording — still reaches the desk, but without the part a
+recorder writes only when it stops: the index saying where in the file its sound
+is, and when it was made. Nothing can play or transcribe a file like that, so the
+upload rebuilds it before it lands: its sound, which is all there, is read through
+an index made for it and encoded afresh, and it is dated from the name the phone
+gave it. It then arrives like any other note. It is filed under a fingerprint of
+the bytes the phone sent, so a resend of it — or the other desk's copy — is known
+for the same recording rather than becoming a second note.
+
 ### The app itself
 
 SwiftUI, in `ios/` (`Highdeas.xcodeproj`; the pure logic — queue state machine,

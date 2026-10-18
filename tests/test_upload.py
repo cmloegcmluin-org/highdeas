@@ -7,9 +7,11 @@ sent before the file is safely in place."""
 import io
 import os
 import time
+from datetime import datetime
 
-from audio_files import mp4
+from audio_files import left_unstopped, mp4
 
+from highdeas.audio import AudioError
 from highdeas.ingest import recording_key
 from highdeas.upload import create_upload_app
 
@@ -56,6 +58,54 @@ def test_upload_lands_in_the_inbox_under_its_content_key(tmp_path):
     # Stored under the content key of the name the phone sent, so ingest's
     # re-keying is a no-op and recycled phone filenames can't collide.
     assert landed.name == recording_key(landed, name="voice-8.m4a") == recording_key(landed)
+
+
+def _finished_by(calls):
+    def finish(source, dest, *, started):
+        calls.append((source.read_bytes(), started))
+        dest.write_bytes(b"finished: " + source.read_bytes()[-16:])
+    return finish
+
+
+def _unstopped():
+    return left_unstopped(mp4(1_700_000_000, sound=b"the sound itself"))
+
+
+def test_only_a_recording_the_phone_never_stopped_is_finished_before_it_lands(tmp_path):
+    calls = []
+    client = _client(tmp_path, finish=_finished_by(calls))
+
+    stopped = _post(client, filename="memo-2026-10-17-044012.m4a", body=mp4(1_700_000_000))
+    unstopped = _post(client, filename="memo-2026-10-17-044651.m4a", body=_unstopped())
+
+    assert calls == [(_unstopped(), datetime(2026, 10, 17, 4, 46, 51))]
+    inbox = tmp_path / "inbox"
+    assert (inbox / stopped.get_json()["stored"]).read_bytes() == mp4(1_700_000_000)
+    assert (inbox / unstopped.get_json()["stored"]).read_bytes() == b"finished: the sound itself"
+
+
+def test_a_resent_recording_the_phone_never_stopped_is_known_by_what_the_phone_sent(tmp_path):
+    sent = tmp_path / "memo-2026-10-17-044651.m4a"
+    sent.write_bytes(_unstopped())
+    client = _client(tmp_path, finish=_finished_by([]))
+
+    first = _post(client, filename=sent.name, body=sent.read_bytes())
+    again = _post(client, filename=sent.name, body=sent.read_bytes())
+
+    assert first.get_json()["stored"] == recording_key(sent)
+    assert (again.status_code, again.get_json()["stored"]) == (200, recording_key(sent))
+
+
+def test_a_recording_that_cannot_be_finished_lands_as_the_phone_sent_it(tmp_path):
+    def cannot(source, dest, *, started):
+        raise AudioError("Invalid data found when processing input")
+
+    response = _post(_client(tmp_path, finish=cannot), filename="memo-2026-10-17-044651.m4a",
+                     body=_unstopped())
+
+    assert response.status_code == 201
+    inbox = tmp_path / "inbox"
+    assert [p.read_bytes() for p in inbox.iterdir()] == [_unstopped()]
 
 
 def test_upload_without_an_audio_field_is_rejected(tmp_path):

@@ -10,10 +10,12 @@ import os
 import re
 import time
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 from flask import Flask, request
 
+from highdeas import audio, mp4
 from highdeas.ingest import AUDIO_EXTENSIONS, recording_key
 
 # NTFS-invalid characters, plus ':' which would silently write an alternate
@@ -26,7 +28,7 @@ _STALE_STAGING_SECONDS = 3600
 
 
 def create_upload_app(inbox_dir, token, is_known=None, on_received=None,
-                      max_bytes=1_000_000_000):
+                      max_bytes=1_000_000_000, finish=audio.finish):
     app = Flask(__name__, static_folder=None)
     # One long voice memo is tens of MB; a runaway body should 413, not fill
     # the disk (werkzeug spools one copy to temp and we write another).
@@ -60,6 +62,8 @@ def create_upload_app(inbox_dir, token, is_known=None, on_received=None,
             # — is confirmed rather than stored again.
             if (inbox / key).exists() or (is_known is not None and is_known(key)):
                 return ({"stored": key}, 200)
+            if mp4.never_finished(staged):
+                _finish_in_place(staged, finish, started=_phone_started(name))
             # The 2xx promises durability: force the bytes out of the OS
             # write-back cache before the rename that makes them visible.
             with open(staged, "ab") as landed_bytes:
@@ -72,6 +76,32 @@ def create_upload_app(inbox_dir, token, is_known=None, on_received=None,
         return ({"stored": key}, 201)
 
     return app
+
+
+def _finish_in_place(staged, finish, *, started):
+    """Swap a recording the phone never got to stop for one that plays. Failing that,
+    it lands as the phone sent it: delivered and stuck is still delivered."""
+    finished = staged.with_name(f"{staged.stem}-finished.part")
+    try:
+        finish(staged, finished, started=started)
+        finished.replace(staged)
+    except Exception as exc:  # noqa: BLE001 — the 2xx must still be earned by landing it
+        print(f"Highdeas: could not finish {staged.name}, landing it as sent ({exc}).")
+    finally:
+        finished.unlink(missing_ok=True)
+
+
+# The name the phone's recorder gives a recording when it starts it (Recorder.swift).
+_PHONE_NAME = re.compile(r"memo-(\d{4})-(\d\d)-(\d\d)-(\d\d)(\d\d)(\d\d)")
+
+
+def _phone_started(name):
+    """When the phone started recording `name`, read off the name it gave it."""
+    stamp = _PHONE_NAME.match(name)
+    try:
+        return datetime(*map(int, stamp.groups())) if stamp else None
+    except ValueError:
+        return None
 
 
 def _safe_name(filename):
