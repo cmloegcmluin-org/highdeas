@@ -14,7 +14,7 @@ def _landed(source, name=None):
 
 
 def asset(client, filename):
-    """A static asset's source, for the behaviour that lives in CSS and JS."""
+    """A static asset's source, for the behavior that lives in CSS and JS."""
     resp = client.get("/static/" + filename)
     assert resp.status_code == 200, filename
     return resp.data.decode()
@@ -268,13 +268,13 @@ def test_inbox_js_sends_the_picker_fields_and_toggles_each_dropdown(tmp_path):
     assert "'.route-cell select'" in js
 
 
-def test_unlit_destination_icons_go_greyscale_so_the_lit_one_reads_at_a_glance(tmp_path):
+def test_unlit_destination_icons_go_grayscale_so_the_lit_one_reads_at_a_glance(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     css = asset(client, "app.css")
 
     # Opacity alone left the lit icon too close to its dimmed neighbours — especially
-    # Notesnook's single dark green, the default route. Unlit icons drop to greyscale
+    # Notesnook's single dark green, the default route. Unlit icons drop to grayscale
     # too, so the one in brand color is unmistakably the selected one.
     assert "filter: grayscale(1)" in css
     assert "filter: none" in css
@@ -480,7 +480,7 @@ def test_the_header_rule_runs_on_one_line_under_every_named_column(tmp_path):
     assert "align-items: stretch" in css.split(".grid.headrow {")[1].split("}")[0]
 
 
-def test_the_waveform_already_played_is_the_colour_of_the_word_being_spoken(tmp_path):
+def test_the_waveform_already_played_is_the_color_of_the_word_being_spoken(tmp_path):
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     css = asset(client, "app.css")
@@ -490,10 +490,10 @@ def test_the_waveform_already_played_is_the_colour_of_the_word_being_spoken(tmp_
     # same sound, so they are the same yellow — and the same declaration, read out of the
     # stylesheet, so the two can never drift apart.
     assert "--spoken: #facc15" in css.split(":root {")[1].split("}")[0]
-    # The word turns the colour, rather than wearing it behind: the waveform's played
+    # The word turns the color, rather than wearing it behind: the waveform's played
     # stretch is yellow sound on the page, so the word being spoken is yellow letters on
     # it. Two washes over one word — this one and the blue of a selection — would have
-    # mixed into a third colour that means neither.
+    # mixed into a third color that means neither.
     spoken = css.split("::highlight(spoken) {")[1].split("}")[0]
     assert "color: var(--spoken)" in spoken and "background" not in spoken
     assert "style('--spoken')" in js
@@ -766,7 +766,7 @@ def test_index_trash_all_asks_for_confirmation(tmp_path):
 
 
 def test_pages_load_the_shared_stylesheet_and_the_inbox_loads_its_scripts(tmp_path):
-    # The behaviour asserted below lives in these files, so every page has to pull
+    # The behavior asserted below lives in these files, so every page has to pull
     # them in — a page that forgets one looks fine in the markup and does nothing.
     service = FakeService(pending=[Memo(audio_filename="a.m4a", transcript="hi")],
                           binned=[Memo(audio_filename="b.m4a", status="deleted", processed_at="2026-07-07T03:00")])
@@ -1227,7 +1227,7 @@ def test_editor_move_chevron_points_up_or_down_centered_above_the_transcript(tmp
     body = client.get("/").data.decode()
     css = asset(client, "app.css")
 
-    # The editor stacks its two fields, so the chevron sits in its own centred row directly
+    # The editor stacks its two fields, so the chevron sits in its own centered row directly
     # above the transcript and points up to lift the transcript into the title, down to drop
     # the title into the transcript — not the inbox row's left/right.
     move_row = body.split('class="editor-move-row"', 1)[1].split("</div>", 1)[0]
@@ -1389,8 +1389,8 @@ def test_the_text_yellows_everything_said_so_far_not_just_the_word_in_hand(tmp_p
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     painting = asset(client, "editor.js").split("function paint(seconds)")[1].split("\n  }")[0]
-    # The waveform is yellow behind the playhead and grey in front of it. The text says the
-    # same thing, so the colour reaches back to the top of the note rather than lighting one
+    # The waveform is yellow behind the playhead and gray in front of it. The text says the
+    # same thing, so the color reaches back to the top of the note rather than lighting one
     # word and dropping the one before it.
     assert "selectNodeContents(bodyEl)" in painting
     # Scrolling still follows the word being said, not the whole of what has been.
@@ -1420,7 +1420,7 @@ def test_a_choice_reads_as_one_blue_over_its_sound_and_over_its_words(tmp_path):
     assert "--picked:" in css
     assert "var(--picked)" in wash and "var(--picked-wash)" in wash
     # And it goes behind, the way a text selection sits behind its words rather than over
-    # them: the sound keeps its own colour and the words stay read.
+    # them: the sound keeps its own color and the words stay read.
     assert "destination-over" in asset(client, "editor.js")
     # Strength as well as hue: the canvas lays the blue on by hand, so it reads how
     # strongly from the same place rather than carrying its own idea of "a wash".
@@ -1796,7 +1796,7 @@ def test_an_outline_survives_the_poll_it_is_being_listened_to_through(tmp_path):
     js = asset(client, "inbox.js")
 
     # The outlines were swapped as a set whenever their number changed, which costs
-    # nothing when each is a few grey boxes and everything once one holds a player being
+    # nothing when each is a few gray boxes and everything once one holds a player being
     # scrubbed. So they reconcile by the recording they name, the way the notes do: one
     # that became a memo goes, one that just landed joins, and the rest are left alone.
     reconcile = js.split("function mergeOutlines")[1].split("\n  }")[0]
@@ -2253,7 +2253,7 @@ def test_submit_that_fails_to_route_keeps_the_memo_and_signals_the_client(tmp_pa
 
     resp = client.post("/submit/a.m4a", data={"name": "", "transcript": "precious idea", "route": "notesnook"})
 
-    # Failure is signalled, not a false 204.
+    # Failure is signaled, not a false 204.
     assert resp.status_code == 502
     assert "401" in resp.get_data(as_text=True)
     # Nothing lost or half-processed: still pending, still in the inbox, not binned.
@@ -2578,7 +2578,7 @@ def test_bin_shows_destination_icon_instead_of_status_word(tmp_path):
 
 
 def test_bin_names_claude_as_where_a_claude_note_went(tmp_path):
-    # The destination cell reads the route, and everything it doesn't recognise falls
+    # The destination cell reads the route, and everything it doesn't recognize falls
     # through to Notesnook — so a note opened in Claude would claim to have been sent
     # somewhere it never went.
     service = FakeService(binned=[
@@ -3143,7 +3143,7 @@ def test_find_sits_in_the_same_place_on_both_pages_and_holds_its_width(tmp_path)
     css = asset(client, "app.css")
 
     # The title bar is three columns with an equal 1fr either side of the find, so the box
-    # is dead-centre and lands in the same place on the inbox and the bin however much
+    # is dead-center and lands in the same place on the inbox and the bin however much
     # their titles and button rows differ in width.
     topbar = css.split(".topbar {")[1].split("}")[0]
     assert "grid-template-columns: 1fr auto 1fr" in topbar
@@ -3247,7 +3247,7 @@ def test_esc_clears_the_find_and_hands_the_whole_list_back(tmp_path):
 
 def test_find_is_the_one_script_both_pages_share_for_it(tmp_path):
     # find.js loads on every page from the shared chrome, so a page can't carry the bar
-    # and forget the behaviour. The bin has no inbox.js and no undo stack, but it has this.
+    # and forget the behavior. The bin has no inbox.js and no undo stack, but it has this.
     client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
 
     binned = client.get("/bin").data.decode()

@@ -1,6 +1,6 @@
 """Local Flask app: the inbox and bin pages for editing and routing memos.
 
-The pages themselves live in `templates/`, their behaviour in `static/`; this
+The pages themselves live in `templates/`, their behavior in `static/`; this
 module is the routes and the glue that binds them to the templates.
 """
 import io
@@ -48,7 +48,7 @@ def _audio_url(memo):
 
     The cut count rides in the query because a cut rewrites the recording under the same
     filename, and a player handed a URL it is already holding plays what it has rather
-    than what is on disk — however the response is labelled, and even in a player built
+    than what is on disk — however the response is labeled, and even in a player built
     fresh. Every render names the recording as it now is, so the row rebuilt by the poll
     can't put back the sound a cut just removed."""
     return f"/audio/{quote(memo.audio_filename)}?cut={memo.cuts or 0}"
