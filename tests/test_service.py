@@ -327,11 +327,11 @@ def test_a_send_that_lands_but_cannot_bin_its_recording_is_not_resent_on_retry(t
 
 
 def test_submit_waits_out_a_recording_briefly_held_open_then_bins_it(tmp_path, monkeypatch):
-    # The everyday case behind the Asana bug: the page has just been streaming the
-    # recording (and iCloud may be uploading it), so the move to the bin can trip a
-    # transient lock. One submit should wait it out and still bin the recording — the way
-    # every other recording-mover in the service already does (see _letgo) — rather than
-    # fail and leave the row sitting for a second, duplicating click.
+    # The everyday case behind the Asana bug: iCloud may be uploading the recording, so
+    # the move to the bin can trip a transient lock. One submit should wait it out and
+    # still bin the recording — the way every other recording-mover in the service already
+    # does (see _letgo) — rather than fail and leave the row sitting for a second,
+    # duplicating click.
     import highdeas.service as service_mod
 
     inbox = tmp_path / "inbox"

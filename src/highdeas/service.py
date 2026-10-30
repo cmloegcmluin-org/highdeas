@@ -22,8 +22,8 @@ _JOINING = "group"
 _CUTTING = "cut"
 
 # How long to wait out another process's grip on a recording the app has to put down.
-# iCloud starts uploading a file the moment it is written, and the page has just been
-# streaming it; both let go within a moment, and neither can be hurried.
+# iCloud starts uploading a file the moment it is written; it lets go within a moment,
+# and cannot be hurried.
 _LETGO_TRIES = 6
 _LETGO_WAIT = 0.15
 
@@ -652,12 +652,10 @@ class InboxService:
     def _letgo(self, act):
         """Do something to a recording that something else on the PC may still be holding.
 
-        Windows refuses to delete or replace a file another process has open, and these
-        recordings have just been handed to two of them: iCloud, which starts uploading
-        one the moment it is written, and the page, which has been streaming it into an
-        <audio> element. Both let go within a moment and neither can be hurried, so wait
-        them out. If the grip outlasts that, say so — the caller has not moved anything
-        yet, and must not."""
+        Windows refuses to delete or replace a file another process has open, and iCloud
+        starts uploading these recordings the moment they are written. It lets go within
+        a moment and cannot be hurried, so wait it out. If the grip outlasts that, say so
+        — the caller has not moved anything yet, and must not."""
         for attempt in range(_LETGO_TRIES):
             try:
                 return act()
@@ -801,11 +799,11 @@ class InboxService:
 
         No route touches the recording in the inbox (Notesnook and Asana never see the
         file, Drive copies it), so it is always here to move; guard in case it's somehow
-        already gone. The move is waited out rather than attempted once: the page has
-        just been streaming this recording into an <audio> element and iCloud may be
-        uploading it, and Windows refuses to move a file another process still has open
-        — the very grip _letgo exists to outlast. Failing that raw move was how a
-        submitted note's row hung in the inbox until a second, note-duplicating click."""
+        already gone. The move is waited out rather than attempted once: iCloud may be
+        uploading this recording, and Windows refuses to move a file another process
+        still has open — the very grip _letgo exists to outlast. Failing that raw move
+        was how a submitted note's row hung in the inbox until a second, note-duplicating
+        click."""
         source = Path(self._inbox_dir) / audio_filename
         if not source.exists():
             return

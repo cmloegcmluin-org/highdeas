@@ -2371,6 +2371,77 @@ def test_audio_serves_file_from_inbox(tmp_path):
     assert resp.data == b"AUDIODATA"
 
 
+def test_a_player_can_ask_for_just_the_stretch_of_a_recording_it_is_about_to_play(tmp_path):
+    (tmp_path / "a.m4a").write_bytes(b"0123456789")
+    client = create_app(FakeService(), inbox_dir=str(tmp_path), bin_dir=str(tmp_path / "bin")).test_client()
+
+    resp = client.get("/audio/a.m4a", headers={"Range": "bytes=2-5"})
+
+    assert resp.status_code == 206
+    assert resp.headers["Content-Range"] == "bytes 2-5/10"
+    assert resp.data == b"2345"
+
+
+def test_a_recording_that_is_not_in_the_folder_answers_as_a_404(tmp_path):
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    (tmp_path / "beside.m4a").write_bytes(b"NOT-THE-INBOX")
+    client = create_app(FakeService(), inbox_dir=str(inbox), bin_dir=str(tmp_path / "bin")).test_client()
+
+    assert client.get("/audio/gone.m4a").status_code == 404
+    assert client.get("/audio/../beside.m4a").status_code == 404
+
+
+def _real_service(tmp_path, *memos):
+    """The service over real folders, for what only real files can show."""
+    from highdeas.service import InboxService
+    from highdeas.store import MemoStore
+
+    inbox, bin_dir = tmp_path / "inbox", tmp_path / "bin"
+    inbox.mkdir()
+    bin_dir.mkdir()
+    store = MemoStore(tmp_path / "memos.db")
+    for memo in memos:
+        store.upsert(memo)
+    service = InboxService(inbox_dir=inbox, store=store, transcriber=None, bin_dir=bin_dir,
+                           sleep=lambda seconds: None)
+    return service, inbox, bin_dir
+
+
+def test_a_note_can_go_to_the_bin_while_a_player_is_still_reading_its_recording(tmp_path):
+    # Only Windows refuses to move a file that is open, so only there can this one fail.
+    service, inbox, bin_dir = _real_service(tmp_path, Memo(audio_filename="a.m4a"))
+    (inbox / "a.m4a").write_bytes(b"A-LONG-RECORDING")
+    client = create_app(service, inbox_dir=str(inbox), bin_dir=str(bin_dir)).test_client()
+
+    playing = client.get("/audio/a.m4a", headers={"Range": "bytes=0-"}, buffered=False)
+    try:
+        resp = client.post("/delete/a.m4a")
+    finally:
+        playing.close()
+
+    assert resp.status_code == 204
+    assert not (inbox / "a.m4a").exists()
+    assert (bin_dir / "a.m4a").read_bytes() == b"A-LONG-RECORDING"
+
+
+def test_a_note_can_leave_the_bin_while_a_player_is_still_reading_its_recording(tmp_path):
+    binned = "b-0123456789ab.m4a"
+    service, inbox, bin_dir = _real_service(tmp_path, Memo(audio_filename=binned, status="deleted"))
+    (bin_dir / binned).write_bytes(b"A-LONG-RECORDING")
+    client = create_app(service, inbox_dir=str(inbox), bin_dir=str(bin_dir)).test_client()
+
+    playing = client.get(f"/bin-audio/{binned}", headers={"Range": "bytes=0-"}, buffered=False)
+    try:
+        resp = client.post(f"/restore/{binned}")
+    finally:
+        playing.close()
+
+    assert resp.status_code == 302
+    assert not (bin_dir / binned).exists()
+    assert (inbox / binned).read_bytes() == b"A-LONG-RECORDING"
+
+
 def test_a_row_plays_its_recording_by_a_name_that_changes_with_every_cut(tmp_path):
     # A cut recording keeps its filename, so the row rebuilt by the poll asked for the
     # same URL — and the player went on with the sound it was already holding rather than
