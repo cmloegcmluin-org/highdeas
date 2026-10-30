@@ -3,12 +3,15 @@
 The pages themselves live in `templates/`, their behaviour in `static/`; this
 module is the routes and the glue that binds them to the templates.
 """
+import io
+import os
 import threading
 from datetime import datetime
 from urllib.parse import quote
 
-from flask import Flask, redirect, render_template, request, send_from_directory
-from werkzeug.exceptions import HTTPException
+from flask import Flask, redirect, render_template, request, send_file
+from werkzeug.exceptions import HTTPException, NotFound
+from werkzeug.security import safe_join
 
 from highdeas.preferences import PreferenceStore
 
@@ -49,6 +52,22 @@ def _audio_url(memo):
     fresh. Every render names the recording as it now is, so the row rebuilt by the poll
     can't put back the sound a cut just removed."""
     return f"/audio/{quote(memo.audio_filename)}?cut={memo.cuts or 0}"
+
+
+def _send_recording(folder, filename):
+    """A recording, read whole before any of it is sent.
+
+    A player streaming a long recording reads only a little ahead of where it is playing
+    and leaves the rest of its request waiting, so a recording sent from the open file
+    would stay open for as long as the player liked — and Windows will not move or
+    delete an open file."""
+    path = safe_join(os.fspath(folder), filename)
+    if path is None or not os.path.isfile(path):
+        raise NotFound()
+    with open(path, "rb") as recording:
+        whole = recording.read()
+    return send_file(io.BytesIO(whole), download_name=os.path.basename(path),
+                     last_modified=os.path.getmtime(path))
 
 
 def _submitted_fields():
@@ -180,7 +199,7 @@ def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=(), cl
         """A pending memo's recording. Cached freely: a cut rewrites the bytes under the
         same filename, but every page that asks for a cut recording asks by a URL that
         carries the cut count (see _audio_url), so one URL always means one recording."""
-        return send_from_directory(inbox_dir, filename)
+        return _send_recording(inbox_dir, filename)
 
     @app.post("/edit/<path:filename>")
     def edit(filename):
@@ -285,7 +304,7 @@ def create_app(service, inbox_dir, bin_dir, open_link=None, asana_parents=(), cl
 
     @app.get("/bin-audio/<path:filename>")
     def bin_audio(filename):
-        return send_from_directory(bin_dir, filename)
+        return _send_recording(bin_dir, filename)
 
     @app.post("/restore/<path:filename>")
     def restore(filename):
