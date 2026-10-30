@@ -794,7 +794,7 @@ def test_a_recording_the_scan_cannot_transcribe_says_why_instead_of_waiting_fore
 
 
 def test_discard_bins_a_recording_before_it_is_ever_transcribed(tmp_path):
-    # A recording left running by accident is recognisable from its audio alone, so its
+    # A recording left running by accident is recognizable from its audio alone, so its
     # row can be emptied before the model spends itself reading forty minutes of nothing.
     # It becomes a memo only far enough to be thrown away as one — in the bin, restorable,
     # and known to the store, so the next scan doesn't adopt it all over again.

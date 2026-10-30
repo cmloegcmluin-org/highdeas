@@ -45,7 +45,7 @@ class Incoming:
     """A recording in the inbox that isn't a memo yet, as the row standing in its place
     needs it: `source` is the file to play it from, still under the name it landed with,
     and `name` is the content key it will be stored under — the name its bin has to give
-    when a recording is recognised as an accident and dropped before the model reads it.
+    when a recording is recognized as an accident and dropped before the model reads it.
 
     `progress` is how much of it the model has heard, 0 until the scan reaches it: a long
     recording is a minute of nothing visibly happening, and this is the number that says
@@ -713,7 +713,7 @@ class InboxService:
         """Throw away a recording that has landed but isn't a memo yet.
 
         Its row carries its audio from the moment it lands, so a recording left running
-        by accident can be recognised and dropped without the model reading it first. It
+        by accident can be recognized and dropped without the model reading it first. It
         becomes a memo only far enough to be thrown away as one: an empty note, in the
         bin with everything else that left the inbox, restorable if the click was wrong
         — and in the store, which is what stops the next scan adopting it again."""
